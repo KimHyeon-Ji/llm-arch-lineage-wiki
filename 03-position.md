@@ -352,9 +352,14 @@ decoder-only 모델에는 이미 위치 정보가 하나 숨어 있다. **causal
 | 모델 | 어디에 NoPE를 |
 |---|---|
 | SmolLM3 | 일부 층 |
-| **Kimi Linear** | **full attention 층** (KDA 층은 다른 방식) |
+| **Kimi Linear / K3** ✅ | **full attention(MLA) 층** — `config.json`의 `mla_use_nope`=true |
 | Arcee Trinity Large | global attention 층 |
 | LongCat-Flash-Lite | 일부 층 |
+
+✅ K3의 config를 보면 흥미로운 조합이 나온다. full 층이 MLA인데
+`qk_rope_head_dim`=64와 `qk_nope_head_dim`=128을 **둘 다** 갖고 있고,
+동시에 `mla_use_nope`=true다. `3.4`의 decoupled RoPE 구조를 유지하면서
+NoPE 경로를 함께 쓰는 것으로 보이는데, **정확히 어떻게 결합되는지는 확인하지 못했다.**
 
 패턴이 보인다. **값싼 지역 층(SWA, linear)이 가까운 위치를 처리하고,
 비싼 전역 층은 위치에 얽매이지 않고 검색만 한다.**
@@ -435,8 +440,12 @@ HoPE의 답은 단순하다. **저주파 성분을 위치 무관 성분으로 �
 | decoupled RoPE | 역할 (흡수 가능 / 위치 담당) |
 | **HoPE** | **주파수** (회전이 충분한지) |
 
-📌 [T1] 3B 규모 Llama 기반 실험에서 여러 벤치마크 평균이 RoPE 대비 개선되었고,
-컨텍스트 길이 변화에 대한 적응도 나았다고 보고한다.
+✅ **원문 확인 (arXiv:2410.21216).** 논문은 RoPE의 특정 성분을 **위치 무관 성분으로
+교체하고 고주파 신호만 남긴다**고 명시하며, **"장기 감쇠는 이제 시대에 뒤떨어졌다"** 고
+직접 주장한다. 이론적으로 장기 감쇠 원칙을 깨뜨려 컨텍스트 인식과 외삽을 개선한다는 것이다.
+
+📎 3B 규모 Llama 기반 실험에서 개선이 보고되지만, **구체 수치는 초록에 없어 확인하지 못했다.**
+본문 표를 봐야 한다.
 
 ### 정리
 

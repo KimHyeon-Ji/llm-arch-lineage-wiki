@@ -398,11 +398,30 @@ DeltaNet(`2.3`) 표에서 감쇠 한 줄이 추가되고, KDA는 그 줄의 성�
 2a'의 연산량 차이는 거의 없다. **어려운 건 decode가 아니라 학습이다** —
 chunked 병렬화에서 `Diag(α)`가 청크 안 여러 스텝에 걸쳐 누적되는 방식을 다시 유도해야 한다.
 
-### 부속 — ShortConv
+### 부속 — ShortConv와 Attention Residuals
 
-Kimi Linear 계열은 attention 앞단에 **짧은 causal convolution**을 둔다.
-바로 앞 몇 토큰과의 지역 패턴을 값싸게 처리해서, 상태가 그런 일에 낭비되지 않게 한다.
+**ShortConv**는 attention 앞단의 **짧은 causal convolution**이다 (K3 커널 크기 4).
+바로 앞 몇 토큰과의 지역 패턴을 값싸게 처리해서, 고정 상태가 그런 일에 낭비되지 않게 한다.
 `01`의 NSA가 지역 갈래를 따로 뺀 것과 같은 발상이다.
+
+**Attention Residuals(AttnRes)** 는 성격이 다르다. ✅ K3 논문에서 확인된 메커니즘이다.
+
+```
+ 일반 residual:  모든 이전 층의 출력이 균일하게 누적된다
+ AttnRes:        각 층이 이전 층들의 출력 중 필요한 것을 골라 가져온다
+                 └─ 학습된 pseudo-query + 층 출력들에 대한 softmax 가중치
+```
+
+**깊이 방향으로 attention을 한 번 더 하는 셈**이다.
+`05-norm-residual`의 Hyper-Connections/mHC와 같은 문제의식(residual을 그냥 더하지 말자)인데,
+해법이 다르다. HC는 스트림을 여러 개로 늘렸고, AttnRes는 **선택적으로 가져온다.**
+
+문제는 메모리다. 모든 층의 출력을 들고 있어야 하므로 `O(Ld)`가 된다.
+✅ 그래서 **Block AttnRes**를 쓴다 — 93개 층을 **8개 블록(블록당 약 12층)** 으로 나눠
+블록 안에서만 참조한다. 메모리가 `O(Ld)` → `O(Nd)`로 줄어든다.
+
+> 💡 `config.json`의 `attn_res_block_size`=12가 정확히 이 값이다.
+> 필드 하나가 논문의 설계 결정을 그대로 담고 있다.
 
 ### 정리 — Gated DeltaNet
 
@@ -421,7 +440,7 @@ Kimi Linear 계열은 attention 앞단에 **짧은 causal convolution**을 둔�
 | **핵심 아이디어** | Gated DeltaNet의 망각 계수 `α`를 스칼라에서 채널별 벡터로 확장 |
 | **장점** | · 같은 크기 상태로 **더 많은 정보를 유지** — 채널마다 다른 속도로 망각<br>· 📌 3:1 하이브리드에서 KV cache 최대 75% 감소, 1M 컨텍스트 디코딩 최대 6배<br>· 짧은 컨텍스트 성능도 full attention 대비 손해가 없다고 보고 |
 | **한계** | · 상태 전이가 DPLR 형태가 되어 **전용 chunked 알고리즘이 필요**<br>· 구현 난이도가 계보 중 가장 높음<br>· 정확한 검색 한계는 그대로 — 하이브리드 필수 |
-| **대표 모델** | **Kimi Linear**, **Kimi K3** (KDA:full = 3:1, ShortConv 함께) |
+| **대표 모델** | **Kimi Linear** · **Kimi K3** ✅ — 93층 중 KDA 69 / MLA 24 (**정확히 3:1**), ShortConv 커널 4, 채널별 full-rank gate, MXFP4 양자화 |
 | **다음으로** | 그런데 왜 전부 KDA로 바꾸지 않고 4층에 1층은 full attention을 남길까 → **하이브리드 설계** |
 
 ---
@@ -444,14 +463,55 @@ full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확
 그래서 전부 바꾸지 않는다. **대부분은 linear로 두고, 일부만 full attention으로 남긴다.**
 
 ```
- Layer 1   KDA / Gated DeltaNet    ┐
- Layer 2   KDA                     │ 값싸게 지역·요약 정보 처리
- Layer 3   KDA                     ┘
- Layer 4   full attention          ← 전역 정확 검색 담당
+ Layer 1   KDA    ┐
+ Layer 2   KDA    │ 값싸게 지역·요약 정보 처리
+ Layer 3   KDA    ┘
+ Layer 4   MLA    ← 전역 정확 검색 담당
  Layer 5   KDA
-   ...                              (3:1 반복)
+   ...             (3:1 반복)
+ Layer 92  MLA
+ Layer 93  MLA    ← 마지막 층
 ```
-> **그림 2.5** — Qwen3-Next와 Kimi Linear가 공통으로 쓰는 3:1 구성
+> **그림 2.5** — **Kimi K3의 실제 구성** ✅ `config.json`
+
+✅ K3의 `config.json`은 층 번호를 그대로 나열한다. 추측할 필요가 없다.
+
+| 필드 | 값 |
+|---|---|
+| `num_hidden_layers` | **93** |
+| `full_attn_layers` | **24개** — `[4, 8, 12, ..., 88, 92, 93]` |
+| `kda_layers` | **69개** — 나머지 전부 |
+
+4의 배수마다 full이고 마지막 93층이 하나 더 붙는다. **정확히 3:1이다.**
+
+#### 그런데 "full attention" 층이 그냥 full이 아니었다
+
+여기가 예상 밖이었다. K3의 full attention 층은 `config.json`에서 이렇게 나온다.
+
+| 필드 | 값 | 뜻 |
+|---|---|---|
+| `kv_lora_rank` | 512 | **MLA다** (`01-attention` 1.4) |
+| `q_lora_rank` | 1536 | 쿼리도 저rank |
+| `qk_rope_head_dim` / `qk_nope_head_dim` | 64 / 128 | **decoupled RoPE** (`03` 3.4) |
+| `mla_use_nope` | **true** | **NoPE 사용** (`03` 3.5) |
+| `mla_use_output_gate` | **true** | **Gated MLA** (`01` 1.5) |
+
+> 💡 **K3의 full 층 하나에 이 위키의 네 갈래가 겹쳐 있다.**
+> MLA(축1 압축) + decoupled RoPE(축3) + NoPE(축3) + output gate(축1 게이팅).
+> 그리고 그 층이 KDA(축2) 사이에 3:1로 끼어 있다.
+>
+> **축을 나눠 정리했지만 실제 모델은 그것들을 겹쳐 쓴다.** 축1과 축2가
+> 경쟁 관계가 아니라는 `2.6`의 이야기가 여기서 가장 선명하게 드러난다.
+
+부속으로 확인된 것들.
+
+| 필드 | 값 | 무엇 |
+|---|---|---|
+| `short_conv_kernel_size` | **4** | ShortConv (아래 참조) |
+| `use_full_rank_gate` | **true** | KDA의 채널별 게이팅 (`2.4`) |
+| `gate_lower_bound` | −5.0 | 게이트 하한 |
+| `attn_res_block_size` | 12 | Attention Residuals |
+| `quantization_config` | **MXFP4**, 4비트, group 32 | (`08-numerics` 8.3) |
 
 > 💡 `01-attention`의 `1.6`에서 본 Gemma의 local:global 5:1, `1.9`의 CSA/HCA 교차 배치와
 > **정확히 같은 발상**이다. 값싼 층 여럿 + 비싼 층 하나.
@@ -459,14 +519,43 @@ full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확
 
 ### 설계 공간
 
-| 결정할 것 | 선택지 |
-|---|---|
-| 비율 | 3:1이 사실상 표준. 더 늘리면 검색 성능이 떨어짐 |
-| 위치 | 균등 배치가 보통. 앞·뒤 어디에 둘지도 변수 |
-| full 층의 위치 인코딩 | Kimi Linear는 full 층에 **NoPE**를 쓴다 (`03-position` 참조) |
-| full 층의 attention 종류 | GQA, MLA, 또는 Gated Attention 무엇이든 가능 |
+| 결정할 것 | 선택지 | K3의 답 ✅ |
+|---|---|---|
+| 비율 | 3:1이 사실상 표준 | **3:1** (69 : 24) |
+| 위치 | 균등 배치가 보통 | **4의 배수마다** + 마지막 층 |
+| full 층의 위치 인코딩 | RoPE / NoPE | **NoPE** (`mla_use_nope`) |
+| full 층의 attention 종류 | GQA, MLA, Gated 무엇이든 | **MLA + output gate** |
+| 정규화·게이팅 세부 | — | 채널별 full-rank gate |
 
-마지막 줄이 중요하다. **하이브리드는 `01`의 결과물을 그대로 가져다 쓴다.**
+#### 왜 하필 3:1인가 — ablation이 있다
+
+✅ Kimi Linear 논문이 비율을 실제로 실험했다.
+
+| 비율 | 결과 |
+|---|---|
+| **0:1** (full attention만) | **나쁨** |
+| **1:1** | validation은 비슷한데 **추론 오버헤드가 커진다** |
+| **3:1** | **최적** — 학습·검증 손실 모두 최저, validation perplexity **5.65** |
+| **7:1** | 학습 손실은 비슷한데 **validation이 크게 나빠진다** |
+
+읽어낼 것이 명확하다.
+
+- **7:1로 가면 정확한 검색 능력이 무너진다.** 학습 손실이 비슷한데 validation이
+  나빠진다는 건 **일반화가 깨졌다**는 신호다. `2.5` 앞부분에서 말한
+  "고정 상태로는 정확한 검색이 안 된다"가 여기서 수치로 확인된다.
+- **1:1은 품질이 더 좋아지지 않는다.** full 층을 더 넣어봐야 손해만 본다.
+- 즉 **3:1은 타협이 아니라 실측으로 찾은 최적점**이다.
+
+#### 마지막 층이 MLA인 이유도 있다
+
+✅ K3 논문은 3 KDA + 1 Gated MLA 블록을 반복하고,
+**backbone 끝에 Gated MLA를 하나 더 붙인다**고 명시한다.
+이유는 **마지막에 전역 attention을 한 번 보장하기 위해서**다.
+
+`config.json`의 `full_attn_layers`가 `[4, 8, ..., 92, 93]`으로 92와 93이 연달아 있던
+이유가 이것이다. 92는 반복 구조의 일부이고, **93은 따로 추가한 마무리 층**이다.
+
+마지막 두 줄이 중요하다. **하이브리드는 `01`의 결과물을 그대로 가져다 쓴다.**
 축1과 축2는 경쟁 관계가 아니라 **한 모델 안에서 층을 나눠 갖는 관계**다.
 
 ### 시스템 관점 — 층마다 성격이 다르다
@@ -561,6 +650,17 @@ full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확
 - Sebastian Raschka, *LLM Architecture Gallery* — Gated DeltaNet·Lightning Attention 채택 현황
 - Kimi K3 관련 2차 자료 — KDA 실전 설정
 
+**해소된 항목** ✅
+- Kimi K3 하이브리드 구성 — `config.json`에서 93층 / KDA 69 / MLA 24 (3:1) 확인
+- K3의 full 층이 **MLA + NoPE + output gate**임을 확인
+- **3:1 비율의 근거** — Kimi Linear 논문의 ablation (0:1, 1:1, 3:1, 7:1 비교, 3:1이 최적)
+- **마지막 93층이 MLA인 이유** — backbone 끝에 전역 attention을 보장하려 추가한 층
+- **Attention Residuals 메커니즘** — 학습된 pseudo-query + 층 출력 softmax,
+  Block AttnRes로 93층을 8블록(≈12층)으로 분할 → `attn_res_block_size`=12
+- K3 규모 — 2.8T 총 / **104B 활성**, 93층 (K2의 61층에서 52% 증가)
+
 **미검증 항목**
-- Kimi K3의 정확한 하이브리드 구성 (K3 기술 리포트 원문 미대조)
 - Lightning Attention(MiniMax·Ling)의 세부 — 이 파일에서는 언급만 하고 다루지 않음
+- Kimi Linear ablation의 **정확한 실험 설정**(모델 크기, 토큰 수) — 2차 요약 기반.
+  perplexity 5.65라는 값은 그 설정에서만 유효하다
+- Block AttnRes의 블록 간 정보 전달 방식 세부

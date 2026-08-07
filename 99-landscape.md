@@ -34,15 +34,15 @@
 | **gpt-oss** | GQA + SWA, **학습된 sink** | RoPE | MoE | RMSNorm | — | **MXFP4** |
 | **DeepSeek-V3** | **MLA** | **decoupled RoPE** + YaRN | 256/8 + shared, **aux-loss-free** | RMSNorm | **MTP-1** | **FP8 학습** |
 | **DeepSeek-V3.2** | MLA + **DSA** (top-k 2048) | decoupled RoPE | 위와 동일 | RMSNorm | MTP | FP8 |
-| **DeepSeek-V4** ⚠️ | **CSA + HCA 교차** | ⚠️ | MoE | **mHC** | MTP | ⚠️ |
+| **DeepSeek-V4-Pro** ✅ | **CSA(`m`=4) + HCA(`m'`=128) 1:1 교차**, 앞 2층 SWA | RoPE 64차원 + YaRN ×16 | **384 + shared 1, top-6**, noaux_tc | **mHC** (`n`=4, Sinkhorn 20) | MTP | **MoE FP4 + 나머지 FP8** |
 | **Qwen3** | GQA | RoPE + YaRN | 235B-A22B | QK-Norm | — | BF16 |
 | **Qwen3-Next** | **Gated DeltaNet 3:1 + Gated Attention** | **partial RoPE** | shared expert, expert 4배 | **zero-centered RMSNorm** | — | BF16 |
 | **Qwen3.5** | Gated DeltaNet + Gated Attention | partial RoPE | fine-grained | QK-Norm | — | — |
 | **Kimi K2 / K2.5** | **MLA** | RoPE | DeepSeek식 | RMSNorm | — | — |
 | **Kimi Linear** | **KDA 3:1** + ShortConv | **NoPE** (full 층) | — | Attention Residuals ⚠️ | — | — |
-| **Kimi K3** ⚠️ | **KDA 3:1** | NoPE ⚠️ | **Stable LatentMoE** (896/16) ⚠️ | ⚠️ | — | **MXFP4** ⚠️ |
+| **Kimi K3** ✅ | 93층, **KDA 69 : MLA 24 (정확히 3:1)**, ShortConv 4, **MLA에 output gate** | **NoPE** + decoupled RoPE(64/128) | **Stable LatentMoE** 7168→3584, **896/16**, shared 2, noaux_tc | Attention Residuals | — | **MXFP4** (group 32) |
 | **GLM-4.5 / 4.7** | GQA | RoPE | 160 experts | QK-Norm | MTP | — |
-| **GLM-5** ⚠️ | **MLA + DSA** | RoPE | **256 experts** | QK-Norm | MTP | — |
+| **GLM-5** ✅ | **MLA + DSA** (`glm_moe_dsa`, top-2048, indexer 헤드 32) | RoPE θ=1M, 컨텍스트 202K | **256 + shared 1, top-8**, noaux_tc | QK-Norm | MTP | — |
 | **MiniMax M2 / M2.5** | GQA | RoPE | MoE | QK-Norm | MTP | — |
 | **Ling 2.5** | **Lightning Attention** hybrid + MLA | RoPE | fine-grained MoE | — | — | — |
 | **Nemotron 3** | **Mamba-2 + attention** hybrid | — | MoE / LatentMoE ⚠️ | — | — | — |
@@ -69,8 +69,26 @@
     ↓
  V3.2 (2025) + DSA — 압축에 희소 선택을 결합
     ↓
- V4 (2026)   CSA/HCA — 압축과 선택을 직렬로 겹침, + mHC ⚠️
+ V4 (2026)   CSA/HCA — 압축과 선택을 직렬로 겹침, + mHC ✅
 ```
+
+✅ **V4-Pro가 실제로 어떻게 서빙되는지** (vLLM 배포 문서 기준)
+
+| | |
+|---|---|
+| 규모 | 1.6T 총 / 49B 활성, 61층, `d`=7168, 쿼리 헤드 128 |
+| 정밀도 | **MoE expert 가중치는 FP4, attention·norm·router는 FP8** — 부분별로 다르다 |
+| KV | `--kv-cache-dtype fp8` |
+| 병렬화 | B300 8장 DP=8 / H200 8장 DP+EP / MI355X TP=8 / GB200은 2트레이 다노드 |
+| 컨텍스트 | 1M. 단 **H200에서는 800K로 제한** — KV 여유 확보용 |
+| 지원 | vLLM v0.22.0 네이티브, v0.23.0 프로덕션 / SGLang v0.5.12 |
+
+> 💡 **정밀도를 부분별로 나눈 것**이 눈에 띈다 (`08-numerics` 8.1).
+> expert 가중치는 양이 압도적이라 FP4로 내리고, 민감한 attention·router는 FP8로 남겼다.
+> **"무엇을 양자화할 것인가"가 모델 부분별로 갈린다**는 실례다.
+>
+> H200에서 컨텍스트를 800K로 줄여야 한다는 것도 시사적이다.
+> KV를 V3.2의 10%로 줄였는데도 **여전히 용량이 상한을 정한다.**
 
 **일관된 방향이 있다. "KV를 줄인다"를 한 번도 놓지 않았다.**
 NSA(연구) → MLA(압축) → DSA(선택) → CSA(둘의 결합)로 계속 쌓아올렸다.
@@ -108,11 +126,26 @@ NSA(연구) → MLA(압축) → DSA(선택) → CSA(둘의 결합)로 계속 쌓
  K3 (2026)         KDA를 플래그십에 적용, Stable LatentMoE, MXFP4 ⚠️
 ```
 
-**계열이 바뀐 사례다.** K2까지는 MLA(축1)를 따라가다가, Kimi Linear에서
-축2로 전환하고 K3에서 그것을 플래그십에 올렸다.
+✅ **처음에 "축1에서 축2로 갈아탄 계열"이라고 썼는데, config를 보니 틀렸다.**
 
-MoBA(축1의 희소)도 이들이 만들었다는 점이 흥미롭다. **두 갈래를 다 시도해보고
-축2를 골랐다**고 볼 수 있다.
+K3의 full attention 층 24개는 **그냥 full이 아니라 MLA**다. 그것도 output gate가 붙은
+Gated MLA이고, decoupled RoPE와 NoPE를 함께 쓴다.
+
+```
+ K3 한 모델 안에
+   KDA 69층        ← 축2 (고정 상태)
+   MLA 24층        ← 축1 (저차원 압축)
+    ├ output gate  ← 축1 (게이팅)
+    ├ decoupled RoPE + NoPE  ← 축3
+   LatentMoE       ← 축4 (통신 압력 대응)
+   MXFP4           ← 축8
+```
+
+**갈아탄 게 아니라 쌓아 올렸다.** MoBA(축1의 희소)까지 이들이 만들었다는 걸 보면,
+**여러 갈래를 다 해보고 전부 한 모델에 넣은 쪽**에 가깝다.
+
+이게 이 위키의 축 구분에 대한 중요한 단서다. **축은 아이디어를 정리하는 틀이지
+모델이 하나를 고르는 선택지가 아니다.**
 
 ### Zhipu (GLM) — 실용적 통합
 
@@ -220,10 +253,11 @@ MLA로 이미 충분히 줄였는데 품질 손실을 더 감수할 이유가 �
 | **DeepSeek-V3** | **671B / 37B** | **256** | **8** | ✓ | **잘게** | **aux-loss-free** |
 | Qwen3-235B | 235B / 22B | 다수 | — | ✓ | 잘게 | — |
 | Qwen3-Next | — | **4배 증가** | — | ✓ | 잘게 | — |
-| GLM-4.7 → GLM-5 | — | **160 → 256** | — | ✓ | 잘게 | — |
-| Kimi K3 ⚠️ | 2.8T ⚠️ | **896** ⚠️ | **16** ⚠️ | — | 매우 잘게 | LatentMoE ⚠️ |
-| DeepSeek-V4-Pro ⚠️ | **1.6T / 49B** ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
-| DeepSeek-V4-Flash ⚠️ | 284B / 13B ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ | ⚠️ |
+| **GLM-5** ✅ | — | **256** (4.7의 160에서) | **8** | ✓ 1 | 잘게 | noaux_tc |
+| **Kimi K3** ✅ | 2.8T | **896** | **16** | **✓ 2** | 매우 잘게 | **LatentMoE** 7168→3584 |
+| **Nemotron 3 Super** ✅ | — | LatentMoE로 확대 | — | — | — | **LatentMoE** 4096→1024 |
+| **DeepSeek-V4-Pro** ✅ | **1.6T / 49B** | **384** | **6** | ✓ 1 | 잘게 | **noaux_tc** (+ 앞 3층 hash) |
+| **DeepSeek-V4-Flash** ✅ | 284B / 13B | **256** | **6** | ✓ 1 | 잘게 | 동일 |
 | **Arcee Trinity Large** | — | 적음 | — | — | **의도적으로 굵게** | — |
 
 ### 두 가지 추세
@@ -242,6 +276,23 @@ V4-Pro는 32배 ⚠️. **파라미터는 늘리되 연산은 안 늘린다**는
 **fine-grained가 항상 옳은 게 아니라, 대규모 배치 서빙을 전제할 때 옳다.**
 그 전제가 다르면 결론도 달라진다.
 
+### ✅ 새로 확인된 세 번째 방향 — LatentMoE
+
+`4.4`에서 "잘게 vs 굵게"의 이분법으로 정리했는데, **제3의 답이 나와 있었다.**
+
+```
+ 잘게 쪼갠다   → 품질↑ 통신·GEMM 효율↓
+ 굵게 만든다   → 처리량↑ 품질↓
+ LatentMoE     → 오가는 벡터를 작게 만든다 → 통신량 d/ℓ 감소
+                 그 여유로 더 잘게 쪼갠다
+```
+
+📌 [T1] Nemotron 3는 latent로 아낀 만큼 **expert 수와 활성 수를 `d/ℓ`배 늘린다.**
+품질과 처리량을 맞바꾸는 대신, **제약 자체를 옮겨서 둘 다 가져가려는 접근**이다.
+
+이건 `99.6`의 결론과 직접 연결된다. **통신이 병목이라는 진단에 아키텍처가
+답을 내놓기 시작했다는 증거**이기 때문이다.
+
 ---
 
 ## 99.5 하이브리드 구성 비교
@@ -253,10 +304,10 @@ V4-Pro는 32배 ⚠️. **파라미터는 늘리되 연산은 안 늘린다**는
 |---|---|---|---|---|
 | **Gemma 3** | SWA | full attention | **5:1** | 전역 문맥 |
 | **Qwen3-Next / 3.5** | Gated DeltaNet | Gated Attention | **3:1** | 정확한 검색 |
-| **Kimi Linear / K3** | KDA | full attention (**NoPE**) | **3:1** | 정확한 검색 |
+| **Kimi K3** ✅ | KDA (69층) | **Gated MLA + NoPE** (24층) | **3:1** | 정확한 검색 |
 | **Nemotron 3** | Mamba-2 | attention | ⚠️ | 전역 검색 |
 | **Ling 2.5** | Lightning Attention | full | ⚠️ | 전역 검색 |
-| **DeepSeek-V4** ⚠️ | CSA (정밀·좁게) | HCA (거칠게·넓게) | ⚠️ | **역할 분담이 다르다** |
+| **DeepSeek-V4** ✅ | CSA (정밀·좁게) | HCA (거칠게·넓게) | **1:1** | **역할 분담이 다르다** |
 | **Arcee Trinity** | SWA | global (**NoPE**) | ⚠️ | 전역 문맥 |
 
 ### 두 종류의 하이브리드
@@ -264,13 +315,21 @@ V4-Pro는 32배 ⚠️. **파라미터는 늘리되 연산은 안 늘린다**는
 대부분은 **"값싸게 지역 + 비싸게 전역"** 구조다. 그런데 DeepSeek-V4는 다르다.
 
 ```
- 일반적 하이브리드:  [좁게 보는 층] × N  +  [전부 보는 층] × 1
- DeepSeek-V4:        [정밀하게 일부] ↔ [거칠게 전부]  교대
+ 일반적 하이브리드:  [좁게 보는 층] × 3~5  +  [전부 보는 층] × 1
+ DeepSeek-V4:        [정밀하게 일부] ↔ [거칠게 전부]   1:1 교대
 ```
 
-V4에는 "전부를 원본 그대로 보는 층"이 없다 ⚠️. 정밀도와 범위를 서로 다르게
-가진 두 종류가 교대한다. **더 나아간 형태**로 볼 수 있지만, 원문 확인 전이라
-단정하지 않는다.
+✅ **V4에는 "원본을 그대로 보는 층"이 사실상 없다.** 61층 중 앞 두 층이
+sliding window(윈도우 128), 마지막 한 층이 압축 없음, 나머지 58층은
+CSA(`m`=4)와 HCA(`m'`=128)의 1:1 교대다.
+
+두 가지가 다르다.
+
+- **비율이 1:1이다.** 다른 하이브리드는 한쪽이 보조였는데, 여기는 둘 다 주역이다.
+- **나누는 축이 다르다.** 다른 곳은 "가까이 vs 멀리"로 나눴고,
+  V4는 **"정밀하게 조금 vs 거칠게 전부"** 로 나눴다.
+  1M 컨텍스트에서 CSA 층은 4천 토큰 분량을 정밀하게 보고,
+  HCA 층은 100만 토큰 전부를 8천 개 엔트리로 뭉개 훑는다.
 
 ### 공통 설계 질문
 
@@ -300,6 +359,7 @@ V4에는 "전부를 원본 그대로 보는 층"이 없다 ⚠️. 정밀도와 
 | 레이어 공유 (CLA/YOCO) | 레이어 간 의존 → **PP 제약** | HBM 용량 (세로 방향) |
 | **MoE (fine-grained)** | **all-to-all 대역폭**, EP 스케일, 부하 균형 | 활성 연산량 |
 | MoE (coarse) | 노드당 메모리 용량 | all-to-all 트래픽 |
+| **LatentMoE** ✅ | down/up projection 연산 | **all-to-all payload가 `d/ℓ`배 감소** — 통신 압력을 직접 공격 |
 | **하이브리드 (이질 층)** | **층별로 다른 자원 프로파일의 스케줄링** | 평균 비용 |
 | 깊이 ↓ 너비 ↑ | TP 통신 대역폭 | **직렬 지연** |
 | MTP / speculative | draft 검증용 여유 연산, 지연 변동 흡수 | 메모리 대역폭 (실효 배치↑) |
@@ -331,14 +391,37 @@ V4에는 "전부를 원본 그대로 보는 층"이 없다 ⚠️. 정밀도와 
 - `04-moe` 4.6 — MoE 모델에서 레이어당 all-to-all 두 번, 61층이면 120회 이상
 - `01-attention` 1.7 — NSA가 블록 단위 선택을 택한 이유가 gather 효율
 - `02-linear-attention` 2.5, `01` 1.9 — 층별 프로파일 불균형
-- 📎 [T3] NVLink 6가 per-GPU 3.6 TB/s로 두 배가 되었고, 자료들이 이를 MoE
-  all-to-all과 연결짓는다 (`CONTESTED.md` C4)
+- 📎 NVLink 6가 per-GPU 3.6 TB/s로 두 배가 되었고, 자료들이 이를 MoE
+  all-to-all과 연결짓는다
+- ✅ **`04-moe` 4.6 — LatentMoE가 결정적 근거다.**
+  Nemotron 3와 Kimi K3가 expert 연산을 latent 공간으로 내린 이유가
+  **가중치 읽기와 all-to-all payload를 함께 `d/ℓ`배 줄이기 위해서**다.
+  통신이 병목이 아니었다면 나올 이유가 없는 설계다.
+- ✅ **`04-moe` 4.6 — 실측 범위도 있다.**
+  all-to-all이 차지하는 시간이 **노드 안 ~20%, 노드를 넘으면 40~60%**,
+  EP=6에서는 **77%** 까지 보고된다.
+  **①은 이제 추론이 아니라 관측이다.**
 
-**한계**
+- ✅ `01-attention` 1.9 — V4가 CSA와 HCA를 **1:1로 교대**한다.
+  61층 중 58층이 두 종류로 갈리고, 앞 2층은 SWA, 마지막 1층은 또 다르다.
+  **③의 가장 강한 사례다** — "모든 층이 같다"는 전제가 완전히 깨졌다.
+- ✅ vLLM 배포 문서 — 같은 모델 안에서 **MoE는 FP4, attention은 FP8**로 정밀도가 갈린다.
+  이질성이 attention 종류를 넘어 **정밀도까지** 확장되고 있다.
 
-- ⚠️ 마지막 항목은 공식 스펙 대조 전이다. **하드웨어 근거로 삼기에는 약하다.**
-- ⚠️ DeepSeek-V4의 세부(CSA/HCA 비율, 압축률)를 모르므로 ③의 강도를 정확히 말할 수 없다.
-- 실측 프로파일링 없이 구조에서 추론한 결론이다. **가설로 읽어야 한다.**
+**한계 — 세 항목의 근거 수준이 다르다**
+
+| | 근거 수준 |
+|---|---|
+| **① 노드 간 통신** | ✅ **관측** — LatentMoE라는 아키텍처 대응 + 실측 시간 비중 |
+| **② 비정형 메모리 접근** | ⚠️ **가설** — NSA가 블록 단위를 택한 이유라는 정성적 근거뿐.<br>**gather의 실효 대역폭을 측정한 자료를 찾지 못했다** |
+| **③ 이질적 스케줄링** | 🟡 **관측에 가까움** — V4의 1:1 교대, K3의 3:1,<br>SGLang이 하이브리드용 메모리 풀을 따로 만든 것이 방증 |
+
+②가 가장 약하다. 이 위키에서 제일 자신 없는 주장이고,
+누가 실측하면 뒤집힐 수 있다.
+
+- 📎 all-to-all 실측 수치들은 **여러 연구의 서로 다른 환경**에서 나온 것이다.
+  범위와 경향만 받아들여야 한다 (C6의 교훈).
+- 📎 하드웨어 스펙은 다수 자료가 일치하지만 데이터시트 PDF를 직접 대조하지는 않았다.
 
 이 결론을 확정하려면 실제 워크로드에서 통신 시간·gather 효율·층별 실행 시간을
 측정해야 한다. 그건 이 위키의 범위 밖이고, 다음 단계의 일이다.
@@ -351,12 +434,19 @@ V4에는 "전부를 원본 그대로 보는 층"이 없다 ⚠️. 정밀도와 
 
 | 질문 | 왜 답을 못 냈나 |
 |---|---|
-| CSA/HCA의 정확한 구조와 비율 | V4 원문 미대조 (C1, C3) |
-| 축1(압축)과 축2(고정 상태) 중 무엇이 이길까 | 둘 다 살아 있고 판단할 근거가 부족 |
-| 레이어 공유(CLA/YOCO)가 대형 모델에 안 오는 이유 | 품질 문제인지 수확 체감인지 불명 |
-| 하이브리드 모델의 prefix caching | 프레임워크 지원 상황 확인 필요 |
-| LatentMoE의 실체 | 원문 미대조 |
-| 3:1 비율의 근거 | 왜 하필 3:1인지 이론적 설명을 못 찾음 |
+| ~~CSA/HCA의 정확한 구조와 비율~~ | ✅ **해소** — `m`=4, `m'`=128, 1:1 교대 (C1, C3) |
+| **왜 하필 1:1인가** | V4가 3:1이나 5:1이 아닌 1:1을 고른 이유를 설명한 대목을 못 찾음 |
+| **`compress_ratio`=0인 마지막 층** | 무엇을 뜻하는지 미확인 |
+| ~~축1과 축2 중 무엇이 이길까~~ | ✅ **질문이 틀렸다** — K3는 둘을 3:1로 한 모델에 넣는다 |
+| ~~LatentMoE의 실체~~ | ✅ **해소** — `d → ℓ → d`, 통신 payload도 함께 감소 |
+| ~~3:1 비율의 근거~~ | ✅ **해소** — Kimi Linear ablation (0:1·1:1·3:1·7:1 중 3:1 최적) |
+| ~~K3의 마지막 93층~~ | ✅ **해소** — 전역 attention 보장용으로 backbone 끝에 추가한 층 |
+| ~~하이브리드 prefix caching~~ | ✅ **해소** — Marconi, SGLang MambaRadixCache (풀 분리) |
+| ~~all-to-all이 실제로 얼마나~~ | ✅ **해소** — 노드 안 ~20%, 노드 간 40~60%, EP=6에서 77% |
+| **V4에서 `k`가 8 → 6으로** | ✅ **논문에 설명이 없음을 확인** — 이유를 밝히지 않았다 |
+| **V4의 CSA:HCA 배치 근거** | ✅ **논문에 ablation이 없음을 확인** — 1:1인 이유를 밝히지 않았다 |
+| 레이어 공유(CLA/YOCO)가 대형 모델에 안 오는 이유 | 품질 문제인지 수확 체감인지 여전히 불명 |
+| **희소 attention의 gather 실효 대역폭** | 측정 자료를 찾지 못했다. **99.6 ②가 여전히 가설인 이유** |
 
 ---
 
@@ -369,9 +459,21 @@ V4에는 "전부를 원본 그대로 보는 층"이 없다 ⚠️. 정밀도와 
 
 **T1**
 - 각 모델의 HuggingFace `config.json` — `99.1` 매트릭스의 수치
-- DeepSeek-V4 (arXiv:2606.19348) ⚠️ **원문 미대조**
-- Kimi K3 기술 리포트 ⚠️ **원문 미대조**
-- GLM-5 기술 리포트 ⚠️ **원문 미대조**
+- **DeepSeek-V4 (arXiv:2606.19348) ✅ 원문 대조 완료**
+- **DeepSeek-V4-Pro / V4-Flash `config.json` ✅** — expert 384/256, top-6,
+  `compress_ratios`, `hc_mult`=4, `hc_sinkhorn_iters`=20, `index_topk`=1024
+- **Kimi K3 `config.json` ✅** — 93층, `full_attn_layers` 24 / `kda_layers` 69,
+  `mla_use_nope`, `mla_use_output_gate`, `short_conv_kernel_size`=4,
+  `routed_expert_hidden_size`=3584, 896/16/shared 2, MXFP4 group 32
+- **GLM-5 `config.json` ✅** — `glm_moe_dsa`, 78층, `kv_lora_rank`=512,
+  `index_topk`=2048, 256/8/shared 1
+- **Nemotron 3 (arXiv:2512.20856 / 2604.12374) ✅** — LatentMoE 구조
+- Google 개발자 문서 (Gemma 3n) ✅ — PLE, MatFormer, effective 파라미터
+- Kimi K3 / GLM-5 **기술 리포트 본문**은 여전히 ⚠️ 미대조 (config만 확인)
+
+**T2**
+- **vLLM Recipes / SGLang Cookbook** — V4-Pro·V4-Flash 배포 설정,
+  혼합 정밀도(MoE FP4 + 나머지 FP8), 병렬화 구성, 컨텍스트 상한
 
 **T3**
 - Sebastian Raschka, *LLM Architecture Gallery* 및 분기별 아키텍처 리뷰

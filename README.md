@@ -70,7 +70,14 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 |---|---|
 | [PLAN.md](PLAN.md) | 이 위키의 구성 원칙과 작성 규칙 |
 | [CONTESTED.md](CONTESTED.md) | 자료마다 다르게 말하는 것들 (C1~C5) |
-| [snippets/](snippets/) | 실행 가능한 최소 구현과 등가성 검증 |
+| [snippets/](snippets/README.md) | 실행 가능한 최소 구현과 등가성 검증 |
+
+```
+python snippets/test_equivalence.py
+```
+
+의존성 없이(표준 라이브러리만) 바로 돌아간다. "GQA는 MHA의 일반화"
+"MLA의 흡수는 공짜" 같은 문장을 **코드로 확인**할 수 있다. 현재 13개 검증 통과.
 
 ---
 
@@ -140,29 +147,56 @@ Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
 
 | 범위 | 상태 |
 |---|---|
-| MHA ~ MLA, RoPE, MoE 기본, 정규화 | **T1 확인** |
-| NSA, MoBA, DSA, KDA, mHC | **T1 확인** (파라미터·수식 포함) |
-| **CSA, HCA (DeepSeek-V4)** | ⚠️ **원문 미대조** — 골격만 |
-| **Kimi K3 세부** | ⚠️ 2차 자료 기반 |
-| GLM-5, Gemma 4 세부 | ⚠️ 2차 자료 기반 |
-| 하드웨어 스펙 (B200, Rubin) | ⚠️ 공식 스펙 미확인 |
-| `99-landscape` 99.6 결론 | ⚠️ **구조에서 추론한 가설** |
+| MHA ~ MLA, RoPE, MoE 기본, 정규화 | ✅ 논문 확인 |
+| NSA, MoBA, DSA, KDA, mHC | ✅ 논문 확인 (파라미터·수식 포함) |
+| **CSA, HCA (DeepSeek-V4)** | ✅ 논문 + `config.json` + vLLM |
+| **Kimi K3** | ✅ **기술 리포트(arXiv:2607.24653) + `config.json` + 공식 블로그** |
+| **GLM-5** | ✅ `config.json` (기술 리포트 본문은 미대조) |
+| **하이브리드 3:1 비율** | ✅ Kimi Linear ablation |
+| **all-to-all 시간 비중** | ✅ 실측 범위 (여러 연구, 환경 상이) |
+| **LatentMoE** | ✅ Nemotron 3 논문 + K3 config |
+| **Gemma 3n PLE / MatFormer** | ✅ Google 공식 문서 |
+| 하드웨어 스펙 (B200, Rubin) | ✅ 다수 자료 일치 (데이터시트 PDF 직접 대조는 아님) |
+| Tiny Aya, Nanbeige, Step 3.5 등 | ⚠️ 2차 자료 기반 |
+| `99-landscape` 99.6 결론 | 🟡 **①은 관측, ②③은 여전히 가설** |
 
-### 미해결 (CONTESTED)
+### CONTESTED
 
-| # | 쟁점 |
-|---|---|
-| C1 | HCA = "Heavily Compressed" vs "Hyper-Connected" |
-| C2 | HoPE 동명이인 3종 |
-| C3 | CSA의 압축률 `m` |
-| C4 | B200·Rubin 하드웨어 스펙 |
-| C5 | NSA → DSA → CSA 계승 관계 |
+| # | 쟁점 | 상태 |
+|---|---|---|
+| C1 | HCA의 정식 명칭 | ✅ **해소** — Heavily Compressed Attention |
+| C2 | HoPE 동명이인 3종 | 🟡 메커니즘 확인, 실험 수치 미확인 |
+| C3 | CSA의 압축률 `m` | ✅ **해소** — `m`=4, `m'`=128, 1:1 교대 |
+| C4 | B200·Rubin 하드웨어 스펙 | ✅ **해소** |
+| C5 | NSA → DSA → CSA 계승 | 🟡 DSA→CSA 확정, NSA→는 점선 유지 |
+| C6 | 인접 레이어 KV 유사도 0.72~0.87 | 🟡 **출처 정정** — 단일 논문 수치가 아님 |
 
-자세한 내용과 해소 방법은 [CONTESTED.md](CONTESTED.md).
+자세한 내용은 [CONTESTED.md](CONTESTED.md).
+
+> **C1과 C6이 이 위키의 검증 규칙이 실제로 값을 한 사례다.**
+> C1은 해설 자료가 HCA를 "Hyper-Connected Attention"으로 적은 것 — 같은 모델의
+> **mHC**(Hyper-Connections)와 혼동한 것이었다.
+> C6은 널리 인용되는 "0.72~0.87"이 알고 보니 **여러 논문의 측정을 묶은 범위**였던 것.
+> 둘 다 2차 자료를 그대로 옮겼다면 틀린 채로 남았을 내용이다.
+
+### 남은 열린 질문
+
+두 종류로 나뉜다.
+
+**🟡 자료를 찾았는데 거기에 답이 없는 것**
+- V4에서 활성 expert가 8 → 6으로 줄어든 이유 (논문이 밝히지 않음)
+- V4의 CSA:HCA 1:1 배치 근거 (논문에 ablation 없음)
+
+**⚠️ 아직 못 찾은 것**
+- **희소 attention의 gather 실효 대역폭** — 측정 자료를 못 찾았다.
+  `99-landscape` 99.6의 세 결론 중 **②만 여전히 가설로 남은 이유**다
+- V4-Pro 마지막 층 `compress_ratio`=0 의 의미
+- K3에서 decoupled RoPE와 NoPE가 어떻게 함께 쓰이는지
+- CLA/YOCO가 대형 모델에 오지 않는 이유
 
 ### 다음에 할 일
 
-1. **DeepSeek-V4 원문 대조** — C1, C3 해소. `01-attention` 1.9와 `05` 5.6이 바뀔 수 있다
-2. Kimi K3 / GLM-5 기술 리포트 대조
-3. `snippets/` 확장 — MLA absorption, DeltaNet chunked 등가성
-4. NVIDIA 공식 스펙시트로 `00-foundations` 0.8 갱신
+1. GLM-5 / GLM-5.2 **기술 리포트 본문** 대조 (config와 2차 자료만 확인된 상태)
+2. V3.2 논문 related work 확인 — C5 잔여분(NSA 연결)
+3. `snippets/` 확장 — NSA 세 갈래, DeltaNet chunked 등가성, decoupled RoPE
+4. 희소 attention 커널의 실효 대역폭 측정 자료 찾기 — 99.6 ②의 근거
