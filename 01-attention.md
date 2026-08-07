@@ -1071,7 +1071,7 @@ DSA에는 `O(S)` indexer가 남아 있었다. CSA(`1.9`)는 **훑을 대상을 �
 ```
 > **그림 1.8b** — 4개 층 그룹의 첫 층에서만 indexer를 돌리고 결과를 나머지에 넘긴다.
 
-✅ 효과가 크다.
+효과가 크다.
 
 | | |
 |---|---|
@@ -1099,17 +1099,17 @@ DeepSeek-V4의 답은 두 단계를 겹치는 것이었다. **먼저 토큰들�
 
 ## 1.9 CSA와 HCA — 압축과 선택을 겹치기
 
-> ✅ **원문·config·구현 대조 완료.** 아래 수치는 DeepSeek-V4 논문(arXiv:2606.19348),
-> HuggingFace `config.json`, vLLM/SGLang 배포 문서에서 확인한 것이다.
+> 이 절의 수치는 DeepSeek-V4 논문(arXiv:2606.19348), HuggingFace `config.json`,
+> vLLM/SGLang 배포 문서에서 확인한 것이다.
 >
-> | 항목 | 확정 |
+> | 약어 | 뜻 |
 > |---|---|
 > | **CSA** | **C**ompressed **S**parse **A**ttention |
 > | **HCA** | **H**eavily **C**ompressed **A**ttention |
 >
-> `CONTESTED.md` C1(명칭)과 C3(압축률)이 이 대조로 해소되었다.
-> "Hyper-Connected Attention"이라는 표기는 같은 모델에 쓰인 **mHC**(Hyper-Connections,
-> `05-norm-residual` 5.6)와의 혼동이었다.
+> ⚠️ 일부 해설 자료가 HCA를 "Hyper-Connected Attention"으로 표기하는데, 이는 같은 모델에
+> 쓰인 **mHC**(Manifold-Constrained Hyper-Connections, `05-norm-residual` 5.6)와의 혼동이다.
+> 둘은 완전히 별개의 기여다 → `CONTESTED.md` C1
 
 ### 왜 나왔나
 
@@ -1311,10 +1311,9 @@ CSA 층과 HCA 층은 읽는 양도, 접근 패턴도 다르다.
 관찰에서 출발한다. **인접한 레이어의 K, V가 서로 매우 비슷하다.**
 
 📎 인접 레이어 KV 표현의 코사인 유사도가 **0.72~0.87** 수준이라는 수치가 널리 인용된다.
-다만 출처를 확인해보니 **CLA 원 논문의 수치가 아니라** xKV·CommonKV 등 이후 여러
-cross-layer 연구에서 측정된 값들을 묶은 범위였다. 개별 논문의 측정 조건이 달라서
-**단일 출처로 인용하면 안 되는 숫자**다. 방향성(인접 레이어가 상당히 비슷하다)만
-받아들이는 게 맞다.
+다만 이 값은 CLA 원 논문의 것이 아니라 **xKV·CommonKV 등 여러 cross-layer 연구의
+측정값을 묶은 범위**다. 논문마다 측정 조건이 달라 **단일 출처로 인용하면 안 되는 숫자**이고,
+방향성(인접 레이어가 상당히 비슷하다)만 받아들이는 게 맞다 → `CONTESTED.md` C6
 
 비슷하다면 굳이 따로 만들어 따로 저장할 이유가 없다.
 
@@ -1453,9 +1452,9 @@ CLA(그룹 크기 2) 기준이다. 짝수 레이어에서 어떤 일이 벌어�
 - Yuan et al. (2025), *Native Sparse Attention*, arXiv:2502.11089 — 블록 32/stride 16, 선택 블록 64/top-16, 윈도우 512, 64k 속도 배수
 - Lu et al. (2025), *MoBA: Mixture of Block Attention for Long-Context LLMs*, arXiv:2502.13189
 - DeepSeek-AI (2025), *DeepSeek-V3.2* — DSA, lightning indexer, top-k 2048
-- DeepSeek-AI (2026), *DeepSeek-V4*, arXiv:2606.19348 — **CSA/HCA ✅ 원문 대조 완료**
-  (명칭, `m`=4 / `m'`=128, 학습된 겹침 압축, DSA indexer 재사용, 1M 효율 수치)
-- **DeepSeek-V4-Pro / V4-Flash `config.json`** (HuggingFace) — ✅ 레이어별 `compress_ratios`,
+- DeepSeek-AI (2026), *DeepSeek-V4*, arXiv:2606.19348 — CSA/HCA 명칭, `m`=4 / `m'`=128,
+  학습된 겹침 압축, DSA indexer 재사용, 1M 효율 수치
+- **DeepSeek-V4-Pro / V4-Flash `config.json`** (HuggingFace) — 레이어별 `compress_ratios`,
   `index_topk`=1024, `index_n_heads`=64, `index_head_dim`=128, `sliding_window`=128
 - Brandon et al. (2024), *Reducing Transformer Key-Value Cache Size with Cross-Layer Attention*, arXiv:2405.12981
 - Sun et al. (2024), *You Only Cache Once*, arXiv:2405.05254
@@ -1469,11 +1468,6 @@ CLA(그룹 크기 2) 기준이다. 짝수 레이어에서 어떤 일이 벌어�
 **T3 — 참고**
 - Sebastian Raschka, *LLM Architecture Gallery*, *A Visual Guide to Attention Variants* — 채택 모델 현황
 - 인접 레이어 KV 유사도 수치 (`1.10`) — 원 논문 미대조
-
-**해소된 항목** ✅
-- `1.9` HCA 명칭 = **Heavily Compressed Attention** (C1 해소)
-- `1.9` 압축률 `m`=4, `m'`=128, top-k, 레이어 배치 (C3 해소)
-- `1.9` **DSA → CSA는 논문이 명시적으로 인용** (C5 부분 해소)
 
 **미검증 항목**
 - `1.10` 인접 레이어 KV 코사인 유사도 0.72~0.87

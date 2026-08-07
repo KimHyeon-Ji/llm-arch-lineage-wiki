@@ -500,8 +500,6 @@ DeepSeek-V3의 파라미터는 671B다. BF16이면 1.3 TB이고, FP8이어도 67
 
 ### LatentMoE — 통신 압력을 정면으로 겨냥한 답
 
-✅ 원문·config 대조 완료. 추측이 아니라 확인된 구조다.
-
 발상은 `01-attention` 1.4의 MLA와 정확히 같다. **작은 공간에서 일하고 나온다.**
 
 ```
@@ -626,13 +624,6 @@ MoE는 이 위키에서 **압력 이전을 가장 선명하게 보여주는 사�
 **T3 — 참고**
 - Sebastian Raschka, 분기별 아키텍처 리뷰 — expert 수 추세, **Arcee Trinity의 coarse 선택**
 - NVLink 6와 MoE all-to-all의 관계에 대한 2차 자료
-
-**해소된 항목** ✅
-- **LatentMoE 구조** — Nemotron 3 논문(arXiv:2512.20856 / 2604.12374) 및 K3 config 대조.
-  `d → ℓ → d`, 가중치와 **all-to-all payload가 함께 `d/ℓ`배 감소**
-- Kimi K3 `E`=896 / `k`=16 / shared 2 / latent 3584 — `config.json` 확인
-- GLM-5, DeepSeek-V4 MoE 구성 — `config.json` 확인
-- NVLink 6 및 하드웨어 스펙 — `00-foundations` 0.8 참조 (C4 해소)
 
 **미검증 항목**
 - Kimi K3의 "Quantile Balancing" 세부 — 2차 자료 기반

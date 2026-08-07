@@ -388,7 +388,7 @@ mHC의 답은 **혼합 행렬이 아무 값이나 갖지 못하게 하는 것**�
 
 📌 [T1] 4배 넓은 residual stream을 쓰면서 **학습 시간 오버헤드는 약 6.7%** 로 보고된다.
 
-✅ **DeepSeek-V4 `config.json`에 그대로 들어 있다.**
+이 설정은 DeepSeek-V4 `config.json`에 그대로 들어 있다.
 
 | 필드 | 값 | 뜻 |
 |---|---|---|
@@ -488,11 +488,6 @@ RMSNorm과 mHC를 제외하면 여기 나온 것들은 속도와 거의 무관�
 **T3 — 참고**
 - Sebastian Raschka, 분기별 아키텍처 리뷰 — QK-Norm·zero-centered·depth-scaled gain 채택 현황,
   **Tiny Aya의 QK-Norm 제거** 사례
-
-**해소된 항목** ✅
-- DeepSeek-V4의 mHC 설정 — `config.json`에서 `hc_mult`=4, `hc_sinkhorn_iters`=20 확인
-- HCA(Heavily Compressed Attention)와 mHC(Hyper-Connections)는 **별개**임을 확정
-  (`CONTESTED.md` C1)
 
 **미검증 항목**
 - mHC의 추론 시 Sinkhorn 사영 사전 계산 가능 여부 — 구현 코드 대조 필요

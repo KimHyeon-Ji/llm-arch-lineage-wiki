@@ -428,12 +428,6 @@ Gemma 계열의 **Per-Layer Embeddings(PLE)** 는 레이어마다 별도의 임�
 - Sebastian Raschka, 분기별 아키텍처 리뷰 — GLM-5 층수 축소, **Tiny Aya의 parallel block**,
   **Nanbeige 4.1의 weight tying 미적용**
 
-**해소된 항목** ✅
-- GLM-5 78층, `glm_moe_dsa`, MLA+DSA 구성 — `config.json` 확인
-- Gemma 3n PLE 동작과 effective 파라미터 (E2B 5.1B/2.3B, E4B 8B/4.5B, 2~3 GB RAM)
-  — Google 공식 개발자 문서
-- MatFormer의 중첩 FFN 구조 — 공식 문서
-
 **미검증 항목**
 - GLM-4.7이 92층이었다는 것과 **축소의 공식 근거** — 2차 자료 기반
 - Gemma **4**(3n이 아닌)의 PLE 적용 여부 — 이 절의 수치는 **3n** 기준이다

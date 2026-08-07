@@ -42,8 +42,8 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 ### 시스템 관점에서 보고 싶다면
 
 ```
- 00-foundations 0.3~0.6  →  09-serving 9.7  →  99-landscape 99.6
-   자원과 병목의 기초         무엇이 먼저 터지나    시스템이 요구받는 것
+ 00-foundations 0.3~0.6  →  09-serving 9.7  →  99-landscape 99.6~99.7
+   자원과 병목의 기초         무엇이 먼저 터지나    랙 규모와 시스템이 요구받는 것
 ```
 
 ---
@@ -117,7 +117,7 @@ Transformer의 뼈대는 7년째 거의 그대로인데 세부는 계속 바뀌�
 | 📌 **[T2]** | vLLM·SGLang·커널 구현 등에서 확인한 것 |
 | 📎 **[T3, 미검증]** | 해설 자료 기반. **원문 대조 전** |
 | ⚠️ | 자료 간 충돌 또는 미확인 — [CONTESTED.md](CONTESTED.md) 참조 |
-| ✅ | `snippets/`에서 코드로 검증한 것 |
+| ✅ | 원문·`config.json`·코드로 직접 확인한 것 (코드 검증은 [snippets/](snippets/README.md)) |
 | 💡 | 직관·해석 (사실 주장이 아님) |
 
 **⚠️가 붙은 것은 그대로 인용하지 말 것.** 특히 DeepSeek-V4(CSA/HCA/mHC)와
@@ -158,7 +158,8 @@ Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
 | **Gemma 3n PLE / MatFormer** | ✅ Google 공식 문서 |
 | 하드웨어 스펙 (B200, Rubin) | ✅ 다수 자료 일치 (데이터시트 PDF 직접 대조는 아님) |
 | Tiny Aya, Nanbeige, Step 3.5 등 | ⚠️ 2차 자료 기반 |
-| `99-landscape` 99.6 결론 | 🟡 **①은 관측, ②③은 여전히 가설** |
+| **KV 계층화 · Rubin CPX · 에이전트 동향** | 🟡 벤더 발표와 업계 분석 기반 (T3 비중 높음) |
+| `99-landscape` 99.7 결론 | 🟡 **메모리 용량·통신은 관측, gather는 여전히 가설** |
 
 ### CONTESTED
 
@@ -173,11 +174,11 @@ Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
 
 자세한 내용은 [CONTESTED.md](CONTESTED.md).
 
-> **C1과 C6이 이 위키의 검증 규칙이 실제로 값을 한 사례다.**
-> C1은 해설 자료가 HCA를 "Hyper-Connected Attention"으로 적은 것 — 같은 모델의
-> **mHC**(Hyper-Connections)와 혼동한 것이었다.
-> C6은 널리 인용되는 "0.72~0.87"이 알고 보니 **여러 논문의 측정을 묶은 범위**였던 것.
-> 둘 다 2차 자료를 그대로 옮겼다면 틀린 채로 남았을 내용이다.
+> **C1과 C6은 해설 자료를 그대로 옮기면 안 되는 이유를 보여준다.**
+> C1 — 일부 자료가 HCA를 "Hyper-Connected Attention"으로 적는데, 같은 모델의
+> **mHC**(Hyper-Connections)와 혼동한 것이다.
+> C6 — 널리 인용되는 "0.72~0.87"은 단일 논문 수치가 아니라
+> **여러 연구의 측정을 묶은 범위**다.
 
 ### 남은 열린 질문
 
@@ -189,7 +190,7 @@ Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
 
 **⚠️ 아직 못 찾은 것**
 - **희소 attention의 gather 실효 대역폭** — 측정 자료를 못 찾았다.
-  `99-landscape` 99.6의 세 결론 중 **②만 여전히 가설로 남은 이유**다
+  `99-landscape` 99.7의 결론 중 **②만 여전히 가설로 남은 이유**다
 - V4-Pro 마지막 층 `compress_ratio`=0 의 의미
 - K3에서 decoupled RoPE와 NoPE가 어떻게 함께 쓰이는지
 - CLA/YOCO가 대형 모델에 오지 않는 이유
@@ -199,4 +200,5 @@ Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
 1. GLM-5 / GLM-5.2 **기술 리포트 본문** 대조 (config와 2차 자료만 확인된 상태)
 2. V3.2 논문 related work 확인 — C5 잔여분(NSA 연결)
 3. `snippets/` 확장 — NSA 세 갈래, DeltaNet chunked 등가성, decoupled RoPE
-4. 희소 attention 커널의 실효 대역폭 측정 자료 찾기 — 99.6 ②의 근거
+4. 희소 attention 커널의 실효 대역폭 측정 자료 찾기 — 99.7 ②의 근거
+5. **KV 계층화 실측** — NVMe 오프로딩의 실제 지연·처리량 (`99.7` ②의 새 축)

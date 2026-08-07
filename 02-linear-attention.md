@@ -404,7 +404,7 @@ chunked 병렬화에서 `Diag(α)`가 청크 안 여러 스텝에 걸쳐 누적�
 바로 앞 몇 토큰과의 지역 패턴을 값싸게 처리해서, 고정 상태가 그런 일에 낭비되지 않게 한다.
 `01`의 NSA가 지역 갈래를 따로 뺀 것과 같은 발상이다.
 
-**Attention Residuals(AttnRes)** 는 성격이 다르다. ✅ K3 논문에서 확인된 메커니즘이다.
+**Attention Residuals(AttnRes)** 는 성격이 다르다.
 
 ```
  일반 residual:  모든 이전 층의 출력이 균일하게 누적된다
@@ -417,7 +417,7 @@ chunked 병렬화에서 `Diag(α)`가 청크 안 여러 스텝에 걸쳐 누적�
 해법이 다르다. HC는 스트림을 여러 개로 늘렸고, AttnRes는 **선택적으로 가져온다.**
 
 문제는 메모리다. 모든 층의 출력을 들고 있어야 하므로 `O(Ld)`가 된다.
-✅ 그래서 **Block AttnRes**를 쓴다 — 93개 층을 **8개 블록(블록당 약 12층)** 으로 나눠
+그래서 **Block AttnRes**를 쓴다 — 93개 층을 **8개 블록(블록당 약 12층)** 으로 나눠
 블록 안에서만 참조한다. 메모리가 `O(Ld)` → `O(Nd)`로 줄어든다.
 
 > 💡 `config.json`의 `attn_res_block_size`=12가 정확히 이 값이다.
@@ -474,7 +474,7 @@ full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확
 ```
 > **그림 2.5** — **Kimi K3의 실제 구성** ✅ `config.json`
 
-✅ K3의 `config.json`은 층 번호를 그대로 나열한다. 추측할 필요가 없다.
+K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열한다.
 
 | 필드 | 값 |
 |---|---|
@@ -486,7 +486,8 @@ full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확
 
 #### 그런데 "full attention" 층이 그냥 full이 아니었다
 
-여기가 예상 밖이었다. K3의 full attention 층은 `config.json`에서 이렇게 나온다.
+그런데 K3의 "full attention" 층은 평범한 full attention이 아니다.
+`config.json`을 보면 이렇다.
 
 | 필드 | 값 | 뜻 |
 |---|---|---|
@@ -649,15 +650,6 @@ full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확
 **T3 — 참고**
 - Sebastian Raschka, *LLM Architecture Gallery* — Gated DeltaNet·Lightning Attention 채택 현황
 - Kimi K3 관련 2차 자료 — KDA 실전 설정
-
-**해소된 항목** ✅
-- Kimi K3 하이브리드 구성 — `config.json`에서 93층 / KDA 69 / MLA 24 (3:1) 확인
-- K3의 full 층이 **MLA + NoPE + output gate**임을 확인
-- **3:1 비율의 근거** — Kimi Linear 논문의 ablation (0:1, 1:1, 3:1, 7:1 비교, 3:1이 최적)
-- **마지막 93층이 MLA인 이유** — backbone 끝에 전역 attention을 보장하려 추가한 층
-- **Attention Residuals 메커니즘** — 학습된 pseudo-query + 층 출력 softmax,
-  Block AttnRes로 93층을 8블록(≈12층)으로 분할 → `attn_res_block_size`=12
-- K3 규모 — 2.8T 총 / **104B 활성**, 93층 (K2의 61층에서 52% 증가)
 
 **미검증 항목**
 - Lightning Attention(MiniMax·Ling)의 세부 — 이 파일에서는 언급만 하고 다루지 않음
