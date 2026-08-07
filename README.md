@@ -37,6 +37,7 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 | MTP, speculative decoding | [07-decoding](07-decoding.md) |
 | MXFP4 vs NVFP4 | [08-numerics](08-numerics.md) 8.3 |
 | PagedAttention, prefix caching | [09-serving](09-serving.md) |
+| **Titans, ATLAS, HOPE** (Google) | [10-test-time-memory](10-test-time-memory.md) |
 | **모델별 조합 비교** | [99-landscape](99-landscape.md) 99.1 |
 
 ### 시스템 관점에서 보고 싶다면
@@ -62,6 +63,7 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 | **[07-decoding](07-decoding.md)** | 직렬 지연 | 한 스텝에 토큰 하나여야 하나 |
 | **[08-numerics](08-numerics.md)** | 전부 | 값 하나에 몇 비트를 쓸 것인가 |
 | **[09-serving](09-serving.md)** ★ | 전부 | 실제로 돌릴 때 무엇이 먼저 터지나 |
+| **[10-test-time-memory](10-test-time-memory.md)** | 메모리 | ⚠️ **연구 단계** — 추론 중에 학습하는 메모리 (Titans·ATLAS·HOPE) |
 | **[99-landscape](99-landscape.md)** ★ | — | 누가 무엇을 골랐고 시스템에 무엇을 요구하나 |
 
 부속 문서

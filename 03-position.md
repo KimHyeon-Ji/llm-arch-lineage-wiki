@@ -382,14 +382,16 @@ NoPE 경로를 함께 쓰는 것으로 보이는데, **정확히 어떻게 결�
 
 ## 3.6 HoPE — 장기 감쇠를 버리다
 
-> ⚠️ **HoPE라는 이름의 논문이 최소 세 개다.** 서로 다른 연구이므로 혼동하면 안 된다.
+> ⚠️ **HoPE / HOPE라는 이름을 쓰는 연구가 최소 네 개다.** 서로 다른 연구다.
 >
-> | arXiv | 제목 | 분야 |
+> | 출처 | 제목 | 분야 |
 > |---|---|---|
-> | **2410.21216** | *HoPE: A Novel Positional Encoding Without Long-Term Decay…* | **← 이 절에서 다루는 것** |
-> | 2505.20444 | *HoPE: Hybrid of Position Embedding for Long Context VLM* | 비전-언어 모델 |
-> | 2509.05218 | *HoPE: Hyperbolic Rotary Positional Encoding* | 쌍곡 공간 |
+> | **arXiv:2410.21216** | *HoPE: A Novel Positional Encoding Without Long-Term Decay…* | **← 이 절에서 다루는 것** |
+> | arXiv:2505.20444 | *HoPE: Hybrid of Position Embedding for Long Context VLM* | 비전-언어 모델 |
+> | arXiv:2509.05218 | *HoPE: Hyperbolic Rotary Positional Encoding* | 쌍곡 공간 |
+> | arXiv:2512.24695 | **HOPE** (*Nested Learning*) | **위치 인코딩과 무관한 아키텍처** → `10-test-time-memory` |
 >
+> 마지막 것이 특히 헷갈린다. **위치 인코딩이 아니라 Titans 계열의 자기수정 아키텍처**다.
 > → `CONTESTED.md` C2
 
 ### 왜 나왔나

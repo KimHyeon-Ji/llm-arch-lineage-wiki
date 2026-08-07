@@ -59,12 +59,14 @@ residual stream 쪽의 **mHC(Manifold-Constrained Hyper-Connections)** 가 **둘
 | 2410.21216 | *HoPE: A Novel Positional Encoding Without Long-Term Decay…* | LLM 위치 인코딩 |
 | 2505.20444 | *HoPE: Hybrid of Position Embedding for Long Context VLM* | 비전-언어 모델 |
 | 2509.05218 | *HoPE: Hyperbolic Rotary Positional Encoding* | 쌍곡 공간 RoPE |
+| **2512.24695** | **HOPE** (*Nested Learning: The Illusion of Deep Learning Architectures*) | **위치 인코딩과 무관** — Titans 계열 자기수정 아키텍처 |
 
-서로 다른 연구다. 이름만 같다.
+서로 다른 연구다. 이름만 같다. **네 번째가 특히 위험하다** —
+앞의 셋은 모두 위치 인코딩이라 문맥으로 구분되지만, Google의 HOPE는 완전히 다른 주제다.
 
-- **처리 방침**: `03-position.md`에서 다루는 HoPE는 **2410.21216**으로 확정.
-  해당 절 서두에 3종을 병기해 혼동을 막는다.
-- **상태**: 방침은 정해졌으나 각 논문 원문 대조는 미완
+- **처리 방침**: `03-position.md`의 HoPE는 **2410.21216**으로 확정하고 4종을 병기한다.
+  Google의 HOPE는 `10-test-time-memory.md`에서 별도로 다룬다.
+- **상태**: 2410.21216의 메커니즘과 2512.24695의 개요는 확인. 나머지 둘은 제목 수준
 
 ---
 
