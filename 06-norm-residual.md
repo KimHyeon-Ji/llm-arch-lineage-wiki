@@ -1,7 +1,8 @@
-# 05. Norm & Residual — 깊은 모델을 버티게 하는 것
+# 06. Norm & Residual — 깊은 모델을 버티게 하는 것
 
-지금까지의 파일들은 전부 **비용**에 관한 것이었다. 메모리를 줄이고, 연산을 줄이고,
-통신을 관리하는 이야기였다.
+지금까지는 주로 메모리를 줄이고, 연산을 줄이고, 통신을 관리하는 **비용 축**을 따라왔다.
+Position과 test-time memory에서는 품질·기억 방식도 함께 봤지만, 시스템 비용이 여전히
+표의 중심이었다.
 
 이 파일은 다르다. `00-foundations` `0.4`의 분류로 보면 **안정성 압력**이다.
 여기 나오는 기법들은 빨라지려고 나온 게 아니다. **애초에 학습이 되게 하려고** 나왔다.
@@ -12,8 +13,23 @@
 > 중간에 값이 폭주해서 학습이 터진다. **깊게 쌓는 것 자체가 어렵다.**
 
 residual connection과 normalization은 그 문제에 대한 답이고, 이 파일은
-그 답이 20년 가까이 다듬어져 온 과정이다. 마지막에는 **residual 자체를 다시 설계한**
+그 답이 10여 년 동안 다듬어진 과정이다. 마지막에는 **residual 자체를 다시 설계한**
 DeepSeek-V4의 mHC까지 간다.
+
+## 이 장의 발전 계보와 시스템 영향
+
+| 단계 | 대표 기법 | 해결하려는 문제 | 핵심 아이디어 | 시스템 영향 |
+|---|---|---|---|---|
+| 원형 | **Post-LN** | residual 출력의 scale 제어 | sublayer 뒤 residual 합을 정규화 | 추론 비용은 작지만 깊어질수록 gradient 전달이 어려움 |
+| 깊은 학습 | **Pre-LN** | 깊은 모델의 gradient 소실 | sublayer 입력을 먼저 정규화 | 깊은 학습 가능, residual activation 성장·표현 둔화 가능 |
+| norm 단순화 | **RMSNorm** | LayerNorm의 평균 계산 | RMS만으로 scale 조절 | reduction·memory pass 감소, kernel fusion 용이 |
+| attention 안정화 | **QK-Norm · zero-centered gain** | logit·activation 폭주 | Q/K 또는 gain을 직접 제어 | overflow·outlier 감소, FP8/FP4 적용 가능성 향상 |
+| residual 확장 | **Hyper-Connections** | 단일 residual stream의 표현력 한계 | 여러 stream을 학습된 행렬로 혼합 | 표현력 증가, activation memory·mixing traffic 증가 |
+| 제약된 확장 | **mHC** | 확장 residual의 항등 경로 붕괴 | 혼합 행렬을 이중 확률 행렬로 제약 | 깊은 안정성 회복, Sinkhorn·확장 activation 비용 |
+
+> **이 장의 시스템 인사이트:** norm 자체의 연산량보다 **어느 정밀도로 얼마나 깊게
+> 학습·서빙할 수 있게 하느냐**가 더 큰 효과다. 안정성 기법은 직접 비용을 줄이기보다
+> depth, low precision, residual width라는 다른 설계 공간을 연다.
 
 ---
 
@@ -48,22 +64,22 @@ DeepSeek-V4의 mHC까지 간다.
         항등 사상을 되찾다
         (DeepSeek-V4)
 ```
-> **그림 5.0** — 축5의 계보
+> **그림 6.0** — 축6의 계보
 
 **목차**
 
 | | 절 | 한 줄 |
 |---|---|---|
-| [5.1](#51-post-ln--residual-위에-norm이-있으면) | **Post-LN** | residual 위에 norm이 있으면 |
-| [5.2](#52-pre-ln--위치를-바꾸다) | **Pre-LN** | 위치를 바꾸다 |
-| [5.3](#53-rmsnorm--평균을-버리다) | **RMSNorm** | 평균을 버리다 |
-| [5.4](#54-qk-norm과-변형들--폭주를-막는-여러-방법) | **QK-Norm 외** | 폭주를 막는 여러 방법 |
-| [5.5](#55-hyper-connections--residual을-넓히다) | **Hyper-Connections** | residual을 넓히다 |
-| [5.6](#56-mhc--항등-사상을-되찾다) | **mHC** | 항등 사상을 되찾다 |
+| [6.1](#61-post-ln--residual-위에-norm이-있으면) | **Post-LN** | residual 위에 norm이 있으면 |
+| [6.2](#62-pre-ln--위치를-바꾸다) | **Pre-LN** | 위치를 바꾸다 |
+| [6.3](#63-rmsnorm--평균을-버리다) | **RMSNorm** | 평균을 버리다 |
+| [6.4](#64-qk-norm과-변형들--폭주를-막는-여러-방법) | **QK-Norm 외** | 폭주를 막는 여러 방법 |
+| [6.5](#65-hyper-connections--residual을-넓히다) | **Hyper-Connections** | residual을 넓히다 |
+| [6.6](#66-mhc--항등-사상을-되찾다) | **mHC** | 항등 사상을 되찾다 |
 
 ---
 
-## 5.1 Post-LN — residual 위에 norm이 있으면
+## 6.1 Post-LN — residual 위에 norm이 있으면
 
 ### 구조
 
@@ -100,7 +116,7 @@ LayerNorm을 통과해야 하고, 깊어질수록 왜곡이 누적된다.
 
 ---
 
-## 5.2 Pre-LN — 위치를 바꾸다
+## 6.2 Pre-LN — 위치를 바꾸다
 
 ### 아이디어
 
@@ -117,7 +133,7 @@ LayerNorm을 통과해야 하고, 깊어질수록 왜곡이 누적된다.
                           ▲
                   residual 경로에 아무것도 없다
 ```
-> **그림 5.2** — 화살표 하나 옮긴 것이 전부인데 학습 안정성이 크게 달라진다.
+> **그림 6.2** — 화살표 하나 옮긴 것이 전부인데 학습 안정성이 크게 달라진다.
 
 이제 gradient는 residual을 타고 **아무 방해 없이** 첫 층까지 흐른다.
 warmup 없이도 학습되고, 100층이 넘어도 터지지 않는다.
@@ -138,7 +154,7 @@ Pre-LN에서는 residual stream이 **층을 지날수록 계속 커진다.** 매
 > | Post-LN | ❌ 막힘 | ✅ 좋음 |
 > | Pre-LN | ✅ 뚫림 | ❌ 무뎌짐 |
 >
-> 한쪽을 얻으면 한쪽을 잃는다. `5.5`의 Hyper-Connections가 이 시소를 정면으로 겨냥한다.
+> 한쪽을 얻으면 한쪽을 잃는다. `6.5`의 Hyper-Connections가 이 시소를 정면으로 겨냥한다.
 
 ### 정리
 
@@ -147,12 +163,12 @@ Pre-LN에서는 residual stream이 **층을 지날수록 계속 커진다.** 매
 | **핵심 아이디어** | 정규화를 sublayer 앞으로 옮겨 residual 경로를 비운다 |
 | **장점** | · **gradient가 아래층까지 곧장 흐른다**<br>· warmup 없이도 학습되고 깊이를 크게 늘릴 수 있다<br>· 하이퍼파라미터에 덜 민감 |
 | **한계** | · **residual stream이 층마다 커져 깊은 층의 기여가 묻힌다**<br>· 완전히 안정화된 Post-LN보다 최종 성능이 떨어진다는 보고 |
-| **대표 모델** | GPT-2 이후 사실상 전부 — Llama, Qwen, Gemma, DeepSeek |
+| **대표 모델** | Llama · Qwen · Gemma · DeepSeek 등 현대 decoder-only LLM 다수 |
 | **다음으로** | 위치는 정해졌다. 이제 정규화 자체를 싸게 만든다 → **RMSNorm** |
 
 ---
 
-## 5.3 RMSNorm — 평균을 버리다
+## 6.3 RMSNorm — 평균을 버리다
 
 ### 아이디어
 
@@ -200,14 +216,14 @@ reduction이 160회에서 80회로 줄어든다. 개별로는 작지만 memory-b
 | | |
 |---|---|
 | **핵심 아이디어** | LayerNorm에서 평균 중심화와 bias를 빼고 크기 정규화만 남긴다 |
-| **장점** | · **reduction이 2회에서 1회로** — 동기화 비용 감소<br>· 파라미터와 연산이 줄어든다<br>· 성능 손실이 사실상 없다 |
+| **장점** | · **reduction이 2회에서 1회로** — 동기화 비용 감소<br>· 파라미터와 연산이 줄어듦<br>· 여러 LLM 설정에서 LayerNorm과 경쟁력 있는 품질을 보고 |
 | **한계** | · 이득이 크지 않아 단독으로는 지엽적인 개선<br>· 평균 중심화가 필요한 상황이 있는지는 완전히 정리되지 않음 |
-| **대표 모델** | **Llama 전 라인, Qwen, Gemma, DeepSeek, Mistral** — 2023년 이후 사실상 전부 |
+| **대표 모델** | **Llama, Qwen, Gemma, DeepSeek, Mistral** |
 | **다음으로** | 정규화를 더 놓아야 할 곳이 있었다 → **QK-Norm** |
 
 ---
 
-## 5.4 QK-Norm과 변형들 — 폭주를 막는 여러 방법
+## 6.4 QK-Norm과 변형들 — 폭주를 막는 여러 방법
 
 ### QK-Norm
 
@@ -232,7 +248,7 @@ logit이 커지면 softmax가 포화되어 거의 one-hot이 되고, gradient가
 Qwen3-Next에서 gated attention(`01-attention` `1.5`)과 함께 쓰인다.
 
 **depth-scaled gain** — gain을 `1/√L`로 초기화한다 (`L`은 총 층수).
-`5.2`에서 본 "residual stream이 층마다 커지는" 문제를 초기화 단계에서 억제한다.
+`6.2`에서 본 "residual stream이 층마다 커지는" 문제를 초기화 단계에서 억제한다.
 학습이 진행되며 필요한 만큼 커지도록 둔다. Arcee Trinity Large가 쓴다.
 
 **norm 배치 변형** — sublayer 앞뒤 모두에 norm을 두는 sandwich norm,
@@ -240,14 +256,6 @@ Qwen3-Next에서 gated attention(`01-attention` `1.5`)과 함께 쓰인다.
 
 > 💡 `01-attention` `1.3`에서 말한 **"두 극단 사이에 눈금 긋기"** 가 여기서도 반복된다.
 > Post-LN도 Pre-LN도 아닌 중간 지점을 찾는 것이다.
-
-### 반례 하나 — QK-Norm을 뺀 모델
-
-⚠️ Tiny Aya는 **QK-Norm을 의도적으로 제거**했다. 긴 컨텍스트 성능과 상호작용한다는
-이유였다고 보고된다.
-
-이런 반례를 기록해두는 게 중요하다. QK-Norm이 무조건 좋은 게 아니라,
-**어떤 조건에서 무엇과 충돌하는지**가 아직 완전히 정리되지 않았다는 뜻이기 때문이다.
 
 ### 코드와 텐서
 
@@ -266,21 +274,21 @@ Qwen3-Next에서 gated attention(`01-attention` `1.5`)과 함께 쓰인다.
 |---|---|
 | **핵심 아이디어** | `q`와 `k`를 정규화한 뒤 내적해 attention logit의 폭주를 막는다 |
 | **장점** | · **학습 안정성이 크게 개선** — 발산을 직접적으로 방지<br>· 비용이 거의 없다 (작은 reduction 두 번)<br>· 큰 모델·긴 학습에서 특히 효과적 |
-| **한계** | · ⚠️ **긴 컨텍스트 성능과 상호작용한다는 보고**가 있어 무조건적이지 않다<br>· 정규화 위치·형태(zero-centered 등)에 따라 결과가 달라짐<br>· 근본 원인(왜 logit이 커지는가)을 해결하는 건 아니다 |
-| **대표 모델** | OLMo 2 · Gemma 3 · Qwen3 시리즈 · GLM-4.5 · MiniMax M2 · Arcee Trinity<br>제외: **Tiny Aya**(의도적 제거) |
+| **한계** | · 정규화 위치·형태에 따라 결과가 달라짐<br>· logit 증가의 원인을 없애기보다 크기를 제어하는 방법 |
+| **대표 모델** | OLMo 2 · Gemma 3 · Qwen3 계열 |
 | **다음으로** | 여기까지는 전부 norm을 어디에 어떻게 놓을지의 문제였다. 이제 **residual 자체를 바꾼다** → **Hyper-Connections** |
 
 ---
 
-`5.2`에서 만든 시소를 다시 보자. Post-LN은 gradient가 막히고, Pre-LN은 표현이 무뎌진다.
-`5.4`의 변형들은 그 사이 어딘가를 찾으려는 시도였지만, 결국 **같은 축 위에서
+`6.2`에서 만든 시소를 다시 보자. Post-LN은 gradient가 막히고, Pre-LN은 표현이 무뎌진다.
+`6.4`의 변형들은 그 사이 어딘가를 찾으려는 시도였지만, 결국 **같은 축 위에서
 위치를 조정하는 것**이었다.
 
 2024년의 질문은 달랐다. **residual 경로가 하나뿐이어야 할 이유가 있나?**
 
 ---
 
-## 5.5 Hyper-Connections — residual을 넓히다
+## 6.5 Hyper-Connections — residual을 넓히다
 
 ### 아이디어
 
@@ -300,7 +308,7 @@ residual stream을 **여러 개로 늘린다.** 확장률 `n`을 4로 두면 스
                                    │
                           x₁' x₂' x₃' x₄'
 ```
-> **그림 5.5** — 각 레이어가 어느 스트림에서 읽고 어느 스트림에 쓸지를 학습으로 결정한다.
+> **그림 6.5** — 각 레이어가 어느 스트림에서 읽고 어느 스트림에 쓸지를 학습으로 결정한다.
 
 두 종류의 연결이 있다.
 
@@ -340,7 +348,7 @@ residual stream을 **여러 개로 늘린다.** 확장률 `n`을 4로 두면 스
 
 ---
 
-## 5.6 mHC — 항등 사상을 되찾다
+## 6.6 mHC — 항등 사상을 되찾다
 
 ### 무엇이 문제였나
 
@@ -438,7 +446,7 @@ DeepSeek-V4에서 CSA/HCA(`01-attention` `1.9`)와 함께 발표되어 묶여 �
 | **장점** | · **HC의 표현력을 유지하면서 학습 안정성 회복**<br>· 항등 행렬이 제약 집합 안에 있어 "아무것도 안 하기"가 가능<br>· 📌 4배 residual stream에 학습 시간 오버헤드 약 6.7%<br>· KV cache와 무관해 attention 쪽 기법과 자유롭게 조합 |
 | **한계** | · **활성 메모리가 약 4배** — 배치 크기 상한에 영향<br>· Sinkhorn 반복이라는 생소한 연산이 추가됨<br>· ⚠️ 추론 시 사영을 미리 계산 가능한지 원문 미확인<br>· 채택 사례가 아직 DeepSeek-V4 계열뿐 |
 | **대표 모델** | **DeepSeek-V4-Pro / V4-Flash** |
-| **다음으로** | residual의 구조를 봤으니, 이제 모델 전체의 **형상**을 본다 → **06-shape** |
+| **다음으로** | residual의 구조를 봤으니, 이제 모델 전체의 **형상**을 본다 → **07-shape** |
 
 ---
 
@@ -456,9 +464,9 @@ DeepSeek-V4에서 CSA/HCA(`01-attention` `1.9`)와 함께 발표되어 묶여 �
 
 읽어둘 흐름은 이렇다.
 
-1. **`5.1`→`5.2`는 화살표 하나 옮긴 이야기**인데, 그것으로 깊은 모델의 학습 가능성이 갈렸다.
-2. **`5.3`→`5.4`는 그 위에서의 미세 조정**이다. 개별 효과는 작지만 큰 모델에서는 결정적이다.
-3. **`5.5`→`5.6`은 residual 자체를 재설계한다.** 7년 동안 건드리지 않던 부분이라
+1. **`6.1`→`6.2`는 화살표 하나 옮긴 이야기**인데, 그것으로 깊은 모델의 학습 가능성이 갈렸다.
+2. **`6.3`→`6.4`는 그 위에서의 미세 조정**이다. 개별 효과는 작지만 큰 모델에서는 결정적이다.
+3. **`6.5`→`6.6`은 residual 자체를 재설계한다.** 7년 동안 건드리지 않던 부분이라
    최근 아키텍처 변화 중 가장 근본적인 축에 속한다.
 
 그리고 이 파일 전체가 **비용이 아닌 압력도 아키텍처를 바꾼다**는 사실을 보여준다.
@@ -478,17 +486,14 @@ RMSNorm과 mHC를 제외하면 여기 나온 것들은 속도와 거의 무관�
 - Zhu et al. (2024), *Hyper-Connections*, arXiv:2409.19606 — 확장률, depth/width connection
 - DeepSeek-AI (2025), *mHC: Manifold-Constrained Hyper-Connections*, arXiv:2512.24880
   — Birkhoff polytope 사영, Sinkhorn-Knopp 20회, 확장률 4, 학습 시간 +6.7%
-- DeepSeek-AI (2026), *DeepSeek-V4*, arXiv:2606.19348 — mHC 실전 적용 ⚠️ 원문 미대조
+- DeepSeek-AI (2026), *DeepSeek-V4*, arXiv:2606.19348 — mHC 적용
 
 **T2 — 구현**
 - HuggingFace `transformers` RMSNorm 구현
 - vLLM / TensorRT-LLM의 norm + GEMV 커널 융합
 - mHC 공개 구현 (커뮤니티) — 참고용
 
-**T3 — 참고**
-- Sebastian Raschka, 분기별 아키텍처 리뷰 — QK-Norm·zero-centered·depth-scaled gain 채택 현황,
-  **Tiny Aya의 QK-Norm 제거** 사례
-
-**미검증 항목**
-- mHC의 추론 시 Sinkhorn 사영 사전 계산 가능 여부 — 구현 코드 대조 필요
-- Tiny Aya의 QK-Norm 제거 근거 — 2차 자료 기반
+**범위와 주의**
+- 정규화 기법의 안정성 효과는 깊이, 초기화, 옵티마이저와 정밀도에 함께 의존한다.
+- mHC의 Sinkhorn 연산은 입력 의존 mixing을 만들므로 일반적으로 상수로 미리 계산할 수
+  없다. 실제 오버헤드는 fused kernel과 구현 방식에 좌우된다.

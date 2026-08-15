@@ -4,7 +4,9 @@ LLM 아키텍처를 **아이디어의 계보**로 정리한 자료다.
 각 모듈이 왜 나왔고, 어떻게 생겼고, **토큰 하나가 지나갈 때 어떤 연산이 일어나며**,
 그것이 시스템에 무엇을 요구하는지를 함께 다룬다.
 
-MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
+MHA에서 시작해 sparse·linear attention을 거쳐, 추론 중 메모리를 갱신하는
+Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 이해하는 데 필요한
+구조와 시스템 영향에 초점을 둔다.
 
 ---
 
@@ -13,8 +15,8 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 ### 처음이라면 — 이 순서
 
 ```
- 00-foundations  →  01-attention  →  02-linear-attention  →  09-serving  →  99-landscape
-   기준점 세우기     KV 압축 본류      고정 상태라는 대안       실전 제약        전체 종합
+ 00-foundations  →  01-attention  →  02-linear-attention  →  03-test-time-memory  →  10-serving  →  99-landscape
+   기준점 세우기     KV를 덜 읽기       고정 상태로 바꾸기          읽으면서 쓰기          실전 제약        전체 종합
 ```
 
 `00`은 반드시 먼저 읽어야 한다. 여기서 정한 기호와 직관을 나머지 전부가 쓴다.
@@ -31,21 +33,48 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 | NSA, MoBA, DSA | [01-attention](01-attention.md) 1.7~1.8 |
 | **KDA** (Kimi Linear/K3) | [02-linear-attention](02-linear-attention.md) 2.4 |
 | Gated DeltaNet (Qwen3-Next) | [02-linear-attention](02-linear-attention.md) 2.4 |
-| RoPE, YaRN, **HoPE** | [03-position](03-position.md) |
-| MoE, expert granularity | [04-moe](04-moe.md) |
-| **mHC** (DeepSeek-V4) | [05-norm-residual](05-norm-residual.md) 5.6 |
-| MTP, speculative decoding | [07-decoding](07-decoding.md) |
-| MXFP4 vs NVFP4 | [08-numerics](08-numerics.md) 8.3 |
-| PagedAttention, prefix caching | [09-serving](09-serving.md) |
-| **Titans, ATLAS, HOPE** (Google) | [10-test-time-memory](10-test-time-memory.md) |
+| RoPE, YaRN, **HoPE** | [04-position](04-position.md) |
+| MoE, expert granularity | [05-moe](05-moe.md) |
+| **mHC** (DeepSeek-V4) | [06-norm-residual](06-norm-residual.md) 6.6 |
+| MTP, speculative decoding | [08-decoding](08-decoding.md) |
+| MXFP4 vs NVFP4 | [09-numerics](09-numerics.md) 9.3 |
+| PagedAttention, prefix caching | [10-serving](10-serving.md) |
+| **Titans, ATLAS, HOPE** (Google) | [03-test-time-memory](03-test-time-memory.md) |
 | **모델별 조합 비교** | [99-landscape](99-landscape.md) 99.1 |
 
 ### 시스템 관점에서 보고 싶다면
 
 ```
- 00-foundations 0.3~0.6  →  09-serving 9.7  →  99-landscape 99.6~99.7
-   자원과 병목의 기초         무엇이 먼저 터지나    랙 규모와 시스템이 요구받는 것
+ 00-foundations 0.3~0.8  →  03-test-time-memory 3.7  →  10-serving 10.7  →  99-landscape 99.6~99.7
+   자원·HW 병목의 변화          read+write 추론          무엇이 먼저 터지나    전체 시스템 종합
 ```
+
+### 계보와 시스템 인사이트를 표로 먼저 보고 싶다면
+
+각 컴포넌트 장의 도입부에 같은 형식의 표가 있다.
+
+| 컴포넌트 | 바로가기 | 이 장에서 보이는 병목 이동 |
+|---|---|---|
+| **Attention** | [01 시스템 영향표](01-attention.md#이-장의-발전-계보와-시스템-영향) | KV capacity → read bandwidth → sparse gather |
+| **Linear Attention** | [02 시스템 영향표](02-linear-attention.md#이-장의-발전-계보와-시스템-영향) | KV traffic → state-update kernel·memory accuracy |
+| **Test-Time Memory** | [03 RNN·update 계보](03-test-time-memory.md#31-두-계보가-만나는-지점--rnn에서-test-time-memory까지) | fixed state → gradient update → multi-rate update |
+| **Position** | [04 시스템 영향표](04-position.md#이-장의-발전-계보와-시스템-영향) | 위치 표현 → context extrapolation → attention/KV layout 제약 |
+| **MoE** | [05 시스템 영향표](05-moe.md#이-장의-발전-계보와-시스템-영향) | dense compute → weight capacity → all-to-all communication |
+| **Norm & Residual** | [06 시스템 영향표](06-norm-residual.md#이-장의-발전-계보와-시스템-영향) | gradient stability → low precision·depth → activation traffic |
+| **Shape** | [07 시스템 영향표](07-shape.md#이-장의-발전-계보와-시스템-영향) | parameter budget → serial depth·TP communication |
+| **Decoding** | [08 시스템 영향표](08-decoding.md#이-장의-발전-계보와-시스템-영향) | serial weight read → speculative verification·acceptance rate |
+| **Numerics** | [09 시스템 영향표](09-numerics.md#이-장의-발전-계보와-시스템-영향) | bit reduction → scale/outlier·kernel support |
+| **Serving** | [10 시스템 영향표](10-serving.md#이-장의-발전-계보와-시스템-영향) | HBM capacity → fragmentation·scheduling → network transfer |
+
+컴포넌트를 가로지르는 두 개의 종합표도 있다.
+
+| 종합 관점 | 바로가기 | 읽을 인사이트 |
+|---|---|---|
+| **시대별 병목과 HW 변화** | [00-foundations 0.8](00-foundations.md#08-하드웨어-참고표) | memory bandwidth → communication → memory update·hierarchy로 병목의 단위가 칩→Pod→시간 계층으로 커지는 흐름 |
+| **Efficient Transformer 전체 계보** | [99-landscape 99.0](99-landscape.md#990-efficient-transformer-발전-계보--시스템-영향) | throughput·memory traffic·KV cache·정확성 사이의 거래가 어떻게 이동했는지 |
+
+이 표들을 순서대로 읽으면 모델 기법의 이름보다 먼저 **“무엇이 병목이었고, 무엇을
+다른 비용과 교환했으며, 그 결과 시스템이 무엇을 새로 부담하게 되었는가”**가 보인다.
 
 ---
 
@@ -54,32 +83,30 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA, Kimi K3의 KDA까지 이어진다.
 | 파일 | 다루는 압력 | 핵심 질문 |
 |---|---|---|
 | **[00-foundations](00-foundations.md)** | — | 기준점. 토큰 하나가 어떻게 흐르고 무엇이 비싼가 |
-| **[01-attention](01-attention.md)** ★ | 메모리 | KV를 어떻게 줄일 것인가 (10개 모듈) |
+| **[01-attention](01-attention.md)** ★ | 메모리 | KV를 어떻게 줄이고, 필요한 토큰만 읽을 것인가 |
 | **[02-linear-attention](02-linear-attention.md)** | 메모리 | KV를 아예 안 만들면? |
-| **[03-position](03-position.md)** | 길이 일반화 | 순서를 어떻게 알려주고, 학습보다 긴 입력을 어떻게 다루나 |
-| **[04-moe](04-moe.md)** | 연산량 · 통신 | 파라미터는 늘리고 연산은 그대로 |
-| **[05-norm-residual](05-norm-residual.md)** | 안정성 | 깊은 모델을 어떻게 버티게 하나 |
-| **[06-shape](06-shape.md)** | 직렬 지연 | 몇 층을 얼마나 넓게 |
-| **[07-decoding](07-decoding.md)** | 직렬 지연 | 한 스텝에 토큰 하나여야 하나 |
-| **[08-numerics](08-numerics.md)** | 전부 | 값 하나에 몇 비트를 쓸 것인가 |
-| **[09-serving](09-serving.md)** ★ | 전부 | 실제로 돌릴 때 무엇이 먼저 터지나 |
-| **[10-test-time-memory](10-test-time-memory.md)** | 메모리 | ⚠️ **연구 단계** — 추론 중에 학습하는 메모리 (Titans·ATLAS·HOPE) |
+| **[03-test-time-memory](03-test-time-memory.md)** | 메모리 갱신 | ⚠️ **연구 단계** — 추론 중에 학습하는 메모리 (Titans·ATLAS·HOPE) |
+| **[04-position](04-position.md)** | 길이 일반화 | 순서를 어떻게 알려주고, 학습보다 긴 입력을 어떻게 다루나 |
+| **[05-moe](05-moe.md)** | 연산량 · 통신 | 파라미터는 늘리고 연산은 그대로 |
+| **[06-norm-residual](06-norm-residual.md)** | 안정성 | 깊은 모델을 어떻게 버티게 하나 |
+| **[07-shape](07-shape.md)** | 직렬 지연 | 몇 층을 얼마나 넓게 |
+| **[08-decoding](08-decoding.md)** | 직렬 지연 | 한 스텝에 토큰 하나여야 하나 |
+| **[09-numerics](09-numerics.md)** | 전부 | 값 하나에 몇 비트를 쓸 것인가 |
+| **[10-serving](10-serving.md)** ★ | 전부 | 실제로 돌릴 때 무엇이 먼저 터지나 |
 | **[99-landscape](99-landscape.md)** ★ | — | 누가 무엇을 골랐고 시스템에 무엇을 요구하나 |
 
-부속 문서
+부속 자료
 
 | | |
 |---|---|
-| [PLAN.md](PLAN.md) | 이 위키의 구성 원칙과 작성 규칙 |
-| [CONTESTED.md](CONTESTED.md) | 자료마다 다르게 말하는 것들 (C1~C5) |
 | [snippets/](snippets/README.md) | 실행 가능한 최소 구현과 등가성 검증 |
 
 ```
 python snippets/test_equivalence.py
 ```
 
-의존성 없이(표준 라이브러리만) 바로 돌아간다. "GQA는 MHA의 일반화"
-"MLA의 흡수는 공짜" 같은 문장을 **코드로 확인**할 수 있다. 현재 13개 검증 통과.
+표준 라이브러리만 사용한다. GQA의 head 공유와 MLA의 projection 흡수처럼
+수식만으로 놓치기 쉬운 등가성을 작은 텐서로 확인할 수 있다.
 
 ---
 
@@ -87,17 +114,18 @@ python snippets/test_equivalence.py
 
 `00-foundations` `0.4`에서 세우는 관점이다.
 
-Transformer의 뼈대는 7년째 거의 그대로인데 세부는 계속 바뀌어 왔다.
-그 변화를 밀어낸 압력이 여섯 가지다.
+초기 Transformer의 큰 틀은 유지되지만, 내부 모듈과 실행 방식은 계속 바뀌어 왔다.
+그 변화를 밀어낸 압력이 일곱 가지다.
 
 | 압력 | 문제 | 대응 |
 |---|---|---|
-| **메모리** | 컨텍스트가 길어지면 KV cache를 감당할 수 없다 | 01, 02, 08 |
-| **연산량** | 모델을 키우면 토큰당 연산이 그대로 늘어난다 | 04 |
-| **직렬 지연** | 레이어는 순서대로 통과할 수밖에 없다 | 06, 07 |
-| **통신** | 모델이 여러 GPU에 흩어져 있다 | 04, 09 |
-| **안정성** | 깊고 큰 모델은 학습이 잘 터진다 | 05 |
-| **길이 일반화** | 학습 때보다 긴 입력을 다뤄야 한다 | 03 |
+| **메모리** | 컨텍스트가 길어지면 KV cache를 감당할 수 없다 | 01, 02, 09 |
+| **메모리 갱신** | 고정 상태는 무엇을 얼마나 오래 기억할지 스스로 바꾸기 어렵다 | 03 |
+| **연산량** | 모델을 키우면 토큰당 연산이 그대로 늘어난다 | 05 |
+| **직렬 지연** | 레이어는 순서대로 통과할 수밖에 없다 | 07, 08 |
+| **통신** | 모델이 여러 GPU에 흩어져 있다 | 05, 10 |
+| **안정성** | 깊고 큰 모델은 학습이 잘 터진다 | 06 |
+| **길이 일반화** | 학습 때보다 긴 입력을 다뤄야 한다 | 04 |
 
 그리고 매번 확인하게 되는 것 하나.
 
@@ -111,19 +139,19 @@ Transformer의 뼈대는 7년째 거의 그대로인데 세부는 계속 바뀌�
 
 ## 문서를 읽는 규칙
 
-### 출처 표시
+### 출처와 해석 표시
 
 | 표시 | 뜻 |
 |---|---|
-| 📌 **[T1]** | 논문·공식 리포트·공식 구현에서 확인한 것 |
-| 📌 **[T2]** | vLLM·SGLang·커널 구현 등에서 확인한 것 |
-| 📎 **[T3, 미검증]** | 해설 자료 기반. **원문 대조 전** |
-| ⚠️ | 자료 간 충돌 또는 미확인 — [CONTESTED.md](CONTESTED.md) 참조 |
-| ✅ | 원문·`config.json`·코드로 직접 확인한 것 (코드 검증은 [snippets/](snippets/README.md)) |
-| 💡 | 직관·해석 (사실 주장이 아님) |
+| 📌 **[T1]** | 논문·공식 기술 리포트가 직접 뒷받침하는 내용 |
+| 📌 **[T2]** | 공식 구현·프레임워크·하드웨어 문서에서 확인한 내용 |
+| ✅ | 공식 설정·코드 또는 재현 가능한 예제로 확인한 내용 |
+| ⚠️ | 구현·하드웨어·워크로드에 따라 달라지는 조건부 내용 |
+| 💡 | 구조에서 도출한 직관이나 시스템 관점의 해석 |
 
-**⚠️가 붙은 것은 그대로 인용하지 말 것.** 특히 DeepSeek-V4(CSA/HCA/mHC)와
-Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
+각 파일 끝에는 핵심 논문, 공식 문서, 구현 자료를 구분해 적었다. 벤치마크 수치는
+논문의 실험 조건 안에서만 읽고, 프레임워크 지원 상태는 사용 시점의 공식 문서를
+다시 확인하는 것이 안전하다.
 
 ### 각 절의 구조
 
@@ -140,67 +168,3 @@ Kimi K3 관련 내용은 원문 대조가 덜 되어 있다.
 
 모듈과 모듈 사이에는 **〈이어지는 흐름〉**이 있다. 앞 모듈이 남긴 문제가
 다음 모듈을 불러오는 부분이고, 계보의 본체가 거기 있다.
-
----
-
-## 현재 상태
-
-### 검증 수준
-
-| 범위 | 상태 |
-|---|---|
-| MHA ~ MLA, RoPE, MoE 기본, 정규화 | ✅ 논문 확인 |
-| NSA, MoBA, DSA, KDA, mHC | ✅ 논문 확인 (파라미터·수식 포함) |
-| **CSA, HCA (DeepSeek-V4)** | ✅ 논문 + `config.json` + vLLM |
-| **Kimi K3** | ✅ **기술 리포트(arXiv:2607.24653) + `config.json` + 공식 블로그** |
-| **GLM-5** | ✅ `config.json` (기술 리포트 본문은 미대조) |
-| **하이브리드 3:1 비율** | ✅ Kimi Linear ablation |
-| **all-to-all 시간 비중** | ✅ 실측 범위 (여러 연구, 환경 상이) |
-| **LatentMoE** | ✅ Nemotron 3 논문 + K3 config |
-| **Gemma 3n PLE / MatFormer** | ✅ Google 공식 문서 |
-| 하드웨어 스펙 (B200, Rubin) | ✅ 다수 자료 일치 (데이터시트 PDF 직접 대조는 아님) |
-| Tiny Aya, Nanbeige, Step 3.5 등 | ⚠️ 2차 자료 기반 |
-| **KV 계층화 · Rubin CPX · 에이전트 동향** | 🟡 벤더 발표와 업계 분석 기반 (T3 비중 높음) |
-| `99-landscape` 99.7 결론 | 🟡 **메모리 용량·통신은 관측, gather는 여전히 가설** |
-
-### CONTESTED
-
-| # | 쟁점 | 상태 |
-|---|---|---|
-| C1 | HCA의 정식 명칭 | ✅ **해소** — Heavily Compressed Attention |
-| C2 | HoPE 동명이인 3종 | 🟡 메커니즘 확인, 실험 수치 미확인 |
-| C3 | CSA의 압축률 `m` | ✅ **해소** — `m`=4, `m'`=128, 1:1 교대 |
-| C4 | B200·Rubin 하드웨어 스펙 | ✅ **해소** |
-| C5 | NSA → DSA → CSA 계승 | 🟡 DSA→CSA 확정, NSA→는 점선 유지 |
-| C6 | 인접 레이어 KV 유사도 0.72~0.87 | 🟡 **출처 정정** — 단일 논문 수치가 아님 |
-
-자세한 내용은 [CONTESTED.md](CONTESTED.md).
-
-> **C1과 C6은 해설 자료를 그대로 옮기면 안 되는 이유를 보여준다.**
-> C1 — 일부 자료가 HCA를 "Hyper-Connected Attention"으로 적는데, 같은 모델의
-> **mHC**(Hyper-Connections)와 혼동한 것이다.
-> C6 — 널리 인용되는 "0.72~0.87"은 단일 논문 수치가 아니라
-> **여러 연구의 측정을 묶은 범위**다.
-
-### 남은 열린 질문
-
-두 종류로 나뉜다.
-
-**🟡 자료를 찾았는데 거기에 답이 없는 것**
-- V4에서 활성 expert가 8 → 6으로 줄어든 이유 (논문이 밝히지 않음)
-- V4의 CSA:HCA 1:1 배치 근거 (논문에 ablation 없음)
-
-**⚠️ 아직 못 찾은 것**
-- **희소 attention의 gather 실효 대역폭** — 측정 자료를 못 찾았다.
-  `99-landscape` 99.7의 결론 중 **②만 여전히 가설로 남은 이유**다
-- V4-Pro 마지막 층 `compress_ratio`=0 의 의미
-- K3에서 decoupled RoPE와 NoPE가 어떻게 함께 쓰이는지
-- CLA/YOCO가 대형 모델에 오지 않는 이유
-
-### 다음에 할 일
-
-1. GLM-5 / GLM-5.2 **기술 리포트 본문** 대조 (config와 2차 자료만 확인된 상태)
-2. V3.2 논문 related work 확인 — C5 잔여분(NSA 연결)
-3. `snippets/` 확장 — NSA 세 갈래, DeltaNet chunked 등가성, decoupled RoPE
-4. 희소 attention 커널의 실효 대역폭 측정 자료 찾기 — 99.7 ②의 근거
-5. **KV 계층화 실측** — NVMe 오프로딩의 실제 지연·처리량 (`99.7` ②의 새 축)

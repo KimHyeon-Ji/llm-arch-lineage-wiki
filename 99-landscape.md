@@ -1,687 +1,340 @@
-# 99. Landscape — 누가 무엇을 골랐고, 시스템에 무엇을 요구하나
+# 99. Landscape — 설계 선택이 시스템을 어떻게 바꾸나
 
-앞의 아홉 파일은 축별로 "어떤 아이디어가 있는가"를 정리했다.
-이 파일은 방향을 뒤집는다. **실제 모델들이 그 축들을 어떻게 조합했는가.**
-
-`01-attention`에서 CSA를 읽었다면 "DeepSeek-V4가 쓴다"까지는 안다.
-여기서는 반대로 묻는다. **DeepSeek-V4는 왜 그 조합을 골랐고, 그 조합은 시스템에
-무엇을 요구하는가.**
-
-> ⚠️ **이 파일은 미검증 항목이 가장 많다.** 최신 모델일수록 원문 대조가 덜 되어 있다.
-> ⚠️ 표시된 항목은 2차 자료 기반이므로 그대로 인용하지 말 것.
+앞의 장들은 컴포넌트별 계보를 설명했다. 이 장은 그 선택들을 한 화면에 놓고
+**무엇을 줄였고, 어떤 비용이 새로 생겼는가**를 비교한다. 최신 모델은 대표 사례만
+포함하며, 공개 기술 리포트와 공식 설정으로 확인 가능한 구조에 한정한다.
 
 **목차**
 
 | | 절 |
 |---|---|
-| [99.1](#991-마스터-매트릭스) | 마스터 매트릭스 |
-| [99.2](#992-계열별-진화-궤적) | 계열별 진화 궤적 |
-| [99.3](#993-kv-축소-전략-일곱-가지와-조합-가능성) | KV 축소 전략과 조합 가능성 |
-| [99.4](#994-moe-구성-비교) | MoE 구성 비교 |
-| [99.5](#995-하이브리드-구성-비교) | 하이브리드 구성 비교 |
-| [99.6](#996-규모와-시스템-크기) | 규모와 시스템 크기 — 랙에 몇 명이 타나  |
-| [99.7](#997-그래서-시스템은-무엇을-요구받는가) | 시스템은 무엇을 요구받는가 |
+| [99.0](#990-efficient-transformer-발전-계보--시스템-영향) | Efficient Transformer 발전 계보 |
+| [99.1](#991-대표-모델-매트릭스) | 대표 모델의 컴포넌트 조합 |
+| [99.2](#992-세-가지-진화-궤적) | 압축·고정 상태·쓰기 가능한 메모리 |
+| [99.3](#993-kv를-줄이는-방법과-조합) | KV 절감 방법과 조합 |
+| [99.4](#994-moe--연산을-줄이고-통신을-늘리다) | MoE의 시스템 거래 |
+| [99.5](#995-하이브리드--층마다-역할을-나누다) | 하이브리드 설계 |
+| [99.6](#996-모델-규모를-시스템-크기로-번역하기) | 모델 규모와 시스템 크기 |
+| [99.7](#997-시스템이-준비해야-할-것) | 전체 시스템 요구사항 |
 
 ---
 
-## 99.1 마스터 매트릭스
+## 99.0 Efficient Transformer 발전 계보 — 시스템 영향
 
-> ✅ 표시는 HuggingFace `config.json` 또는 기술 리포트에서 직접 확인한 행이다.
-> 표시가 없는 행은 2차 자료 기반이므로 그대로 인용하지 말 것.
+여기서는 FlashAttention처럼 **같은 연산을 더 잘 실행하는 커널**이 아니라,
+모델이 저장하고 읽고 쓰는 대상을 바꾼 아키텍처만 비교한다.
 
-| 모델 | attention | 위치 | MoE | residual/norm | decoding | numerics |
-|---|---|---|---|---|---|---|
-| **Llama 3** | GQA (64/8) | RoPE | dense | Pre-LN, RMSNorm | — | BF16 |
-| **Mistral Small** | GQA + SWA | RoPE | dense/MoE | RMSNorm | — | BF16 |
-| **Gemma 3** | GQA + **SWA 5:1** | RoPE | dense | RMSNorm, QK-Norm | — | BF16 |
-| **Gemma 4 (E2B/E4B)** | GQA + **KV sharing** | RoPE | dense | RMSNorm | — | 온디바이스 |
-| **gpt-oss** | GQA + SWA, **학습된 sink** | RoPE | MoE | RMSNorm | — | **MXFP4** |
-| **DeepSeek-V3** | **MLA** | **decoupled RoPE** + YaRN | 256/8 + shared, **aux-loss-free** | RMSNorm | **MTP-1** | **FP8 학습** |
-| **DeepSeek-V3.2** | MLA + **DSA** (top-k 2048) | decoupled RoPE | 위와 동일 | RMSNorm | MTP | FP8 |
-| **DeepSeek-V4-Pro** ✅ | **CSA(`m`=4) + HCA(`m'`=128) 1:1 교차**, 앞 2층 SWA | RoPE 64차원 + YaRN ×16 | **384 + shared 1, top-6**, noaux_tc | **mHC** (`n`=4, Sinkhorn 20) | MTP | **MoE FP4 + 나머지 FP8** |
-| **Qwen3** | GQA | RoPE + YaRN | 235B-A22B | QK-Norm | — | BF16 |
-| **Qwen3-Next** | **Gated DeltaNet 3:1 + Gated Attention** | **partial RoPE** | shared expert, expert 4배 | **zero-centered RMSNorm** | — | BF16 |
-| **Qwen3.5** | Gated DeltaNet + Gated Attention | partial RoPE | fine-grained | QK-Norm | — | — |
-| **Kimi K2 / K2.5** | **MLA** | RoPE | DeepSeek식 | RMSNorm | — | — |
-| **Kimi Linear** | **KDA 3:1** + ShortConv | **NoPE** (full 층) | — | Attention Residuals ⚠️ | — | — |
-| **Kimi K3** ✅ | 93층, **KDA 69 : MLA 24 (정확히 3:1)**, ShortConv 4, **MLA에 output gate** | **NoPE** + decoupled RoPE(64/128) | **Stable LatentMoE** 7168→3584, **896/16**, shared 2, noaux_tc | Attention Residuals | — | **MXFP4** (group 32) |
-| **GLM-4.5 / 4.7** | GQA | RoPE | 160 experts | QK-Norm | MTP | — |
-| **GLM-5** ✅ | **MLA + DSA** (`glm_moe_dsa`, top-2048, indexer 헤드 32) | RoPE θ=1M, 컨텍스트 202K | **256 + shared 1, top-8**, noaux_tc | QK-Norm | MTP | — |
-| **MiniMax M2 / M2.5** | GQA | RoPE | MoE | QK-Norm | MTP | — |
-| **Ling 2.5** | **Lightning Attention** hybrid + MLA | RoPE | fine-grained MoE | — | — | — |
-| **Nemotron 3** | **Mamba-2 + attention** hybrid | — | MoE / LatentMoE ⚠️ | — | — | — |
-| **Arcee Trinity Large** | SWA + **Gated Attention**, global 층 **NoPE** | partial | **coarse MoE** (의도적) | **depth-scaled gain** | — | — |
-| **Tiny Aya** | SWA, **QK-Norm 제거** | NoPE | dense | **parallel block** | — | — |
-
-읽는 법 두 가지.
-
-**세로로 읽으면** 각 축의 채택 현황이 보인다. GQA는 거의 전부, MLA는 긴 컨텍스트를
-노리는 대형 모델, linear 하이브리드는 Qwen·Moonshot 계열에 몰려 있다.
-
-**가로로 읽으면** 각 모델의 설계 철학이 보인다. 다음 절이 그 이야기다.
-
----
-
-## 99.2 계열별 진화 궤적
-
-### DeepSeek — KV 압축을 끝까지 밀어붙인다
-
-```
- V2 (2024)   MLA 도입 — 저차원 압축 + 흡수
-    ↓
- V3 (2024)   MLA 실전화, aux-loss-free, MTP, FP8 학습
-    ↓
- V3.2 (2025) + DSA — 압축에 희소 선택을 결합
-    ↓
- V4 (2026)   CSA/HCA — 압축과 선택을 직렬로 겹침, + mHC ✅
-```
-
-✅ **V4-Pro가 실제로 어떻게 서빙되는지** (vLLM 배포 문서 기준)
-
-| | |
-|---|---|
-| 규모 | 1.6T 총 / 49B 활성, 61층, `d`=7168, 쿼리 헤드 128 |
-| 정밀도 | **MoE expert 가중치는 FP4, attention·norm·router는 FP8** — 부분별로 다르다 |
-| KV | `--kv-cache-dtype fp8` |
-| 병렬화 | B300 8장 DP=8 / H200 8장 DP+EP / MI355X TP=8 / GB200은 2트레이 다노드 |
-| 컨텍스트 | 1M. 단 **H200에서는 800K로 제한** — KV 여유 확보용 |
-| 지원 | vLLM v0.22.0 네이티브, v0.23.0 프로덕션 / SGLang v0.5.12 |
-
-> 💡 **정밀도를 부분별로 나눈 것**이 눈에 띈다 (`08-numerics` 8.1).
-> expert 가중치는 양이 압도적이라 FP4로 내리고, 민감한 attention·router는 FP8로 남겼다.
-> **"무엇을 양자화할 것인가"가 모델 부분별로 갈린다**는 실례다.
->
-> H200에서 컨텍스트를 800K로 줄여야 한다는 것도 시사적이다.
-> KV를 V3.2의 10%로 줄였는데도 **여전히 용량이 상한을 정한다.**
-
-**일관된 방향이 있다. "KV를 줄인다"를 한 번도 놓지 않았다.**
-NSA(연구) → MLA(압축) → DSA(선택) → CSA(둘의 결합)로 계속 쌓아올렸다.
-
-동시에 **학습·시스템 쪽도 함께 밀었다.** FP8 학습, aux-loss-free 균형, DeepEP,
-그리고 V4에서는 residual 자체(mHC)까지 건드렸다.
-**아키텍처와 시스템을 한 팀이 함께 설계한다는 인상**을 주는 유일한 계열이다.
-
-### Qwen — 하이브리드와 게이팅
-
-```
- Qwen3 (2025)       GQA + QK-Norm, MoE 확대
-    ↓
- Qwen3-Next (2025)  Gated DeltaNet 3:1 + Gated Attention
-                    partial RoPE, zero-centered RMSNorm, expert 4배
-    ↓
- Qwen3.5 (2026)     같은 방향 심화
-```
-
-**DeepSeek와 정반대 선택이다.** KV를 압축하는 대신 **KV를 안 만드는 층을 늘렸다.**
-그리고 Gated Attention(NeurIPS 2025 Best Paper)을 자기들이 만들어 자기 모델에 넣었다.
-
-정규화 쪽 미세 조정(zero-centered RMSNorm)도 이 계열의 특징이다.
-**안정성에 신경을 많이 쓰는 팀**으로 보인다.
-
-### Moonshot (Kimi) — 선형 attention에 올인
-
-```
- K2 (2025)         MLA — DeepSeek식을 따라감
-    ↓
- MoBA (2025)       블록 라우팅 연구
-    ↓
- Kimi Linear (2025) KDA 3:1 + ShortConv + NoPE(full 층)
-    ↓
- K3 (2026)         KDA를 플래그십에 적용, Stable LatentMoE, MXFP4 ⚠️
-```
-
-**"축1에서 축2로 갈아탄 계열"로 보이지만 그렇지 않다.**
-
-K3의 full attention 층 24개는 **그냥 full이 아니라 MLA**다. 그것도 output gate가 붙은
-Gated MLA이고, decoupled RoPE와 NoPE를 함께 쓴다.
-
-```
- K3 한 모델 안에
-   KDA 69층        ← 축2 (고정 상태)
-   MLA 24층        ← 축1 (저차원 압축)
-    ├ output gate  ← 축1 (게이팅)
-    ├ decoupled RoPE + NoPE  ← 축3
-   LatentMoE       ← 축4 (통신 압력 대응)
-   MXFP4           ← 축8
-```
-
-**갈아탄 게 아니라 쌓아 올렸다.** MoBA(축1의 희소)까지 이들이 만들었다는 걸 보면,
-**여러 갈래를 다 해보고 전부 한 모델에 넣은 쪽**에 가깝다.
-
-이게 이 위키의 축 구분에 대한 중요한 단서다. **축은 아이디어를 정리하는 틀이지
-모델이 하나를 고르는 선택지가 아니다.**
-
-### Zhipu (GLM) — 실용적 통합
-
-```
- GLM-4.5 (2025)  GQA + MoE 160 experts + QK-Norm
-    ↓
- GLM-4.7         MTP 추가
-    ↓
- GLM-5 (2026)    MLA + DSA 채택, expert 256으로, 층수 92 → 78 ⚠️
-```
-
-**독자 기법보다 검증된 것을 빠르게 통합하는 전략**으로 보인다.
-MLA도 DSA도 DeepSeek가 만든 것이고, GLM-5는 그것을 가져다 썼다.
-
-대신 **자기만의 판단을 시스템 쪽에서 했다.** 층수를 92에서 78로 줄인 것이
-그 예다 (`06-shape` 6.1). 품질 대신 추론 지연을 택한 것이다.
-
-### Google (Gemma) — 온디바이스와 SWA
-
-```
- Gemma 2/3   SWA를 local:global 5:1로 — 하이브리드 배치의 선구
-    ↓
- Gemma 4     E2B/E4B에서 PLE + cross-layer KV sharing
-```
-
-**축1 안에서 하이브리드**를 한 계열이다. linear attention 대신 SWA를 쓰고
-일부 층만 full로 남겼다.
-
-그리고 **온디바이스를 정면으로 겨냥한 유일한 계열**이다. PLE로 파라미터를
-가속기 밖에 두고, 레이어 간 KV 공유로 캐시를 줄인다. 데이터센터 모델들과
-전혀 다른 제약에서 출발한 설계다.
-
-### 그 외
-
-| 계열 | 특징 |
-|---|---|
-| **Meta (Llama)** | GQA를 대중화. 이후 아키텍처 혁신보다 규모·데이터 쪽 |
-| **Mistral** | SWA 대중화. 이후 MLA 채택 ⚠️ |
-| **NVIDIA (Nemotron)** | **Mamba-2 + attention 하이브리드** — 축2를 SSM 쪽으로 |
-| **inclusionAI (Ling)** | Lightning Attention 하이브리드 + MLA |
-| **Arcee (Trinity)** | **의도적 coarse MoE** — 추론 처리량 우선. 학계보다 서빙 관점 |
-| **OpenAI (gpt-oss)** | SWA + 학습된 sink + MXFP4 — 배포 효율 중심 |
-
----
-
-## 99.3 KV 축소 전략 일곱 가지와 조합 가능성
-
-`01`, `02`, `08`에 흩어져 있던 것을 한자리에 모으면 이렇다.
-
-| # | 전략 | 방법 | 줄이는 것 | 대표 |
+| 시기 | 대표 기법 | 해결하려는 병목 | 핵심 아이디어 | 시스템 영향 |
 |---|---|---|---|---|
-| ① | **헤드 공유** | MQA, GQA | 저장량 `1/g` | Llama 3, Qwen3 |
-| ② | **차원 압축** | MLA | 저장량 (GQA 2.25그룹 상당) | DeepSeek, Kimi K2, GLM-5 |
-| ③ | **읽기 제한 (고정)** | SWA | 저장량 상한 `W` | Gemma 3, Mistral |
-| ④ | **읽기 제한 (학습)** | NSA, MoBA, DSA | **읽는 양만** | DeepSeek-V3.2, GLM-5 |
-| ⑤ | **토큰 압축** | CSA, HCA | 저장량 `1/m` | DeepSeek-V4 ⚠️ |
-| ⑥ | **레이어 공유** | CLA, YOCO | 저장량 `1/그룹` | Gemma 4 E2B/E4B |
-| ⑦ | **정밀도** | FP8/FP4 KV | 저장량 `1/2`, `1/4` | 광범위 |
-| — | **대체** | linear attention | **KV 자체를 없앰** | Qwen3-Next, Kimi K3 |
+| 2017~ | **MHA** | 장거리 관계의 병렬 모델링 | 모든 head의 토큰별 KV를 유지 | prefill은 compute, decode는 weight·KV traffic의 영향이 큼 |
+| 2019~ | **MQA·GQA** | KV 용량·대역폭 | query head가 K/V head를 공유 | KV 감소, 더 큰 batch 가능 |
+| 2020~ | **SWA·sparse attention** | 긴 문맥의 전체 attention | window 또는 선택된 block만 읽음 | 연산·읽기량 감소, 선택·gather 비용 증가 |
+| 2024~ | **MLA·CSA·HCA** | KV 차원과 후보 수 | 저차원 또는 압축 토큰으로 저장·검색 | KV 감소, projection·indexer·불규칙 접근 필요 |
+| 2023~ | **Mamba·DeltaNet·KDA** | 길이에 비례하는 KV | 과거를 고정 크기 recurrent state로 요약 | 해당 층의 KV 소멸, scan·state-update kernel 필요 |
+| 2025~ | **Titans·ATLAS** | 고정 update의 표현력 | 추론 중 neural memory를 최적화 | 읽기뿐 아니라 update compute·write traffic·요청별 상태 관리 발생 |
+| 2025~ | **HOPE·CMS** | 단일 갱신 속도 | 메모리마다 다른 갱신 주기 | multi-rate read+write 실행과 계층적 상태 관리가 연구 과제 |
 
-### 조합 가능성
+```
+토큰별 KV를 모두 읽기
+  → head를 공유해 덜 저장하기
+  → window·sparse 선택으로 덜 읽기
+  → latent·압축 토큰으로 더 작게 저장하기
+  → 고정 상태로 요약하며 읽고 쓰기
+  → 메모리 내용과 갱신 규칙까지 추론 중 바꾸기
+```
 
-이게 이 절의 핵심이다. **어떤 것끼리 곱해지고 어떤 것끼리 배타적인가.**
-
-|  | ① 헤드 | ② 차원 | ③ SWA | ④ 희소 | ⑤ 토큰압축 | ⑥ 레이어 | ⑦ 비트 |
-|---|---|---|---|---|---|---|---|
-| **① 헤드 공유** | — | ✗ 배타 | ✓ | ✓ | ✓ | ✓ | ✓ |
-| **② 차원 압축** | ✗ | — | △ | **✓ (DSA)** | **✓ (CSA)** | ✓ | ✓ |
-| **③ SWA** | ✓ | △ | — | △ | △ | ✓ | ✓ |
-| **④ 희소 선택** | ✓ | **✓** | △ | — | **✓** | ✓ | ✓ |
-| **⑤ 토큰 압축** | ✓ | ✓ | △ | ✓ | — | ✓ | ✓ |
-| **⑥ 레이어 공유** | ✓ | ✓ | ✓ | ✓ | ✓ | — | ✓ |
-| **⑦ 정밀도** | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | — |
-
-- **①과 ②는 배타적이다.** 둘 다 "헤드/차원을 어떻게 저장할지"를 정하는 것이라
-  하나만 고른다.
-- **⑥ 레이어 공유와 ⑦ 정밀도는 모든 것과 곱해진다.** 방향이 직교하기 때문이다.
-- **③ SWA는 층 단위로 섞는 방식**이라 다른 것과 "조합"이라기보다 "층을 나눠 갖는" 관계다.
-
-### 그런데 실제로는 다 안 쓴다
-
-이론상 `GQA × CLA × FP8 KV × SWA`가 가능하지만 그렇게 하는 모델은 없다.
-이유가 있다.
-
-| 왜 | 설명 |
-|---|---|
-| **품질이 곱으로 깎인다** | 각각 조금씩 잃는 것이 누적된다 |
-| **구현 복잡도** | 커널 조합이 폭발한다 |
-| **수확 체감** | KV가 이미 작으면 더 줄여도 병목이 다른 데로 옮겨간다 |
-
-마지막이 중요하다. `09-serving` `9.7`에서 봤듯 **KV를 충분히 줄이면 병목이
-가중치 읽기나 통신으로 옮겨간다.** 그 지점을 넘으면 KV를 더 줄여도 안 빨라진다.
-
-**⑥ 레이어 공유가 대형 모델에서 안 쓰이는 이유**도 여기 있을 것으로 보인다.
-MLA로 이미 충분히 줄였는데 품질 손실을 더 감수할 이유가 없다.
-반대로 온디바이스(Gemma 4 E2B/E4B)는 용량이 절대적 제약이라 쓴다.
+초기의 중심 질문은 **“KV를 얼마나 덜 읽을까”**였다. linear attention 이후에는
+**“상태를 어떻게 갱신할까”**가 추가됐다. Titans·HOPE 계열이 실용화된다면 accelerator도
+연산량뿐 아니라 어떤 상태를 어느 주기로 갱신할지 지원해야 한다.
 
 ---
 
-## 99.4 MoE 구성 비교
+## 99.1 대표 모델 매트릭스
 
-| 모델 | 총 / 활성 | `E` | `k` | shared | granularity | 균형 |
-|---|---|---|---|---|---|---|
-| Mixtral 8×7B | 47B / 13B | 8 | 2 | ✗ | 굵음 | aux loss |
-| **DeepSeek-V3** | **671B / 37B** | **256** | **8** | ✓ | **잘게** | **aux-loss-free** |
-| Qwen3-235B | 235B / 22B | 다수 | — | ✓ | 잘게 | — |
-| Qwen3-Next | — | **4배 증가** | — | ✓ | 잘게 | — |
-| **GLM-5** ✅ | — | **256** (4.7의 160에서) | **8** | ✓ 1 | 잘게 | noaux_tc |
-| **Kimi K3** ✅ | 2.8T | **896** | **16** | **✓ 2** | 매우 잘게 | **LatentMoE** 7168→3584 |
-| **Nemotron 3 Super** ✅ | — | LatentMoE로 확대 | — | — | — | **LatentMoE** 4096→1024 |
-| **DeepSeek-V4-Pro** ✅ | **1.6T / 49B** | **384** | **6** | ✓ 1 | 잘게 | **noaux_tc** (+ 앞 3층 hash) |
-| **DeepSeek-V4-Flash** ✅ | 284B / 13B | **256** | **6** | ✓ 1 | 잘게 | 동일 |
-| **Arcee Trinity Large** | — | 적음 | — | — | **의도적으로 굵게** | — |
+이 표의 목적은 순위를 매기는 것이 아니라, 한 모델 안에서 컴포넌트가 어떻게 겹치는지
+보여주는 것이다. 숫자는 해당 리포트의 대표 설정이며 다른 크기 변형에는 그대로
+적용되지 않을 수 있다.
 
-### 두 가지 추세
+| 모델 | token mixing | 위치 | channel mixing | residual·norm | decoding·numerics |
+|---|---|---|---|---|---|
+| **Llama 3 70B** | GQA (64 query / 8 KV heads) | RoPE | dense SwiGLU | Pre-Norm, RMSNorm | BF16 기준 |
+| **Gemma 3** | local SWA와 global attention을 5:1로 배치 | RoPE | dense | RMSNorm, QK-Norm | — |
+| **DeepSeek-V3** | MLA | decoupled RoPE | 256 routed, top-8 + shared expert | RMSNorm | MTP, FP8 mixed-precision training |
+| **DeepSeek-V3.2** | MLA + DSA | decoupled RoPE | V3 계열 MoE | RMSNorm | MTP |
+| **DeepSeek-V4-Pro** | CSA와 HCA 교대 | RoPE 계열 | 384 routed, top-6 + shared expert | mHC | MTP, 부분별 FP4/FP8 배포 |
+| **Qwen3-Next** | Gated DeltaNet과 Gated Attention의 hybrid | partial RoPE | MoE | zero-centered RMSNorm | — |
+| **Kimi Linear** | KDA와 MLA를 3:1로 배치 | MLA 층은 NoPE | MoE | — | 장문 decode용 recurrent kernel |
+| **Kimi K3** | 3 KDA + 1 Gated MLA 반복, 마지막에 MLA 추가 | **모든 MLA 층도 NoPE** | Stable LatentMoE, 896 중 16 routed expert 활성 | Block AttnRes | MXFP4-aware post-training |
 
-**① expert 개수가 계속 늘어난다.** 8 → 64 → 256 → 896.
-`04-moe` `4.3`에서 본 대로 조합의 수가 표현력을 만들기 때문이다.
+세로로 읽으면 채택 흐름이 보인다. GQA·MLA는 **KV를 저장하는 방식**을 바꾸고,
+sparse attention은 **어떤 KV를 읽을지** 바꾼다. KDA는 일부 층의 토큰별 KV를
+**recurrent state로 대체**한다. MoE와 양자화는 이 선택들과 독립적으로 겹칠 수 있다.
 
-**② 총/활성 비율이 커진다.** Mixtral은 3.6배, DeepSeek-V3는 18배,
-V4-Pro는 32배 ⚠️. **파라미터는 늘리되 연산은 안 늘린다**는 방향이 강화되고 있다.
-
-### 그리고 반대 방향 하나
-
-📌 **Arcee Trinity Large만 굵게 갔다.** 추론 처리량을 위해서다.
-
-이 하나의 예외가 `04-moe` `4.4`의 논점을 증명한다.
-**fine-grained가 항상 옳은 게 아니라, 대규모 배치 서빙을 전제할 때 옳다.**
-그 전제가 다르면 결론도 달라진다.
-
-### ✅ 새로 확인된 세 번째 방향 — LatentMoE
-
-`4.4`에서 "잘게 vs 굵게"의 이분법으로 정리했는데, **제3의 답이 나와 있었다.**
+Kimi K3가 좋은 종합 예다.
 
 ```
- 잘게 쪼갠다   → 품질↑ 통신·GEMM 효율↓
- 굵게 만든다   → 처리량↑ 품질↓
- LatentMoE     → 오가는 벡터를 작게 만든다 → 통신량 d/ℓ 감소
-                 그 여유로 더 잘게 쪼갠다
+sequence 방향 : KDA 3층 + Gated MLA 1층
+depth 방향    : Block Attention Residuals
+channel 방향  : Stable LatentMoE
+numerics      : MXFP4-aware post-training
 ```
 
-📌 [T1] Nemotron 3는 latent로 아낀 만큼 **expert 수와 활성 수를 `d/ℓ`배 늘린다.**
-품질과 처리량을 맞바꾸는 대신, **제약 자체를 옮겨서 둘 다 가져가려는 접근**이다.
-
-이건 `99.7`의 결론과 직접 연결된다. **통신이 병목이라는 진단에 아키텍처가
-답을 내놓기 시작했다는 증거**이기 때문이다.
+실제 모델은 한 가지 계보를 선택하지 않는다. 서로 다른 병목을 겨냥한 컴포넌트를
+겹치되, 학습 안정성과 서빙 구현이 감당할 수 있는 조합만 남긴다.
 
 ---
 
-## 99.5 하이브리드 구성 비교
+## 99.2 세 가지 진화 궤적
 
-"모든 층을 같게 만들지 않는다"는 것이 최근 공통 패턴이다.
-**무엇과 무엇을 섞는지**가 갈린다.
-
-| 모델 | 값싼 층 | 비싼 층 | 비율 | 비싼 층이 하는 일 |
-|---|---|---|---|---|
-| **Gemma 3** | SWA | full attention | **5:1** | 전역 문맥 |
-| **Qwen3-Next / 3.5** | Gated DeltaNet | Gated Attention | **3:1** | 정확한 검색 |
-| **Kimi K3** ✅ | KDA (69층) | **Gated MLA + NoPE** (24층) | **3:1** | 정확한 검색 |
-| **Nemotron 3** | Mamba-2 | attention | ⚠️ | 전역 검색 |
-| **Ling 2.5** | Lightning Attention | full | ⚠️ | 전역 검색 |
-| **DeepSeek-V4** ✅ | CSA (정밀·좁게) | HCA (거칠게·넓게) | **1:1** | **역할 분담이 다르다** |
-| **Arcee Trinity** | SWA | global (**NoPE**) | ⚠️ | 전역 문맥 |
-
-### 두 종류의 하이브리드
-
-대부분은 **"값싸게 지역 + 비싸게 전역"** 구조다. 그런데 DeepSeek-V4는 다르다.
+### A. 토큰별 메모리를 압축한다
 
 ```
- 일반적 하이브리드:  [좁게 보는 층] × 3~5  +  [전부 보는 층] × 1
- DeepSeek-V4:        [정밀하게 일부] ↔ [거칠게 전부]   1:1 교대
+MHA → MQA/GQA → MLA → MLA + DSA → CSA/HCA
 ```
 
-✅ **V4에는 "원본을 그대로 보는 층"이 사실상 없다.** 61층 중 앞 두 층이
-sliding window(윈도우 128), 마지막 한 층이 압축 없음, 나머지 58층은
-CSA(`m`=4)와 HCA(`m'`=128)의 1:1 교대다.
+이 계열은 토큰별 상태를 유지한다. 대신 head를 공유하고, 차원이나 토큰 수를
+압축하고, 필요한 항목만 고른다. **정확한 token-to-token 검색을 보존하기 쉽지만**
+컨텍스트가 길어지면 저장량 또는 indexer 비용이 남는다.
 
-두 가지가 다르다.
+대표 사례는 DeepSeek 계열이다.
 
-- **비율이 1:1이다.** 다른 하이브리드는 한쪽이 보조였는데, 여기는 둘 다 주역이다.
-- **나누는 축이 다르다.** 다른 곳은 "가까이 vs 멀리"로 나눴고,
-  V4는 **"정밀하게 조금 vs 거칠게 전부"** 로 나눴다.
-  1M 컨텍스트에서 CSA 층은 4천 토큰 분량을 정밀하게 보고,
-  HCA 층은 100만 토큰 전부를 8천 개 엔트리로 뭉개 훑는다.
-
-### 공통 설계 질문
-
-| 질문 | 관찰된 답 |
-|---|---|
-| 비율은? | **3:1 또는 5:1**이 지배적 |
-| 비싼 층 위치는? | 균등 배치가 보통 |
-| 비싼 층의 위치 인코딩은? | **NoPE가 늘고 있다** (Kimi Linear, Trinity) |
-| 비싼 층의 attention 종류는? | 자유 — GQA, MLA, Gated 무엇이든 |
-
-세 번째가 흥미롭다. 값싼 층이 지역 위치를 처리하니 비싼 층은 RoPE의
-장기 감쇠에 방해받지 않는 편이 낫다는 판단으로 보인다 (`03-position` 3.5).
-
----
-
-## 99.6 규모와 시스템 크기
-
-모델이 커지면 GPU가 몇 장 필요한가. 그런데 이 질문의 답이 최근 몇 년 사이
-**완전히 뒤집혔다.**
-
-### 모델 규모의 동향 — 총량은 커지고 활성 비율은 떨어진다
-
-| 모델 | 시기 | 총 파라미터 | 활성 | **활성 비율** |
-|---|---|---|---|---|
-| Mixtral 8×22B | 2024 | 141B | 39B | **~28%** |
-| **DeepSeek-V3** | 2024 | 671B | 37B | **5.5%** |
-| Qwen3-235B | 2025 | 235B | 22B | 9.4% |
-| **Kimi K3** | 2026 | **2.8T** | 104B | **3.7%** |
-| **DeepSeek-V4-Pro** | 2026 | **1.6T** | 49B | **3.1%** |
-| DeepSeek-V4-Flash | 2026 | 284B | 13B | 4.6% |
-
-📎 이 흐름을 **"2024→2026의 가장 큰 레버는 sparsity 비율 압축"** 이라고 요약하는 분석이 있다.
-한 단계마다 총/활성 비율이 대략 3배씩 벌어졌다는 것이다.
-
-읽어둘 것 두 가지.
-
-- **총 파라미터는 4~5배 커졌는데 활성은 거의 안 늘었다.** V3의 37B와 V4-Pro의 49B는
-  같은 급이다. `04-moe`의 MoE가 정확히 이걸 하려던 것이었다.
-- 📎 2026년 기준 **오픈 웨이트 프론티어 모델은 사실상 전부 MoE**라는 분석이 나온다
-  (Claude 계열은 예외로 언급된다).
-
-### 시스템은 어떻게 쌓이나
-
-| 단위 | 구성 | 메모리 |
+| 단계 | 바뀐 것 | 남은 비용 |
 |---|---|---|
-| GPU | H100 / H200 | 80 / 141 GB |
-| GPU | B200 | 192 GB |
-| GPU | **R100 (Rubin)** | **288 GB HBM4** |
-| 노드 | 보통 GPU 8장 | 1.5 ~ 2.3 TB |
-| 랙 | **GB200 NVL72** (72 GPU) | **~13.5 TB** |
-| 랙 | **GB300 NVL72** (72 GPU) | **~20.7 TB** |
-| 랙 | **VR NVL144 CPX** (288 GPU) | **~100 TB** ⚠️ |
+| MLA | head별 KV를 latent로 압축 | 모든 토큰의 latent 유지 |
+| DSA | 본 attention은 top-k 토큰만 읽음 | indexer는 전체 latent를 scan |
+| CSA | 압축 엔트리 위에서 sparse 선택 | indexer·top-k·gather 필요 |
+| HCA | 더 강하게 압축한 엔트리를 dense하게 읽음 | 세부 정보 손실 가능성 |
 
-📎 VR NVL144 CPX는 랙 하나에 **Rubin CPX 144장 + 표준 Rubin 144장 + Vera CPU 36개**가
-들어가고, 8 exaFLOPS와 총 1.7 PB/s 대역폭으로 발표되었다. ⚠️ 2차 자료 기반이다.
-
-### 반전 — 가중치는 이제 문제가 아니다
-
-📎 **1T 파라미터 모델을 BF16으로 올려도 2 TB다. NVL72 한 랙(13.5 TB)에 여유롭게 들어간다.**
-FP4로 내리면 약 500 GB라 **GPU 2장이면 되고, 나머지 70장이 통째로 남는다.**
+### B. 토큰별 메모리를 고정 상태로 바꾼다
 
 ```
- NVL72 랙 (13.5 TB)
- ┌──────────────────────────────────────────────┐
- │ 가중치 (1T FP4)   ▓▓                          │  ~0.5 TB
- │ 나머지 전부       ░░░░░░░░░░░░░░░░░░░░░░░░░░  │  ~13 TB
- │                   └─ KV cache + 활성값 + 동시성 │
- └──────────────────────────────────────────────┘
+linear attention → selective SSM → delta rule → gated delta rule → KDA
 ```
 
-**랙의 대부분은 이제 KV cache와 동시 사용자를 위한 공간이다.**
-`00-foundations` `0.5`에서 "배치 32·32K면 KV가 가중치의 두 배"라고 했던 것이
-시스템 규모에서는 훨씬 극단적으로 나타난다.
+해당 층의 메모리가 sequence length에 비례하지 않는다. 대신 매 토큰 state를
+갱신해야 하며, 임의 위치의 원문을 정확히 꺼내는 능력은 full attention보다 불리할 수
+있다. 그래서 Kimi Linear·Kimi K3처럼 일부 global attention 층을 남기는 설계가 쓰인다.
 
-### 그래서 KV 아키텍처가 랙의 수용량을 정한다
-
-같은 랙에 몇 명을 태울 수 있나. 컨텍스트 1M 기준으로 개략 계산하면 이렇게 갈린다.
-
-| 모델 | KV 구조 | KV / 토큰 | **1M 컨텍스트 1명당** | NVL72 한 랙에 |
-|---|---|---|---|---|
-| Llama 3 70B | GQA (`n_kv`=8, 80층) | 320 KB | **320 GB** | **~40명** |
-| DeepSeek-V3 | MLA (576, 61층) | 70 KB | **70 GB** | ~190명 |
-| Kimi K3 | KDA 3:1 (MLA는 24층만) | 27 KB | **27 GB** | ~490명 |
-| DeepSeek-V4-Pro | CSA/HCA (V3.2의 10%) | ~7 KB | **~7 GB** | **~1,800명** |
-
-> 📌 감을 잡기 위한 개략 계산이다. 가중치·활성값·단편화·프레임워크 오버헤드를
-> 무시했고, K3의 KDA 상태와 V4 수치는 공개된 비율에서 역산한 값이다.
-> **자릿수만 받아들이면 된다.**
-
-> 💡 **같은 랙인데 40명과 1,800명이다. 45배 차이다.**
-> `01-attention`과 `02-linear-attention`의 열몇 개 모듈이 결국 이 숫자를 바꾸려던 것이었고,
-> **아키텍처 선택이 곧 서빙 단가**라는 게 여기서 드러난다.
->
-> 그리고 이 표가 `99.7`의 출발점이다. KV를 45배 줄였는데도
-> **1M 컨텍스트 1,800명이면 여전히 랙 하나가 꽉 찬다.**
-
-### 하드웨어도 이 문제에 맞춰 갈라지기 시작했다
-
-📎 NVIDIA는 **Rubin CPX**라는 **별도 GPU 등급**을 내놓았다.
-긴 컨텍스트를 읽어들이는 **prefill 전용**이고, HBM 대신 **128 GB GDDR7**을 쓴다.
-싸고 발열이 적고 고급 패키징이 필요 없다는 것이 이유로 제시된다.
+### C. 상태의 갱신 자체를 학습한다
 
 ```
- NVL144 CPX 랙
- ┌─────────────────────┬─────────────────────┐
- │  Rubin CPX × 144    │  표준 Rubin × 144    │
- │  GDDR7 128 GB       │  HBM4 288 GB         │
- │  prefill / 컨텍스트  │  decode              │
- └─────────────────────┴─────────────────────┘
-   Dynamo가 prefill 작업을 CPX 쪽으로 자동 분배
+고정 recurrent update → Titans의 neural-memory update
+                    → ATLAS의 더 표현력 있는 update
+                    → HOPE의 multi-rate memory
 ```
 
-`09-serving` `9.5`에서 **"prefill과 decode가 원하는 하드웨어가 갈라지고 있다"** 고 썼는데,
-**실제로 제품이 갈라졌다.** PD 분리가 소프트웨어 기법에서 하드웨어 등급 구분으로 올라간 것이다.
+이 계열은 아직 연구 단계다. 핵심 변화는 inference를 read-mostly workload로 보던
+전제에서 벗어난다는 점이다. 모델별 weight 외에 **요청별로 변하는 상태**, update의
+일관성, checkpoint·복구와 multi-tenant 격리가 새로운 시스템 문제가 된다.
 
 ---
 
-## 99.7 그래서 시스템은 무엇을 요구받는가
+## 99.3 KV를 줄이는 방법과 조합
 
-이 위키 전체의 결론이다.
+| 축 | 방법 | 주로 줄이는 것 | 남는 비용 |
+|---|---|---|---|
+| head | MQA·GQA | KV head 수 | query 표현력과 head grouping 선택 |
+| feature | MLA | 토큰당 KV 차원 | latent projection과 전용 kernel |
+| sequence-local | SWA | 층당 읽는 범위; 구현에 따라 저장 상한 | window 밖 직접 검색 불가 |
+| sequence-selective | NSA·DSA | attention이 읽는 후보 | indexer·top-k·gather |
+| token compression | CSA·HCA | 저장 토큰 수와 후보 수 | 압축 손실과 이질적 layer 실행 |
+| layer | CLA·YOCO | 레이어별 중복 KV | layer coupling과 pipeline 제약 |
+| precision | FP8·FP4 KV | 항목당 byte | scale metadata, dequantization, 품질 검증 |
+| replacement | Mamba·KDA | 해당 층의 토큰별 KV | recurrent state와 update kernel |
 
-### 각 선택이 요구하는 것
+조합할 때는 절감률을 단순히 곱하기 전에 세 가지를 확인해야 한다.
 
-| 아키텍처 선택 | **요구하는 것** | **덜어주는 것** |
-|---|---|---|
-| MLA (차원 압축) | 흡수 전용 커널, latent GEMM 효율, **연산량 증가** | HBM 용량, KV 읽기 대역폭 |
-| 희소 선택 (NSA/DSA/CSA) | **비정형 gather**, top-k 정렬, 낮은 접근 지역성 | attention 연산, KV 읽기량 |
-| 고정 상태 (KDA/Mamba) | 상태 갱신의 순차성, 전용 chunked 커널 | **KV 용량이 소멸** |
-| 레이어 공유 (CLA/YOCO) | 레이어 간 의존 → **PP 제약** | HBM 용량 (세로 방향) |
-| **MoE (fine-grained)** | **all-to-all 대역폭**, EP 스케일, 부하 균형 | 활성 연산량 |
-| MoE (coarse) | 노드당 메모리 용량 | all-to-all 트래픽 |
-| **LatentMoE** ✅ | down/up projection 연산 | **all-to-all payload가 `d/ℓ`배 감소** — 통신 압력을 직접 공격 |
-| **하이브리드 (이질 층)** | **층별로 다른 자원 프로파일의 스케줄링** | 평균 비용 |
-| 깊이 ↓ 너비 ↑ | TP 통신 대역폭 | **직렬 지연** |
-| MTP / speculative | draft 검증용 여유 연산, 지연 변동 흡수 | 메모리 대역폭 (실효 배치↑) |
-| FP8 / FP4 | 해당 포맷 tensor core, 양자화 오버헤드 | **용량·대역폭·연산 동시** |
-| **KV 계층화** (Dynamo KVBM, LMCache, Mooncake) | CPU DRAM·NVMe 계층, KV 전송 대역폭, 캐시 관리 | **HBM 용량** — 계층 밖으로 밀어낸다 |
-| **컨텍스트 전용 GPU** (Rubin CPX) | 하드웨어 등급 분리, 작업 라우팅 | prefill용 HBM 수요 |
-| 1M 컨텍스트 | 위 전부 + PD 분리 + CP + KV 전송 | — |
+1. **같은 축을 두 번 줄이는가.** GQA와 MLA는 보통 대안 관계다.
+2. **품질 손실이 누적되는가.** window·압축·저정밀을 함께 쓰면 개별 오차가 겹친다.
+3. **병목이 이동했는가.** KV를 충분히 줄이면 weight read, compute, communication 또는
+   불규칙 gather가 다음 병목이 된다.
 
-### 아키텍처만 보면 오해하기 쉬운 지점
-
-`01`부터 `08`까지만 읽으면 이런 결론에 도달하기 쉽다.
-"MLA·희소·고정 상태·양자화가 겹쳐 KV를 45배 줄였으니, 이제 메모리 용량은
-풀린 문제이고 병목은 통신이나 스케줄링으로 넘어갔다."
-
-**업계 동향을 보면 그렇지 않다.**
-KV를 45배 줄인 것은 맞지만, **컨텍스트 길이와 요청당 토큰 수가 그보다 빠르게 늘었다.**
-
-### 업계가 실제로 말하고 있는 것
-
-📎 인프라 업체와 벤더 자료를 모아보면 논조가 일관된다.
-
-| 출처 성격 | 요지 |
-|---|---|
-| 스토리지·인프라 업체 분석 | **"메모리 월은 일시적 제약이 아니라 에이전트 시대를 정의하는 인프라 과제"** |
-| 동일 | **"긴 컨텍스트는 병목을 가중치에서 KV cache로 옮긴다"** |
-| 메모리 업체(Micron) 언급 | HBM 수요 증가가 공급을 압박한다. **DDR5와 3:1 교환 비율**이고 세대가 갈수록 나빠진다 |
-| NVIDIA 메시지 | 조준점이 명시적으로 **조 단위 파라미터 + 100만 토큰 컨텍스트** 워크로드 |
-
-### 에이전트가 워크로드 모양을 바꿨다
-
-📎 이게 결정적이다.
-
-| | 기존 챗 | **에이전트** |
-|---|---|---|
-| 요청당 입력 토큰 | 수백~수천 | **5만 ~ 50만** |
-| 요청당 출력 토큰 | 수백~수천 | **수백** |
-| 토큰 소비량 | 기준 | **최대 15배** |
-| 형태 | 한 번 묻고 답함 | 도구 호출이 **수십~수백 라운드**, 매번 앞부분 재사용 |
-
-입력이 크고 출력이 작다는 건 **prefill 지배 워크로드**라는 뜻이다.
-그리고 라운드마다 앞부분이 같으니 **prefix cache가 절대적으로 중요해진다**(`09-serving` 9.3).
-
-`09-serving` 9.3에서 "에이전트 워크로드에서 특히 그렇다"고 썼는데,
-**"특히"가 아니라 "그것 때문에 판이 바뀌었다"** 가 맞다.
-
-### 그래서 대응이 세 방향으로 갈라졌다
-
-**① 아키텍처가 KV를 줄인다** — 이 위키의 `01`·`02`·`08`이 전부 이것이다.
-`99.6`에서 본 대로 45배까지 줄였다.
-
-**② 메모리를 계층화한다** 📎 — 새로 등장한 축이고, 이 위키가 놓치고 있던 부분이다.
-
-```
- GPU HBM  ──►  CPU DRAM  ──►  로컬 NVMe  ──►  네트워크 스토리지
-   빠름/작음                                        느림/큼
-```
-
-| 무엇 | 내용 |
-|---|---|
-| **NVIDIA Dynamo KVBM** | Dynamo 내장 KV 오프로딩. CPU·디스크 계층 지원, KV 인지 라우팅과 통합 |
-| **NVIDIA ICMSP/CMX** (CES 2026) | GPU KV cache를 **NVMe까지 확장한 4계층**. NVMe에 있는 KV를 **컨텍스트 메모리 주소 공간의 일부**로 다루고, **추론 실행 간에 영속**시킨다 |
-| **LMCache** | vLLM·SGLang·Dynamo에 영속 백엔드를 붙이는 KV 엔진 |
-| **Mooncake** | 로컬 NVMe를 모아 **분산 영속 캐시 계층**으로. 긴 컨텍스트 재사용과 TTFT 개선 |
-| **NIXL** | Dynamo와 LMCache가 공유하는 KV 블록 전송 계층 |
-
-📎 효과로 **"같은 H100으로 동시 사용자 10배"** 같은 수치가 제시된다.
-
-> 💡 **"KV cache가 추론의 메모리 계층이 되고 있다"** 는 표현이 나올 정도다.
-> 주목할 건 ICMSP가 **NVMe의 KV를 주소 공간에 넣고 실행 간에 영속시킨다**는 점이다.
-> KV cache를 "GPU 안의 임시 버퍼"가 아니라 **관리해야 할 데이터 계층**으로 다루겠다는 것이고,
-> 이건 아키텍처가 아니라 **시스템 설계의 변화**다.
-
-**③ 하드웨어가 분화한다** — `99.6`의 Rubin CPX. 컨텍스트 처리용으로
-HBM 대신 GDDR7을 쓰는 별도 GPU 등급이 생겼다.
-
-### 수정된 결론
-
-> **메모리 용량은 여전히 최대 병목이다. 오히려 심해졌다.**
-> 다만 **"HBM만으로 푸는 문제"에서 벗어나 세 층위로 흩어졌다** —
-> 아키텍처(KV 압축), 시스템(메모리 계층화), 하드웨어(등급 분화).
->
-> 통신·비정형 접근·이질적 스케줄링은 **용량을 대체한 것이 아니라 그 위에 얹힌 것**이다.
->
-> | | 상태 |
-> |---|---|
-> | **메모리 용량** | **여전히 1순위.** 에이전트 워크로드가 압력을 키웠다 |
-> | ① 노드 간 통신 | MoE를 쓰는 한 실재. 실측으로 절반을 넘는 경우가 흔하다 |
-> | ② 비정형 접근(gather) | 정성적 근거뿐 — **이 위키에서 가장 약한 주장** |
-> | ③ 이질적 스케줄링 | 층 구조가 실제로 깨졌고 서빙 스택이 대응 중 |
->
-> **차세대 서빙 시스템의 과제는 "HBM 용량을 어떻게 늘리느냐"가 아니라
-> "HBM 밖으로 나간 KV를 어떻게 관리하느냐"로 옮겨가고 있다.**
-
-### 이 결론의 근거와 한계
-
-**메모리 용량이 여전히 1순위라는 근거**
-
-- 📎 인프라 업체 분석들이 **"메모리 월은 에이전트 시대를 정의하는 인프라 과제"** 로 서술
-- 📎 에이전트 워크로드가 요청당 **5만~50만 입력 토큰**, 토큰 소비 최대 15배
-- 📎 **NVIDIA가 컨텍스트 전용 GPU 등급(Rubin CPX)을 신설**했다.
-  용량이 문제가 아니었다면 나올 이유가 없는 제품이다
-- 📎 **ICMSP/CMX가 NVMe를 컨텍스트 메모리 주소 공간에 편입**시킨다.
-  HBM 안에서 감당이 안 된다는 것을 벤더가 제품으로 인정한 셈이다
-- 📎 Micron이 HBM 공급 압박과 **DDR5 대비 3:1 교환 비율**을 언급
-- ✅ `99.6` — KV를 45배 줄인 V4-Pro조차 1M 컨텍스트 1,800명이면 랙 하나가 찬다
-
-**압력 이전에 대한 근거**
-
-- `04-moe` 4.6 — MoE 모델에서 레이어당 all-to-all 두 번, 61층이면 120회 이상
-- `01-attention` 1.7 — NSA가 블록 단위 선택을 택한 이유가 gather 효율
-- `02-linear-attention` 2.5, `01` 1.9 — 층별 프로파일 불균형
-- 📎 NVLink 6가 per-GPU 3.6 TB/s로 두 배가 되었고, 자료들이 이를 MoE
-  all-to-all과 연결짓는다
-- ✅ **`04-moe` 4.6 — LatentMoE가 결정적 근거다.**
-  Nemotron 3와 Kimi K3가 expert 연산을 latent 공간으로 내린 이유가
-  **가중치 읽기와 all-to-all payload를 함께 `d/ℓ`배 줄이기 위해서**다.
-  통신이 병목이 아니었다면 나올 이유가 없는 설계다.
-- ✅ **`04-moe` 4.6 — 실측 범위도 있다.**
-  all-to-all이 차지하는 시간이 **노드 안 ~20%, 노드를 넘으면 40~60%**,
-  EP=6에서는 **77%** 까지 보고된다.
-  **①은 이제 추론이 아니라 관측이다.**
-
-- ✅ `01-attention` 1.9 — V4가 CSA와 HCA를 **1:1로 교대**한다.
-  61층 중 58층이 두 종류로 갈리고, 앞 2층은 SWA, 마지막 1층은 또 다르다.
-  **③의 가장 강한 사례다** — "모든 층이 같다"는 전제가 완전히 깨졌다.
-- ✅ vLLM 배포 문서 — 같은 모델 안에서 **MoE는 FP4, attention은 FP8**로 정밀도가 갈린다.
-  이질성이 attention 종류를 넘어 **정밀도까지** 확장되고 있다.
-
-**한계 — 세 항목의 근거 수준이 다르다**
-
-| | 근거 수준 |
-|---|---|
-| **① 노드 간 통신** | ✅ **관측** — LatentMoE라는 아키텍처 대응 + 실측 시간 비중 |
-| **② 비정형 메모리 접근** | ⚠️ **가설** — NSA가 블록 단위를 택한 이유라는 정성적 근거뿐.<br>**gather의 실효 대역폭을 측정한 자료를 찾지 못했다** |
-| **③ 이질적 스케줄링** | 🟡 **관측에 가까움** — V4의 1:1 교대, K3의 3:1,<br>SGLang이 하이브리드용 메모리 풀을 따로 만든 것이 방증 |
-
-②가 가장 약하다. 이 위키에서 제일 자신 없는 주장이고,
-누가 실측하면 뒤집힐 수 있다.
-
-- 📎 all-to-all 실측 수치들은 **여러 연구의 서로 다른 환경**에서 나온 것이다.
-  범위와 경향만 받아들여야 한다 (C6의 교훈).
-- 📎 하드웨어 스펙은 다수 자료가 일치하지만 데이터시트 PDF를 직접 대조하지는 않았다.
-
-이 결론을 확정하려면 실제 워크로드에서 통신 시간·gather 효율·층별 실행 시간을
-측정해야 한다. 그건 이 위키의 범위 밖이고, 다음 단계의 일이다.
+> 💡 절감률보다 중요한 질문은 **“이 절감 뒤에 어떤 kernel과 통신이 critical path에
+> 남는가”**다.
 
 ---
 
-## 남은 질문들
+## 99.4 MoE — 연산을 줄이고 통신을 늘리다
 
-두 종류로 나뉜다.
+MoE는 총 파라미터를 늘리면서 토큰당 활성 파라미터를 제한한다. 총 파라미터는
+**weight residency**, 활성 파라미터는 주로 **토큰당 compute·weight read**를 결정한다.
 
-**자료가 근거를 밝히지 않는 것**
+| 모델 | 총 / 활성 파라미터 | routed expert 선택 | 핵심 시스템 포인트 |
+|---|---|---|---|
+| Mixtral 8×7B | 약 47B / 13B | 8개 중 2개 | 비교적 굵은 expert |
+| DeepSeek-V3 | 671B / 37B | 256개 중 8개 + shared | fine-grained expert, aux-loss-free balancing |
+| DeepSeek-V4-Pro | 1.6T / 49B | 384개 중 6개 + shared | 더 높은 sparsity, expert parallel 필요 |
+| Kimi K3 | 2.8T / 104B | 896개 중 16개 + shared | LatentMoE와 load balancing, 대규모 EP |
 
-| 질문 | |
+```
+토큰 hidden state
+  → router
+  → dispatch all-to-all
+  → expert grouped GEMM
+  → combine all-to-all
+```
+
+expert를 잘게 나누면 선택 조합은 늘지만, expert당 token 수가 줄어 GEMM이 작아지고
+통신·동기화 비중이 커질 수 있다. 따라서 expert 수가 많다는 사실만으로 효율을
+판단할 수 없다. topology-aware placement, token balancing, grouped GEMM, 통신·계산
+overlap을 함께 봐야 한다.
+
+LatentMoE는 이 문제에 대한 한 방향이다. expert 사이에 오가는 hidden vector를 더 작은
+latent dimension으로 바꾸어 communication payload와 expert weight를 줄이는 대신,
+down/up projection을 추가한다. 즉 **통신을 projection compute와 교환**한다.
+
+---
+
+## 99.5 하이브리드 — 층마다 역할을 나누다
+
+긴 문맥 모델은 모든 층을 같은 방식으로 만들 필요가 없다.
+
+| 모델 | 값싼 층 | 전역·정밀 층 | 배치 의도 |
+|---|---|---|---|
+| Gemma 3 | local SWA | global attention | 지역 mixing을 반복하고 주기적으로 전역 연결 |
+| Qwen3-Next | Gated DeltaNet | Gated Attention | 고정 상태와 token-level 검색 결합 |
+| Kimi Linear / K3 | KDA | Gated MLA | recurrent 효율과 global retrieval 결합 |
+| DeepSeek-V4 | CSA | HCA | 정밀한 sparse 검색과 거친 global summary를 교대 |
+
+하이브리드의 평균 FLOPs만 보면 놓치는 것이 있다.
+
+- 층마다 KV 크기와 kernel이 달라 **메모리 풀을 따로 계산**해야 한다.
+- recurrent 층과 attention 층은 prefix-cache hit 조건이 다르다.
+- pipeline stage별 일이 달라져 균형이 깨질 수 있다.
+- CUDA graph, kernel fusion과 quantization 경로가 layer type마다 달라진다.
+
+따라서 하이브리드는 평균 비용을 줄이는 대신 **스케줄링과 상태 관리의 이질성**을
+늘린다. `10-serving`의 hybrid KV cache와 prefix caching이 이 문제를 다룬다.
+
+---
+
+## 99.6 모델 규모를 시스템 크기로 번역하기
+
+### 가중치
+
+가중치의 이론적 최소 크기는 다음과 같다.
+
+$$
+\text{weight bytes} \approx N_{\text{total}} \times \frac{b_w}{8}
+$$
+
+1T 파라미터는 BF16이면 약 2 TB, 8비트면 약 1 TB, 4비트면 약 0.5 TB다.
+실제 배포에는 scale·metadata, padding, 복제, runtime workspace가 추가된다.
+
+MoE에서는 두 숫자를 구분해야 한다.
+
+| 숫자 | 주로 결정하는 것 |
 |---|---|
-| V4가 CSA:HCA를 **1:1**로 둔 근거 | 논문에 ablation이 없다 |
-| V4에서 활성 expert가 **8 → 6**으로 줄어든 이유 | 논문이 설명하지 않는다 |
+| **총 파라미터** | 전체 weight를 어디에 배치할지, 최소 aggregate memory |
+| **활성 파라미터** | 토큰당 expert compute와 weight traffic |
 
-**아직 확인되지 않은 것**
+활성 파라미터가 작아도 모든 expert weight는 어딘가에 상주하거나 필요할 때 가져와야
+한다. 그래서 MoE는 compute를 줄여도 expert parallel과 weight placement 문제를 남긴다.
 
-| 질문 | |
+### KV와 recurrent state
+
+일반 attention의 KV는 대략 다음과 같다.
+
+$$
+\text{KV bytes}
+= B \times S \times L \times 2 \times n_{kv} \times d_h \times b_{kv}
+$$
+
+여기서 `b_kv`는 항목당 byte다. KV는 batch `B`, context `S`, layer `L`에 모두
+비례한다. 반면 KDA·Mamba 층의 recurrent state는 sequence length와 무관하지만,
+요청마다 별도 상태가 필요하다.
+
+### 하드웨어를 읽는 법
+
+| 자원 | 모델 설계와의 연결 |
 |---|---|
-| **희소 attention의 gather 실효 대역폭** | 측정 자료가 없다. `99.7` ②가 가설로 남는 이유 |
-| V4-Pro 마지막 층의 `compress_ratio`=0 | 무엇을 뜻하는지 불명 |
-| K3에서 decoupled RoPE와 NoPE의 결합 방식 | config에 둘 다 있으나 결합 방식이 불명 |
-| CLA/YOCO가 대형 모델에 오지 않는 이유 | 품질 문제인지 수확 체감인지 불명 |
-| KV 계층화(NVMe 오프로딩)의 실제 지연·처리량 | 벤더 주장 외 독립 측정 자료가 없다 |
+| HBM 용량 | weight·KV·activation을 동시에 수용 가능한가 |
+| HBM 대역폭 | decode에서 weight와 KV를 얼마나 빨리 읽는가 |
+| scale-up link | TP all-reduce와 노드 내 EP가 감당 가능한가 |
+| scale-out fabric | 노드 간 EP·PP·KV transfer가 critical path가 되는가 |
+| on-chip SRAM | tile·scale·state update를 재사용할 수 있는가 |
+
+B200의 192 GB HBM3e·8 TB/s와 Rubin의 최대 288 GB HBM4·22 TB/s처럼 용량과
+대역폭은 함께 늘고 있다. 다만 peak 사양은 실제 workload의 achieved bandwidth가
+아니며, kernel locality와 topology가 이용률을 결정한다.
+
+---
+
+## 99.7 시스템이 준비해야 할 것
+
+### 설계 선택 → 시스템 요구
+
+| 아키텍처 선택 | 새로 요구하는 것 | 덜어주는 것 |
+|---|---|---|
+| MQA·GQA | head grouping에 맞는 kernel·TP 배치 | KV 용량·읽기량 |
+| MLA | latent projection 흡수, MLA 전용 kernel | KV 차원 |
+| sparse attention | indexer·top-k·지역성 있는 gather | 읽는 토큰과 attention FLOPs |
+| KDA·Mamba | recurrent·chunked kernel, 요청별 state 관리 | 해당 층의 토큰별 KV |
+| CLA·YOCO | layer coupling을 반영한 pipeline | 레이어별 KV 중복 |
+| fine-grained MoE | EP all-to-all, balancing, grouped GEMM | 활성 compute |
+| LatentMoE | down/up projection | expert payload와 weight 크기 |
+| 하이브리드 | layer-type-aware allocation·prefix cache·scheduling | 평균 메모리·연산량 |
+| speculative·MTP | draft·verify scheduling, rollback | 토큰당 weight-read 비용 |
+| FP8·FP4 | scale 관리, 지원 kernel, 품질 검증 | 용량·대역폭·compute |
+| test-time memory | update engine, 상태 격리·복구·수명 관리 | 고정 update의 표현력 한계 |
+
+### 시대별 병목과 하드웨어 관점
+
+| 시대 | 두드러진 병목 | 시스템·하드웨어의 대응 |
+|---|---|---|
+| 초기 Transformer | matrix compute와 memory bandwidth | systolic/tensor core, HBM, on-chip buffer |
+| 초거대 dense·MoE | aggregate memory와 device communication | TPU Pod, NVLink/NVSwitch, ICI, collective 최적화 |
+| 긴 문맥 serving | KV 용량·대역폭과 prefill/decode 간섭 | PagedAttention, prefix cache, PD 분리, KV transfer |
+| hybrid·state model | layer별 kernel·상태·cache 규칙 차이 | type-aware memory manager와 scheduler |
+| Titans·HOPE 이후의 연구 방향 | memory update와 여러 갱신 주기 | update engine, frequency-aware hierarchy, state isolation |
+
+### 최종 인사이트
+
+1. **병목은 사라지기보다 이동한다.** KV 압축은 projection·indexer·gather를,
+   MoE는 all-to-all을, 저정밀은 scale 관리와 검증을 만든다.
+2. **평균 FLOPs만으로는 serving 비용을 예측할 수 없다.** weight·KV byte, achieved
+   bandwidth, collective와 layer별 critical path를 함께 봐야 한다.
+3. **하이브리드가 늘수록 시스템도 모델 구조를 알아야 한다.** 모든 층에 같은 KV page,
+   prefix rule과 quantization kernel을 적용하기 어렵다.
+4. **read-mostly 최적화만으로는 test-time memory를 설명할 수 없다.** 추론 중 상태를
+   갱신한다면 update 주기, write traffic, 요청 간 격리와 복구가 일급 설계 대상이 된다.
+
+> Transformer 최적화의 질문은 “연산을 얼마나 줄였나”에서
+> **“어떤 정보를 어디에 두고, 얼마나 자주 읽고 쓰며, 어느 링크를 건너는가”**로
+> 확장되고 있다.
 
 ---
 
 ## Sources
 
-이 파일은 앞의 아홉 파일에서 정리한 내용을 종합한 것이다.
-개별 출처는 각 파일의 Sources를 참조.
+개별 수식과 구현 출처는 각 컴포넌트 장의 Sources를 참조한다. 이 장의 비교에 직접
+사용한 핵심 자료는 다음과 같다.
 
-**추가로 참조한 것**
+**논문·기술 리포트**
 
-**T1**
-- 각 모델의 HuggingFace `config.json` — `99.1` 매트릭스의 수치
-- **DeepSeek-V4 (arXiv:2606.19348) ✅ 원문 대조 완료**
-- **DeepSeek-V4-Pro / V4-Flash `config.json` ✅** — expert 384/256, top-6,
-  `compress_ratios`, `hc_mult`=4, `hc_sinkhorn_iters`=20, `index_topk`=1024
-- **Kimi K3 `config.json` ✅** — 93층, `full_attn_layers` 24 / `kda_layers` 69,
-  `mla_use_nope`, `mla_use_output_gate`, `short_conv_kernel_size`=4,
-  `routed_expert_hidden_size`=3584, 896/16/shared 2, MXFP4 group 32
-- **GLM-5 `config.json` ✅** — `glm_moe_dsa`, 78층, `kv_lora_rank`=512,
-  `index_topk`=2048, 256/8/shared 1
-- **Nemotron 3 (arXiv:2512.20856 / 2604.12374) ✅** — LatentMoE 구조
-- Google 개발자 문서 (Gemma 3n) ✅ — PLE, MatFormer, effective 파라미터
-- Kimi K3 / GLM-5 **기술 리포트 본문**은 여전히 ⚠️ 미대조 (config만 확인)
+- Vaswani et al. (2017), *Attention Is All You Need*, arXiv:1706.03762
+- Ainslie et al. (2023), *GQA*, arXiv:2305.13245
+- Gu & Dao (2023), *Mamba*, arXiv:2312.00752
+- DeepSeek-AI (2024), *DeepSeek-V3*, arXiv:2412.19437
+- DeepSeek-AI (2025), *DeepSeek-V3.2* — DeepSeek Sparse Attention
+- DeepSeek-AI (2026), *DeepSeek-V4*, arXiv:2606.19348
+- Kimi Team (2025), *Kimi Linear*, arXiv:2510.26692
+- Kimi Team (2026), *Kimi K3*, arXiv:2607.24653
+- Behrouz et al. (2025), *Titans*, arXiv:2501.00663
+- Behrouz et al. (2025), *ATLAS*, arXiv:2505.23735
+- Behrouz et al. (2025), *Nested Learning*, arXiv:2512.24695
 
-**T2**
-- **vLLM Recipes / SGLang Cookbook** — V4-Pro·V4-Flash 배포 설정,
-  혼합 정밀도(MoE FP4 + 나머지 FP8), 병렬화 구성, 컨텍스트 상한
-- **NVIDIA Dynamo 문서** — KVBM(KV Block Manager), KV 오프로딩 계층, NIXL 전송
-- **LMCache** (github.com/LMCache/LMCache) — 영속 KV 백엔드, vLLM/SGLang/Dynamo 연동
-- **Mooncake / KVCache.AI** — NVMe 풀링 분산 영속 캐시
-- **Marconi** (arXiv:2411.19379) — 하이브리드 모델 prefix cache
+**공식 설정·시스템 문서**
 
-**T3 — `99.6`·`99.7`의 시스템·하드웨어 서술**
-- NVIDIA 보도자료 및 기술 분석 (Rubin CPX, NVL144 CPX, GB200/GB300 NVL72 스펙)
-- 인프라·스토리지 업체 분석 (메모리 월, 에이전트 워크로드 토큰 통계)
-- 모델 규모·sparsity 추세 분석
-> ⚠️ **`99.6`과 `99.7`은 이 위키에서 T3 비중이 가장 높은 절이다.**
-> 랙 스펙, 토큰 통계, 시장 동향은 대부분 벤더 발표와 업계 분석 기반이고
-> 논문처럼 검증된 것이 아니다. **수치는 자릿수만 받아들이는 게 안전하다.**
+- 각 모델의 공식 `config.json`과 model card
+- vLLM, *Hybrid KV Cache Manager*
+- Kwon et al. (2023), *PagedAttention*, arXiv:2309.06180
+- Pan et al. (2024), *Marconi: Prefix Caching for the Era of Hybrid LLMs*, arXiv:2411.19379
+- NVIDIA B200·HGX Rubin 공식 사양
 
-**T3**
-- Sebastian Raschka, *LLM Architecture Gallery* 및 분기별 아키텍처 리뷰
-  — `99.1` 매트릭스의 채택 현황, Arcee Trinity의 coarse MoE, Tiny Aya의 선택들
-- 각 모델 릴리스에 대한 2차 분석 자료
+**범위와 주의**
 
-**미검증 항목 (이 파일 전반)**
-- ⚠️ 표시된 모든 셀
-- `99.7`의 결론 중 **② gather 효율**만 여전히 측정 근거가 없는 가설이다
-- `99.6`의 "랙에 몇 명" 표 — 개략 계산이며 활성값·단편화·오버헤드를 무시했다
-- `99.6`·`99.7`의 하드웨어·시장 수치 — 대부분 벤더 발표와 2차 분석 기반
-- 계열별 서술의 "의도" 해석 — 대부분 결과물에서 역추론한 것
+- 모델 수치와 하드웨어 사양은 특정 변형의 값이다. 다른 크기·정밀도·제품에
+  일반화하지 않는다.
+- 벤치마크 배수와 사용자 수 추산은 workload·runtime 의존성이 커서 이 종합표에서
+  제외했다.

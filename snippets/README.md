@@ -37,22 +37,23 @@ python snippets/test_equivalence.py
 | `test_linear_attention_recurrent` | 재귀 형태 == 이차 형태, 상태 크기가 `S`와 무관 | `02` 2.1 |
 | `test_deltanet_forms` | 3단계 delta rule == `(I − βkkᵀ)S + βkvᵀ` | `02` 2.3 |
 | `test_linear_lineage` | KDA ⊃ Gated DeltaNet ⊃ DeltaNet | `02` 2.4 |
-| `test_rope_relative` | `⟨R_m q, R_n k⟩` 가 `m − n` 에만 의존 | `03` 3.2 |
+| `test_rope_relative` | `⟨R_m q, R_n k⟩` 가 `m − n` 에만 의존 | `04` 4.2 |
 
 ---
 
 ## 볼 만한 것 두 개
 
 **`test_mla_absorption`** — 이 위키에서 가장 확인할 가치가 있는 부분이다.
-`01-attention` 1.4에서 "up-projection이 가중치에 흡수되어 공짜가 된다"고 했는데,
-말로만 들으면 미심쩍다. 코드로 보면 명확하다.
+`01-attention` 1.4에서 up-projection을 매 토큰마다 명시적으로 복원하지 않아도 된다고
+했는데, 코드로 보면 결합법칙이 명확하다.
 
 ```
 naive:     q · (c·W_UK)ᵀ        → K를 복원해야 한다
 absorbed:  (q·W_UKᵀ) · cᵀ       → 괄호만 옮겼는데 복원이 사라진다
 ```
 
-출력 차이가 `1e-16` 수준이다. 완전히 같은 계산이고, **캐시에 담기는 양만 다르다.**
+부동소수점 반올림 범위 안에서 같은 결과가 나오며, **전체 K를 materialize하지 않고
+latent만 캐시**할 수 있다.
 
 **`test_linear_lineage`** — 축2 계보가 실제로 포함 관계인지 확인한다.
 
@@ -72,12 +73,3 @@ KDA(채널별 α)          != Gated DeltaNet    ✓  ← 표현이 실제로 넓
 - 배치 차원을 뺐다. 읽기 쉽도록 헤드 하나씩 `(T × D)` 2차원으로 계산한다.
 - 실제 커널의 최적화(융합, 타일링, gather 처리)는 재현하지 않는다.
   **논문 수식과 실제 커널의 차이**는 각 문서의 ⚠️ 박스를 참조.
-
-## 아직 안 한 것
-
-| | 왜 |
-|---|---|
-| NSA의 세 갈래 구조 | 압축 MLP까지 구현해야 해서 분량이 커진다 |
-| DeltaNet chunked 병렬 == 재귀 | 청크 알고리즘 유도가 필요 |
-| decoupled RoPE (`03` 3.4) | MLA 흡수와 RoPE 충돌을 함께 재현해야 함 |
-| mHC의 Sinkhorn 사영 (`05` 5.6) | 원문 대조 후 |

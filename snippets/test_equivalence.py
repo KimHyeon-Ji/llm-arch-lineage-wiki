@@ -232,7 +232,7 @@ def test_mla_absorption():
 
     check("MLA absorbed == naive", y_abs, y_naive, atol=1e-8)
     note(f"캐시: naive 는 K,V 로 {2 * N_H * D_H}개 / absorbed 는 latent {d_c}개")
-    note(f"      → {2 * N_H * D_H / d_c:.0f}배 차이. up-projection 은 가중치에 흡수되어 사라짐")
+    note(f"      → {2 * N_H * D_H / d_c:.0f}배 차이. 중간 K/V를 만들지 않도록 projection을 재배치")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -265,7 +265,7 @@ def test_swa_full_window():
     narrow = sdpa(q[0], k[0], v[0], allow=window_allow(3))
     full = sdpa(q[0], k[0], v[0], allow=causal_allow)
     assert maxdiff(narrow, full) > 1e-6, "윈도우를 좁혔는데 결과가 같다 — 이상하다"
-    print(f"  PASS  SWA(W=3) != full  (정보를 실제로 버린다)              "
+    print(f"  PASS  SWA(W=3) != full  (창 밖 토큰에 직접 접근하지 않는다)     "
           f"max|diff| = {maxdiff(narrow, full):.2e}")
 
 
@@ -413,7 +413,7 @@ def test_linear_lineage():
 
 
 # ─────────────────────────────────────────────────────────────
-# 03-position 3.2 — RoPE
+# 04-position 4.2 — RoPE
 # ─────────────────────────────────────────────────────────────
 
 def rope(x, pos, theta=10000.0):
@@ -430,7 +430,7 @@ def rope(x, pos, theta=10000.0):
 
 
 def test_rope_relative():
-    """⟨R_m q, R_n k⟩ 는 m − n 에만 의존한다.  → 03-position 3.2"""
+    """⟨R_m q, R_n k⟩ 는 m − n 에만 의존한다.  → 04-position 4.2"""
     q, k = randvec(D_H), randvec(D_H)
 
     pairs = [(3, 5), (10, 12), (100, 102), (5000, 5002)]     # 전부 차이가 −2
@@ -466,7 +466,7 @@ SUITES = [
         test_deltanet_forms,
         test_linear_lineage,
     ]),
-    ("03-position 3.2        RoPE", [test_rope_relative]),
+    ("04-position 4.2        RoPE", [test_rope_relative]),
 ]
 
 

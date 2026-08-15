@@ -55,9 +55,10 @@
   다음 토큰 확률
 ```
 > **그림 0.1** — decoder-only Transformer의 뼈대. 이 위키에서 다루는 모든 변형은
-> 이 그림의 어느 한 부분을 바꾼 것이다. `01`·`02`는 Attention 블록, `04`는 FFN 블록,
-> `05`는 Norm과 (+) 화살표, `03`은 Attention 안의 위치 정보, `06`은 이 그림의
-> 세로 길이와 가로 폭 자체를 건드린다.
+> 이 그림의 어느 한 부분을 바꾼 것이다. `01`·`02`는 Attention과 recurrent state,
+> `03`은 그 상태를 추론 중 학습되는 memory로 확장한다. `04`는 Attention 안의 위치 정보,
+> `05`는 FFN 블록, `06`은 Norm과 (+) 화살표, `07`은 이 그림의 세로 길이와 가로 폭
+> 자체를 건드린다.
 
 ### 기호
 
@@ -121,7 +122,7 @@ LLM이 답을 만드는 과정은 성격이 아주 다른 두 단계로 나뉜�
 **둘째, 컨텍스트 길이 `S`에 비례해서 커지는 건 7번뿐이다.** 4, 8, 9번은 컨텍스트가
 1K든 1M이든 하는 일이 똑같다. 그래서 컨텍스트가 길어질수록 7번의 비중이 계속 커진다.
 
-이 둘이 나뉘어 있다는 점이 중요하다. `04-moe`는 9번을 공격하고, `01`·`02`는 7번을
+이 둘이 나뉘어 있다는 점이 중요하다. `05-moe`는 9번을 공격하고, `01`·`02`는 7번을
 공격한다. **서로 다른 문제를 푸는 것이고, 둘 다 필요하다.**
 
 ---
@@ -176,16 +177,17 @@ LLM이 답을 만드는 과정은 성격이 아주 다른 두 단계로 나뉜�
 ## 0.4 아키텍처를 움직이는 압력들
 
 뼈대는 7년째 그대로인데 세부는 계속 바뀌어 왔다. 무엇이 바꾸게 만드는가?
-크게 여섯 가지 압력으로 정리된다. **이 위키의 각 파일은 대체로 하나의 압력에 대응한다.**
+크게 일곱 가지 압력으로 정리된다. **이 위키의 각 파일은 대체로 하나의 압력에 대응한다.**
 
 | 압력 | 무엇이 문제인가 | 대표적인 대응 | 파일 |
 |---|---|---|---|
-| **메모리** | 컨텍스트가 길어지면 KV cache를 감당할 수 없다 | KV 압축·희소화, 고정 state, 양자화 | 01, 02, 08 |
-| **연산량** | 모델을 키우면 토큰당 연산이 그대로 늘어난다 | MoE — 파라미터는 늘리되 활성은 고정 | 04 |
-| **직렬 지연** | 레이어는 순서대로 통과할 수밖에 없다 | 깊이↓ 너비↑, parallel block, 한 스텝에 여러 토큰 | 06, 07 |
-| **통신** | 모델이 여러 GPU에 흩어져 있다 | 병렬화 전략, EP의 all-to-all | 04, 09 |
-| **안정성** | 깊고 큰 모델은 학습이 잘 터진다 | 정규화 위치, QK-Norm, residual 구조 | 05 |
-| **길이 일반화** | 학습 때보다 긴 입력을 어떻게 다루나 | 위치 인코딩과 확장 기법 | 03 |
+| **메모리** | 컨텍스트가 길어지면 KV cache를 감당할 수 없다 | KV 압축·희소화, 고정 state, 양자화 | 01, 02, 09 |
+| **메모리 갱신** | 고정 state는 무엇을 얼마나 오래 기억할지 스스로 바꾸기 어렵다 | 추론 중 학습되는 neural memory | 03 |
+| **연산량** | 모델을 키우면 토큰당 연산이 그대로 늘어난다 | MoE — 파라미터는 늘리되 활성은 고정 | 05 |
+| **직렬 지연** | 레이어는 순서대로 통과할 수밖에 없다 | 깊이↓ 너비↑, parallel block, 한 스텝에 여러 토큰 | 07, 08 |
+| **통신** | 모델이 여러 GPU에 흩어져 있다 | 병렬화 전략, EP의 all-to-all | 05, 10 |
+| **안정성** | 깊고 큰 모델은 학습이 잘 터진다 | 정규화 위치, QK-Norm, residual 구조 | 06 |
+| **길이 일반화** | 학습 때보다 긴 입력을 어떻게 다루나 | 위치 인코딩과 확장 기법 | 04 |
 
 압력마다 성격이 다르다는 점을 봐두면 좋다. 메모리·연산량·통신·지연은 **비용** 문제이고,
 안정성과 길이 일반화는 **품질** 문제다. RMSNorm이나 RoPE가 나온 이유는 빨라지려는 게
@@ -289,7 +291,7 @@ H100의 균형점은 대략 150 FLOP/byte다 (`0.8` 참고). 이 GPU는 1바이�
 > 그래서 배치를 아무리 키워도 attention은 memory-bound에서 빠져나오지 못한다.
 
 이 비대칭이 `01-attention`의 KV 압축 계보와 `02-linear-attention`의 고정 state 계보를
-동시에 밀어올린 힘이다. 반대로 `04-moe`는 이 비대칭과는 무관한, 연산량 쪽 이야기다.
+동시에 밀어올린 힘이다. 반대로 `05-moe`는 이 비대칭과는 무관한, 연산량 쪽 이야기다.
 
 ---
 
@@ -309,7 +311,7 @@ H100의 균형점은 대략 150 FLOP/byte다 (`0.8` 참고). 이 GPU는 1바이�
 
 같은 GPU에서 둘을 섞어 돌리면 서로를 방해한다. 긴 prefill이 들어오면 진행 중이던
 decode가 밀려서 출력이 뚝뚝 끊긴다. 이 문제와 해법(chunked prefill, PD 분리)은
-`09-serving`에서 다룬다.
+`10-serving`에서 다룬다.
 
 지금 기억할 건 하나다. **어떤 모듈의 비용을 이야기할 때는 prefill인지 decode인지 반드시
 함께 말해야 한다.** 이 위키의 모듈 문서들은 별도 언급이 없으면 decode 기준이다.
@@ -320,22 +322,39 @@ decode가 밀려서 출력이 뚝뚝 끊긴다. 이 문제와 해법(chunked pre
 
 모듈이 시스템에 무엇을 요구하는지 이야기하려면 기준이 될 하드웨어 숫자가 있어야 한다.
 
+### 시대별로 병목이 이동한 방향
+
+먼저 큰 흐름부터 보자. 아래 표는 모든 학습·추론 작업에 통용되는 절대 법칙이 아니라,
+**각 시대에 아키텍처와 시스템 설계를 강하게 밀어낸 대표 병목**을 요약한 것이다.
+
+| 시대 | 대표 워크로드 | 두드러진 병목 | 대표 하드웨어 변화 | 시스템 관점의 질문 |
+|---|---|---|---|---|
+| Transformer 초기 | dense attention, 작은 규모의 학습·추론 | **메모리 대역폭과 데이터 재사용** — 특히 autoregressive decode | HBM, 큰 on-chip/unified buffer, systolic array | 가중치와 KV를 얼마나 덜 옮길 수 있나 |
+| 초거대 모델 | 수백~수천 가속기 학습, MoE | **통신** — collective와 all-to-all | TPU Pod, ICI, 2D→3D topology, optical switching | 칩을 늘려도 선형에 가깝게 확장되는가 |
+| Titans·HOPE 이후의 가능성 | 추론 중 갱신되는 신경 메모리 | **memory update와 계층적 메모리** | ⚠️ update engine, frequency-aware memory hierarchy | 어떤 지식을 어디에 두고 얼마나 자주 갱신할 것인가 |
+
+마지막 행은 제품 로드맵이 아니라 `03-test-time-memory`의 구조에서 도출한 **연구 방향**이다.
+기존 가속기가 `read-mostly` 모델의 행렬곱과 collective에 맞춰졌다면, test-time memory는
+작은 상태를 자주 쓰고 서로 다른 주기로 갱신하는 경로까지 효율화해야 한다.
+
+### GPU 기준 숫자
+
 | GPU | 메모리 | 대역폭 | BF16 (dense) | 균형점 |
 |---|---|---|---|---|
 | A100 80GB SXM | 80 GB HBM2e | 2.0 TB/s | ~312 TFLOPS | ~156 |
-| H100 SXM | 80 GB HBM3 | 3.35 TB/s | ~495 TFLOPS | ~148 |
-| H200 SXM | 141 GB HBM3e | 4.8 TB/s | ~495 TFLOPS | ~103 |
+| H100 SXM | 80 GB HBM3 | 3.35 TB/s | ~989 TFLOPS | ~295 |
+| H200 SXM | 141 GB HBM3e | 4.8 TB/s | ~989 TFLOPS | ~206 |
 | **B200** | **192 GB** HBM3e | **8.0 TB/s** | **2.25 PFLOPS** | **~281** |
-| **R100 (Rubin)** | **288 GB** HBM4 (8 스택) | **22 TB/s** | 미공개 | — |
+| **NVIDIA Rubin GPU** | **288 GB** HBM4 | **22 TB/s** | **4.0 PFLOPS** | **~182** |
 
 📌 B200의 다른 정밀도: FP8 4.5 PFLOPS, **FP4 9 PFLOPS** (전부 dense 기준.
 sparsity 포함 표기는 이 값의 2배다).
 
-📌 R100은 **NVFP4 추론 50 PFLOPS**, NVFP4 학습 35 PFLOPS로 발표되었다.
-BF16 dense 수치는 확인하지 못했다.
+📌 Rubin GPU는 최대 **NVFP4 추론 50 PFLOPS**(sparsity 포함), NVFP4 학습 35 PFLOPS
+(dense)로 발표되었다.
 
-> 📎 B200·R100 값은 여러 자료가 일치하지만 **공식 데이터시트 PDF를 직접 대조한 것은 아니다**
-> (`CONTESTED.md` C4). R100의 22 TB/s는 **8개 HBM4 스택 합산**이라 스택당 약 2.75 TB/s다.
+> ⚠️ Rubin 값은 NVIDIA가 공개한 **최대치(preliminary, up to)** 다. 제품·시스템 구성에
+> 따라 달라질 수 있으며, 22 TB/s는 GPU 전체 HBM4 대역폭이다.
 
 **균형점(machine balance)** 은 `연산 성능 ÷ 메모리 대역폭`이다.
 "1바이트를 읽어오는 동안 몇 번 계산할 수 있는가"를 뜻한다.
@@ -349,19 +368,38 @@ BF16 dense 수치는 확인하지 못했다.
 
 - **메모리 용량이 빠르게 늘고 있다** (80 → 141 → 192 → 288 GB).
   메모리 압력에 대한 하드웨어 쪽 대답이다.
-- **연산 성능이 대역폭보다 빠르게 늘어난다.** H100의 균형점이 ~148인데 B200은 ~281이다.
-  **두 세대 만에 두 배**가 됐다. memory-bound인 decode에는 불리한 방향이고,
-  세대가 지날수록 **읽는 양을 줄이는 일의 가치가 커진다.**
+- BF16 균형점은 세대마다 단조롭게 늘지 않는다. HBM 세대가 바뀌면 대역폭도 크게
+  뛰기 때문이다. 다만 모든 값이 decode의 arithmetic intensity(약 1~2)보다 두 자릿수
+  이상 크므로, **weight·KV traffic을 줄이는 일은 계속 중요하다.**
 
-R100에서 FP4로 계산해보면 이 경향이 더 뚜렷하다.
+Rubin GPU의 최대 NVFP4 inference 수치로 상한을 계산하면
 50 PFLOPS ÷ 22 TB/s ≈ **2,270 FLOP/byte**다. `0.6`에서 본 decode의 바이트당 1~2 FLOP과
-비교하면 **천 배 이상 벌어져 있다.**
+비교하면 매우 큰 차이다.
 
-> 💡 정밀도가 다르므로 BF16 균형점과 직접 비교할 수는 없다.
-> 하지만 **FP4로 서빙한다면 실제로 마주할 숫자**가 이것이고,
-> 방향은 분명하다 — 연산은 넘쳐나고 데이터를 나르는 게 문제다.
+> ⚠️ 이 값은 sparsity가 포함된 peak 상한이며 achieved performance가 아니다.
+> 정밀도와 sparsity가 다르므로 BF16 균형점과 직접 비교하지 않는다. 보여주는 것은
+> 저정밀 peak compute에 비해 데이터 이동을 충분히 공급하기 어렵다는 방향성이다.
 
-GPU 간 연결(NVLink 등)은 통신 압력과 직결되므로 `04-moe`와 `09-serving`에서 따로 다룬다.
+### TPU v1에서 Trillium까지 — 무엇을 해결하려 했나
+
+TPU의 변화는 단순한 FLOPS 증가보다 **병목의 이동**을 보기 좋은 사례다. v1은 한 칩의
+예측 효율에서 시작했지만, v2 이후에는 HBM과 Pod, v4 이후에는 대규모 ICI와 시스템
+재구성, v5·v6에서는 학습과 서빙의 서로 다른 비용 구조까지 함께 다룬다.
+
+| 세대 | 주요 목표 | 핵심 병목 | 메모리·네트워크 특징 | 시스템 관점 핵심 | 아키텍처 키워드 | Google이 해결하려 한 문제 |
+|---|---|---|---|---|---|---|
+| **TPU v1** | 저지연·고효율 추론 | 범용 CPU/GPU의 전력·지연 | 28 MiB software-managed **Unified Buffer**, host 연동 | 예측 경로를 단순하고 결정적으로 | 8-bit, 256×256 systolic array | 음성·검색 등 사내 추론 수요가 데이터센터 계산량을 폭증시키는 문제 |
+| **TPU v2/v3** | 추론 전용에서 **학습**으로 확장 | 모델·activation 용량, 다중 칩 확장 | HBM, 2D torus ICI, 최대 1,024-chip Pod(v3) | 칩이 아니라 **학습용 supercomputer**로 설계 | bfloat16, MXU, liquid cooling(v3) | 큰 신경망을 여러 칩에서 높은 scaling efficiency로 학습 |
+| **TPU v4** | 초거대 모델 학습 | **communication과 장애·배치 유연성** | 32 GiB HBM2, 3D mesh/torus, optical circuit switch | topology를 workload 크기에 맞게 재구성 | OCS, SparseCore, 4,096-chip Pod | PaLM급 모델을 단일 거대 시스템에서 효율적으로 학습 |
+| **TPU v5e / v5p** | 비용 효율 추론·학습 / 최대 규모 학습으로 **제품군 분화** | TCO와 대규모 collective | v5e 256-chip Pod, v5p 8,960-chip 3D torus와 고대역폭 ICI | 모든 작업에 한 칩을 강요하지 않고 목적별 system SKU | Multislice, AI Hypercomputer, 2세대 SparseCore | serving 비용과 frontier training 규모를 동시에 해결 |
+| **TPU v6e (Trillium)** | Transformer·생성 모델의 학습과 서빙 처리량 | HBM·ICI와 compute의 균형 | 32 GB HBM, 1.638 TB/s HBM, 800 GB/s 양방향 ICI, 256-chip Pod | 칩→Pod→데이터센터 fabric을 하나의 계층으로 확장 | 256×256 MXU, 3세대 SparseCore, multislice | 더 큰 가중치·KV cache와 수만 칩 규모 작업을 낮은 비용으로 처리 |
+
+여기서 읽어야 할 방향은 `compute → memory → network`의 단순 교대가 아니다.
+세 병목은 계속 공존하고, 모델이 커질수록 **병목을 푸는 단위가 칩 안 buffer에서 Pod와
+데이터센터 전체로 커졌다.** Titans·HOPE가 실제 시스템으로 이어진다면 그 다음 단위는
+갱신 주기가 다른 메모리를 함께 다루는 **시간 계층**이 될 수 있다.
+
+GPU 간 연결(NVLink 등)은 통신 압력과 직결되므로 `05-moe`와 `10-serving`에서 따로 다룬다.
 
 ---
 
@@ -376,29 +414,31 @@ GPU 간 연결(NVLink 등)은 통신 압력과 직결되므로 `04-moe`와 `09-s
    │     일부만 읽기(SWA·NSA·MoBA·DSA·CSA) · 레이어 공유(CLA·YOCO)
    ├─ 아예 고정 크기로 ─────────────────────► 02-linear-attention
    │     Linear Attention · Mamba · DeltaNet · KDA
-   ├─ 한 값당 비트를 줄이자 ────────────────► 08-numerics
-   └─ 재사용하고 알뜰하게 관리하자 ─────────► 09-serving
+   ├─ 고정 상태를 추론 중 학습하자 ─────────► 03-test-time-memory
+   │     Titans · ATLAS · HOPE (연구 단계)
+   ├─ 한 값당 비트를 줄이자 ────────────────► 09-numerics
+   └─ 재사용하고 알뜰하게 관리하자 ─────────► 10-serving
          prefix caching · PagedAttention
 
 【연산량 압력】 모델을 키우면 토큰당 연산이 그대로 늘어난다
-   └─ 파라미터는 늘리되 활성은 고정 ────────► 04-moe
+   └─ 파라미터는 늘리되 활성은 고정 ────────► 05-moe
          MoE · fine-grained expert · shared expert
 
 【통신 압력】 모델이 여러 GPU에 흩어져 있다
-   ├─ expert를 어떻게 배치할까 ─────────────► 04-moe
-   └─ 무엇을 쪼개고 무엇을 주고받을까 ──────► 09-serving
+   ├─ expert를 어떻게 배치할까 ─────────────► 05-moe
+   └─ 무엇을 쪼개고 무엇을 주고받을까 ──────► 10-serving
          TP · EP · PP · CP
 
 【직렬 지연 압력】 레이어는 순서대로 통과해야 한다
-   ├─ 깊이와 너비의 균형 ───────────────────► 06-shape
-   └─ 한 스텝에 토큰 여러 개 ───────────────► 07-decoding
+   ├─ 깊이와 너비의 균형 ───────────────────► 07-shape
+   └─ 한 스텝에 토큰 여러 개 ───────────────► 08-decoding
          MTP · speculative decoding
 
 【안정성 압력】 깊고 큰 모델은 학습이 잘 터진다
-   └─ 정규화와 residual 구조 ───────────────► 05-norm-residual
+   └─ 정규화와 residual 구조 ───────────────► 06-norm-residual
 
 【길이 일반화 압력】 학습보다 긴 입력을 다뤄야 한다
-   └─ 위치 인코딩과 확장 ───────────────────► 03-position
+   └─ 위치 인코딩과 확장 ───────────────────► 04-position
 
 【종합】 누가 무엇을 골랐고, 그 조합이 시스템에 무엇을 요구하나
    └───────────────────────────────────────► 99-landscape
@@ -421,13 +461,18 @@ MHA에서 시작해 DeepSeek-V4의 CSA/HCA까지, "KV를 어떻게 줄일 것인
 - Llama 3 / DeepSeek-V3 등 각 모델의 HuggingFace `config.json` — 표의 예시값 출처
 
 **T2 — 구현·하드웨어**
-- NVIDIA 데이터시트 (A100 / H100 / H200 / B200) — `0.8` 스펙표
-  ⚠️ B200·R100 항목은 미확인. `CONTESTED.md` C4 참조
+- NVIDIA 데이터시트 (A100 / H100 / H200 / B200)와 HGX Rubin 공식 사양 — `0.8` 스펙표
+- Jouppi et al. (2017), *In-Datacenter Performance Analysis of a Tensor Processing Unit*
+  — TPU v1의 28 MiB Unified Buffer, 8-bit systolic array, 지연·전력 목표
+- Jouppi et al. (2020), *A Domain-Specific Supercomputer for Training Deep Neural Networks*
+  — TPU v2/v3, HBM·2D torus·Pod 기반 학습 시스템
+- Google, *TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning*
+  — 3D topology, optical circuit switch, SparseCore
+- Google Cloud TPU v5e/v5p/v6e 공식 시스템 아키텍처 문서
+  — Pod 크기, HBM·ICI, Trillium(v6e) 사양
 - vLLM, *Efficient Memory Management for LLM Serving with PagedAttention* (arXiv:2309.06180)
   — KV cache 단편화와 실제 메모리 사용량
 
-**T3 — 참고**
-- Sebastian Raschka, *The Big LLM Architecture Comparison* — 뼈대가 그대로라는 관점
-
-**미검증 항목**
-- `0.8` B200·Rubin 스펙 (C4)
+**범위와 주의**
+- Rubin 사양은 공개 시점의 예비 최대치다. 실제 성능은 정밀도, sparsity, 전력과 시스템
+  구성에 따라 달라진다.

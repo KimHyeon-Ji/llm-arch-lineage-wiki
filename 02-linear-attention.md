@@ -13,6 +13,21 @@
 
 이 파일의 계보는 결국 하나의 질문에 대한 답들이다. **무엇을, 어떻게 잊을 것인가.**
 
+## 이 장의 발전 계보와 시스템 영향
+
+| 단계 | 대표 기법 | 해결하려는 병목 | 핵심 아이디어 | 시스템 영향 |
+|---|---|---|---|---|
+| 기준점 | full attention | 토큰마다 쌓이는 KV와 전체 scan | 과거 토큰을 직접 보존·검색 | 정확하지만 KV 용량·traffic이 컨텍스트에 비례 |
+| 고정 상태 | **Linear Attention** | 길이에 비례하는 KV | `kvᵀ`를 고정 크기 행렬에 누적 | KV cache 제거, decode 비용이 길이와 무관; 정확성 손실 |
+| 선택적 망각 | **RetNet · RWKV · Mamba** | 누적 상태가 포화되고 오래된 정보가 남음 | 입력 의존 decay와 selective state update | memory/accuracy 균형, scan·recurrent kernel 필요 |
+| 내용 기반 수정 | **DeltaNet** | 같은 key의 낡은 값을 고치기 어려움 | 조회 오차만큼 지우고 새 값을 기록 | 검색 정확도 향상, state-update 연산과 순차 의존 증가 |
+| 정교한 갱신 | **Gated DeltaNet · KDA** | 망각과 내용 수정의 제어가 거침 | Gated DeltaNet은 forget gate를, KDA는 channel별 decay를 delta rule과 결합 | 표현력 증가, update kernel 복잡도·상태 traffic 증가 |
+| 실전 혼합 | **KDA/Mamba + full attention** | 고정 상태의 정확한 검색 한계 | 싼 recurrent layer와 정확한 attention layer를 교대 | 평균 KV 감소, 대신 layer별 profile·serving scheduling 불균형 |
+
+> **이 장의 병목 이동:** 컨텍스트에 비례하는 **KV 용량·read traffic**을 없애는 대신,
+> 병목이 **상태 갱신 kernel과 기억 정확도**로 옮겨간다. Linear Attention의 핵심 거래는
+> memory 절감이 아니라 **memory capacity ↔ update quality**의 교환이다.
+
 ---
 
 ## 계보 지도
@@ -170,7 +185,7 @@ softmax 없이 그냥 `(q Kᵀ) V`라면 **결합법칙**을 쓸 수 있다.
 | | |
 |---|---|
 | **핵심 아이디어** | softmax를 빼면 결합법칙이 성립해, KV를 `d_k × d_v` 고정 크기 상태 하나로 압축할 수 있다 |
-| **장점** | · **메모리가 컨텍스트 길이와 완전히 무관**해진다<br>· decode 비용도 `S`와 무관 — 100만 토큰이어도 1천 토큰과 같은 속도<br>· prefill이 `S²`가 아닌 `S`에 비례 |
+| **장점** | · recurrent state 크기가 context length와 무관<br>· decode의 이론적 step 비용이 `S`와 무관<br>· prefill 계산량이 `S²`가 아닌 `S`에 비례 |
 | **한계** | · **잊지 못한다** — 계속 누적하면 상태가 포화<br>· softmax의 비선형성 상실로 표현력 저하<br>· **정확한 검색 불가** — 겹쳐 새긴 것을 원본대로 못 꺼냄<br>· 순차 재귀라 학습에 chunked 알고리즘이 필수 |
 | **대표 모델** | 순수 형태로 대규모에 쓰인 사례는 없다. 이후 계보의 출발점 |
 | **다음으로** | 포화 문제를 풀어야 한다. 가장 단순한 답은 **오래된 것을 흐리게 만드는 것** → **Mamba · SSM** |
@@ -216,8 +231,8 @@ Mamba는 **지금 들어온 토큰의 내용을 보고 얼마나 기억할지 �
 두 번째 기여는 구현 쪽이다. 입력마다 `α`가 달라지면 단순 누적이 안 되는데,
 Mamba는 이를 **하드웨어 친화적인 병렬 스캔**으로 풀었다.
 
-> 📌 Mamba-2는 SSM과 linear attention이 사실상 같은 것임을 보였다(SSD).
-> 서로 다른 동네에서 출발한 두 계보가 여기서 합쳐지고, 이후 논의는 하나로 흘러간다.
+> 📌 Mamba-2의 SSD는 특정 구조의 SSM과 structured masked attention 사이의
+> duality를 정리했다. 모든 SSM과 모든 linear attention이 동일하다는 뜻은 아니다.
 
 ### 남는 문제 — 시간으로만 잊는다
 
@@ -413,7 +428,7 @@ chunked 병렬화에서 `Diag(α)`가 청크 안 여러 스텝에 걸쳐 누적�
 ```
 
 **깊이 방향으로 attention을 한 번 더 하는 셈**이다.
-`05-norm-residual`의 Hyper-Connections/mHC와 같은 문제의식(residual을 그냥 더하지 말자)인데,
+`06-norm-residual`의 Hyper-Connections/mHC와 같은 문제의식(residual을 그냥 더하지 말자)인데,
 해법이 다르다. HC는 스트림을 여러 개로 늘렸고, AttnRes는 **선택적으로 가져온다.**
 
 문제는 메모리다. 모든 층의 출력을 들고 있어야 하므로 `O(Ld)`가 된다.
@@ -455,8 +470,8 @@ chunked 병렬화에서 `Diag(α)`가 청크 안 여러 스텝에 걸쳐 누적�
 full attention은 그 위치의 K, V를 원본 그대로 들고 있으니 정확히 집어낸다.
 고정 크기 상태는 그 정보를 다른 수십만 개와 **겹쳐 새겨놓았다.** 뭉개진 것을 복원할 수 없다.
 
-이건 알고리즘이 부족해서가 아니라 **정보 이론적 한계**다. 고정된 비트 수에
-무한한 내용을 무손실로 담을 수는 없다.
+고정 크기 상태는 문맥 전체를 손실 없이 보존하지 않는다. 따라서 임의 위치의 원문을
+정확히 다시 찾는 작업에서는, 토큰별 KV를 남기는 attention보다 불리할 수 있다.
 
 ### 해법 — 몇 층은 남긴다
 
@@ -493,12 +508,11 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 |---|---|---|
 | `kv_lora_rank` | 512 | **MLA다** (`01-attention` 1.4) |
 | `q_lora_rank` | 1536 | 쿼리도 저rank |
-| `qk_rope_head_dim` / `qk_nope_head_dim` | 64 / 128 | **decoupled RoPE** (`03` 3.4) |
-| `mla_use_nope` | **true** | **NoPE 사용** (`03` 3.5) |
+| 위치 정보 | **NoPE** | K3 리포트는 모든 MLA 층에 명시적 위치 인코딩을 쓰지 않는다고 설명 |
 | `mla_use_output_gate` | **true** | **Gated MLA** (`01` 1.5) |
 
 > 💡 **K3의 full 층 하나에 이 위키의 네 갈래가 겹쳐 있다.**
-> MLA(축1 압축) + decoupled RoPE(축3) + NoPE(축3) + output gate(축1 게이팅).
+> MLA(축1 압축) + NoPE(축4) + output gate(축1 게이팅).
 > 그리고 그 층이 KDA(축2) 사이에 3:1로 끼어 있다.
 >
 > **축을 나눠 정리했지만 실제 모델은 그것들을 겹쳐 쓴다.** 축1과 축2가
@@ -512,7 +526,7 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 | `use_full_rank_gate` | **true** | KDA의 채널별 게이팅 (`2.4`) |
 | `gate_lower_bound` | −5.0 | 게이트 하한 |
 | `attn_res_block_size` | 12 | Attention Residuals |
-| `quantization_config` | **MXFP4**, 4비트, group 32 | (`08-numerics` 8.3) |
+| `quantization_config` | **MXFP4**, 4비트, group 32 | (`09-numerics` 9.3) |
 
 > 💡 `01-attention`의 `1.6`에서 본 Gemma의 local:global 5:1, `1.9`의 CSA/HCA 교차 배치와
 > **정확히 같은 발상**이다. 값싼 층 여럿 + 비싼 층 하나.
@@ -522,7 +536,7 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 
 | 결정할 것 | 선택지 | K3의 답 ✅ |
 |---|---|---|
-| 비율 | 3:1이 사실상 표준 | **3:1** (69 : 24) |
+| 비율 | 품질·처리량 절충 | **3:1** (69 : 24) |
 | 위치 | 균등 배치가 보통 | **4의 배수마다** + 마지막 층 |
 | full 층의 위치 인코딩 | RoPE / NoPE | **NoPE** (`mla_use_nope`) |
 | full 층의 attention 종류 | GQA, MLA, Gated 무엇이든 | **MLA + output gate** |
@@ -534,18 +548,17 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 
 | 비율 | 결과 |
 |---|---|
-| **0:1** (full attention만) | **나쁨** |
-| **1:1** | validation은 비슷한데 **추론 오버헤드가 커진다** |
-| **3:1** | **최적** — 학습·검증 손실 모두 최저, validation perplexity **5.65** |
-| **7:1** | 학습 손실은 비슷한데 **validation이 크게 나빠진다** |
+| **0:1** (full attention만) | 비교한 설정에서 3:1보다 높은 validation PPL |
+| **1:1** | validation PPL은 비슷하지만 full 층이 많아 추론 비용 증가 |
+| **3:1** | 비교한 비율 중 가장 낮은 training·validation PPL |
+| **7:1 이상** | full 층을 더 줄이면 validation PPL이 다시 상승 |
 
 읽어낼 것이 명확하다.
 
-- **7:1로 가면 정확한 검색 능력이 무너진다.** 학습 손실이 비슷한데 validation이
-  나빠진다는 건 **일반화가 깨졌다**는 신호다. `2.5` 앞부분에서 말한
-  "고정 상태로는 정확한 검색이 안 된다"가 여기서 수치로 확인된다.
+- **linear 층 비율을 계속 높이는 것이 항상 낫지는 않다.** 이 ablation에서는
+  7:1 이상에서 validation PPL이 나빠졌다.
 - **1:1은 품질이 더 좋아지지 않는다.** full 층을 더 넣어봐야 손해만 본다.
-- 즉 **3:1은 타협이 아니라 실측으로 찾은 최적점**이다.
+- 따라서 3:1은 Kimi Linear가 비교한 설정에서 선택한 **품질·효율 절충점**이다.
 
 #### 마지막 층이 MLA인 이유도 있다
 
@@ -576,7 +589,7 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 - 층별 실행 시간이 달라 파이프라인 균형이 안 맞는다
 - 컨텍스트가 길어질수록 full 층만 무거워져 **불균형이 심해진다**
 
-이 문제는 `09-serving`에서 다시 다룬다.
+이 문제는 `10-serving`에서 다시 다룬다.
 
 ---
 
@@ -620,17 +633,13 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 
 ## 이 다음
 
-여기까지가 "attention을 어떻게 할 것인가"의 두 갈래다.
+`03-test-time-memory.md`가 이 파일의 마지막 화살표를 그대로 이어받는다.
+`2.3`에서 delta rule을 “온라인 학습의 그것”이라고 했는데, 그 말을 끝까지 밀어
+**메모리를 신경망으로 두고 추론 중에 진짜 경사하강으로 학습시키는** Titans·ATLAS·HOPE를 본다.
 
-`03-position.md`는 attention 안쪽의 다른 문제로 들어간다.
-**모델은 토큰의 순서를 어떻게 아는가**, 그리고 **학습 때보다 긴 입력을 어떻게 다루는가.**
-`01`의 MLA가 RoPE와 충돌했던 이유도 거기서 제대로 다룬다.
-
-> 💡 **이 축을 더 밀고 나간 연구가 있다.**
-> `2.3`에서 delta rule을 "온라인 학습의 그것"이라고 했는데, 그 말을 끝까지 밀면
-> **메모리를 신경망으로 두고 추론 중에 진짜 경사하강으로 학습시키는** 데까지 간다.
-> Google의 Titans·ATLAS·HOPE 계열이고, `10-test-time-memory.md`에서 다룬다.
-> 연구 단계라 프로덕션 사례는 없지만, **이 파일의 계보가 어디로 향하는지**를 보여준다.
+연구 단계라 프로덕션 사례는 없지만, Linear Attention이 단순한 KV 절감 기법이 아니라
+**RNN의 상태 갱신과 test-time learning으로 이어지는 계보**라는 점을 가장 선명하게 보여준다.
+그 다음 `04-position.md`에서 attention 안쪽의 다른 문제인 위치와 길이 일반화로 넘어간다.
 
 ---
 
@@ -653,12 +662,8 @@ K3의 `config.json`은 어느 층이 무엇인지를 번호로 그대로 나열�
 - `flash-linear-attention` 라이브러리 — chunked 병렬 커널
 - vLLM / SGLang의 하이브리드 모델 지원 — 층별 상이한 KV 할당
 
-**T3 — 참고**
-- Sebastian Raschka, *LLM Architecture Gallery* — Gated DeltaNet·Lightning Attention 채택 현황
-- Kimi K3 관련 2차 자료 — KDA 실전 설정
-
-**미검증 항목**
-- Lightning Attention(MiniMax·Ling)의 세부 — 이 파일에서는 언급만 하고 다루지 않음
-- Kimi Linear ablation의 **정확한 실험 설정**(모델 크기, 토큰 수) — 2차 요약 기반.
-  perplexity 5.65라는 값은 그 설정에서만 유효하다
-- Block AttnRes의 블록 간 정보 전달 방식 세부
+**범위와 주의**
+- Kimi Linear의 3:1 ablation은 16-head, 16-layer scaling-law 모델에서 같은 FLOPs와
+  학습 조건으로 수행됐다. 다른 규모·데이터에서도 3:1이 최적이라고 일반화할 수는 없다.
+- linear attention의 실제 속도는 recurrent·chunked 커널의 완성도와 full 층 비율에
+  크게 좌우된다.
