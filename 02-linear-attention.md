@@ -201,6 +201,8 @@ softmax 없이 그냥 `(q Kᵀ) V`라면 **결합법칙**을 쓸 수 있다.
 
 ## 2.2 Mamba와 SSM — 잊을 줄 알게 되다
 
+*State Space Model*
+
 ### 왜 나왔나
 
 포화를 막으려면 잊어야 한다. 가장 단순한 잊기는 **시간에 따른 감쇠**다.
@@ -352,6 +354,8 @@ decode 비용이 `2.2` 대비 대략 두 배가 된다. 다만 상태가 작아�
 ---
 
 ## 2.4 Gated DeltaNet과 KDA — 잊기와 고치기를 함께
+
+*KDA = Kimi Delta Attention*
 
 ### Gated DeltaNet
 

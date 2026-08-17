@@ -111,6 +111,8 @@
 
 ## 9.2 FP8 — 학습까지 내려가다
 
+*8-bit Floating Point*
+
 ### 배경
 
 추론에서 정밀도를 낮추는 건 오래된 기법이다. 학습은 달랐다.
@@ -149,6 +151,8 @@ DeepSeek-V3가 **대규모 모델을 FP8로 학습**한 첫 사례로 널리 인
 ---
 
 ## 9.3 FP4 — MXFP4와 NVFP4
+
+*4-bit Floating Point · Microscaling FP4 · NVIDIA FP4*
 
 ### 4비트로 무엇을 표현하나
 

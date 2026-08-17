@@ -134,6 +134,8 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
 
 ## 8.2 Medusa와 EAGLE — draft 모델 없이
 
+*EAGLE = Extrapolation Algorithm for Greater Language-model Efficiency*
+
 ### 문제
 
 draft 모델은 관리 부담이 크다. 메모리를 차지하고, target과 어휘가 맞아야 하고,
@@ -180,6 +182,8 @@ EAGLE의 개선은 **토큰이 아니라 feature(hidden state)를 예측**하는
 ---
 
 ## 8.3 MTP — 학습 목표를 바꾸다
+
+*Multi-Token Prediction*
 
 ### 왜 나왔나
 

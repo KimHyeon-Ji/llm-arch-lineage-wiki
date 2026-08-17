@@ -85,6 +85,8 @@
 
 ## 1.1 MHA — 기준점
 
+*Multi-Head Attention*
+
 ### 왜 나왔나
 
 MHA는 개선이 아니라 출발점이다. 2017년 Transformer 논문이 제안한 원형이고,
@@ -187,6 +189,8 @@ MHA의 KV는 헤드 수에 정비례한다. 헤드가 64개면 캐시도 64배�
 
 ## 1.2 MQA — 극단적으로 줄이기
 
+*Multi-Query Attention*
+
 ### 왜 나왔나
 
 논문 제목이 그대로 문제의식이다 — *Fast Transformer Decoding: One Write-Head is All You Need*.
@@ -279,6 +283,8 @@ GQA는 이 둘을 동시에 완화한다.
 ---
 
 ## 1.3 GQA — 그 사이 어딘가
+
+*Grouped-Query Attention*
 
 ### 왜 나왔나
 
@@ -393,6 +399,8 @@ MLA의 진짜 기여는 **그 펴는 연산을 없애버린 것**에 있다.
 ---
 
 ## 1.4 MLA — 저장하는 값 자체를 압축
+
+*Multi-head Latent Attention*
 
 ### 왜 나왔나
 
@@ -733,6 +741,8 @@ MLA와 결합한 형태를 **Gated MLA**라고 부른다. 별개의 계보가 �
 
 ## 1.6 SWA와 attention sink — 읽는 범위를 제한하기
 
+*Sliding Window Attention*
+
 ### 왜 나왔나
 
 언어에는 강한 지역성이 있다. 다음 단어를 예측할 때 대부분의 정보는 바로 앞 문장에 있다.
@@ -844,6 +854,8 @@ SWA의 한계는 명확하다. **고정 패턴**이라는 것이다. 최근 것�
 ---
 
 ## 1.7 NSA와 MoBA — 어디를 볼지 학습하기
+
+*Native Sparse Attention · Mixture of Block Attention*
 
 ### 왜 나왔나
 
@@ -1032,6 +1044,8 @@ DeepSeek-V3.2의 답은 훨씬 가벼웠다. **어디를 볼지 골라주는 아
 
 ## 1.8 DSA — 싸구려 색인으로 고르기
 
+*DeepSeek Sparse Attention*
+
 ### 왜 나왔나
 
 기존 MLA 모델 위에 희소성을 얹으려면, 선택 과정 자체가 저렴해야 한다.
@@ -1150,6 +1164,8 @@ DeepSeek-V4의 답은 두 단계를 겹치는 것이었다. **먼저 토큰들�
 ---
 
 ## 1.9 CSA와 HCA — 압축과 선택을 겹치기
+
+*Compressed Sparse Attention · Heavily Compressed Attention*
 
 > 이 절의 수치는 DeepSeek-V4 논문(arXiv:2606.19348), HuggingFace `config.json`,
 > vLLM/SGLang 배포 문서에서 확인한 것이다.
@@ -1356,6 +1372,8 @@ CSA 층과 HCA 층은 읽는 양도, 접근 패턴도 다르다.
 ---
 
 ## 1.10 CLA와 YOCO — 레이어끼리 공유하기
+
+*Cross-Layer Attention · You Only Cache Once*
 
 ### 왜 나왔나
 

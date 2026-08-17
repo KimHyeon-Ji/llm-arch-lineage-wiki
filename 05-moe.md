@@ -82,6 +82,8 @@ MoE의 답은 명확하다. **파라미터는 전부 두되, 토큰마다 일부
 
 ## 5.1 FFN과 SwiGLU — 무엇을 바꾸려는 건가
 
+*Feed-Forward Network · Swish-Gated Linear Unit*
+
 ### 구조
 
 FFN은 단순하다. 차원을 늘렸다가 줄인다.
@@ -129,6 +131,8 @@ Llama 3 70B 기준으로 보면 명확하다.
 ---
 
 ## 5.2 MoE 기본 — 라우터와 expert
+
+*Mixture of Experts*
 
 ### 아이디어와 구조
 

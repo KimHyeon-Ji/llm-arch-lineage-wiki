@@ -81,6 +81,8 @@ DeepSeek-V4의 mHC까지 간다.
 
 ## 6.1 Post-LN — residual 위에 norm이 있으면
 
+*Post-Layer Normalization*
+
 ### 구조
 
 Transformer 원 논문의 배치는 이랬다.
@@ -117,6 +119,8 @@ LayerNorm을 통과해야 하고, 깊어질수록 왜곡이 누적된다.
 ---
 
 ## 6.2 Pre-LN — 위치를 바꾸다
+
+*Pre-Layer Normalization*
 
 ### 아이디어
 
@@ -169,6 +173,8 @@ Pre-LN에서는 residual stream이 **층을 지날수록 계속 커진다.** 매
 ---
 
 ## 6.3 RMSNorm — 평균을 버리다
+
+*Root Mean Square Normalization*
 
 ### 아이디어
 
@@ -224,6 +230,8 @@ reduction이 160회에서 80회로 줄어든다. 개별로는 작지만 memory-b
 ---
 
 ## 6.4 QK-Norm과 변형들 — 폭주를 막는 여러 방법
+
+*Query-Key Normalization*
 
 ### QK-Norm
 
@@ -349,6 +357,8 @@ residual stream을 **여러 개로 늘린다.** 확장률 `n`을 4로 두면 스
 ---
 
 ## 6.6 mHC — 항등 사상을 되찾다
+
+*Manifold-Constrained Hyper-Connections*
 
 ### 무엇이 문제였나
 

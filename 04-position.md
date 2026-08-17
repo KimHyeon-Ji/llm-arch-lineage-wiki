@@ -113,6 +113,8 @@ attention이 순서를 모르니 알려줘야 한다. 가장 단순한 방법은
 
 ## 4.2 RoPE — 더하지 말고 회전시키자
 
+*Rotary Position Embedding*
+
 ### 왜 나왔나
 
 상대 위치를 직접 다루고 싶은데, 모든 토큰 쌍의 거리를 따로 계산하면 비용이 크다.
@@ -200,6 +202,8 @@ Qwen3-Next 등이 쓴다. 저주파 성분이 일으키는 문제(`4.6`)를 피�
 ---
 
 ## 4.3 컨텍스트 확장 — PI, NTK, YaRN
+
+*Position Interpolation · NTK(Neural Tangent Kernel)-aware Scaling · YaRN(Yet another RoPE extensioN)*
 
 ### 문제
 
@@ -335,6 +339,8 @@ DeepSeek의 답은 **역할을 분리하는 것**이었다.
 
 ## 4.5 NoPE — 아예 빼면?
 
+*No Positional Encoding*
+
 ### 왜 나왔나
 
 `4.4`에서 64차원만으로 충분했고, partial RoPE도 잘 동작한다. 그러면 자연스러운 질문이 나온다.
@@ -393,6 +399,8 @@ NoPE 경로를 함께 쓰는 것으로 보이는데, **정확히 어떻게 결�
 ---
 
 ## 4.6 HoPE — 장기 감쇠를 버리다
+
+*High-frequency rotary Position Encoding (arXiv:2410.21216 기준 — 아래 표처럼 이름이 겹치는 다른 연구도 있다)*
 
 > ⚠️ **HoPE / HOPE라는 이름을 쓰는 연구가 최소 네 개다.** 서로 다른 연구다.
 >

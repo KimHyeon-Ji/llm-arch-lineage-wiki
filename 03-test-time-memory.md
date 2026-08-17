@@ -222,6 +222,8 @@ S-NIAH의 여러 변형에서 recurrent baseline보다 높은 정확도를 보�
 
 ## 3.4 메모리를 어디에 붙이나 — MAC, MAG, MAL
 
+*Memory as Context · Memory as Gate · Memory as Layer*
+
 메모리 모듈을 만들었으면 attention과 어떻게 조합할지가 남는다.
 `02` `2.5`의 하이브리드 설계와 같은 구조의 질문이고, Titans는 세 가지를 제시한다.
 

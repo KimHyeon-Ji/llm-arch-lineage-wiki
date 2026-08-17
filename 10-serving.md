@@ -288,6 +288,8 @@ TTFT는 조금 늘지만 **TPOT가 안정된다.** 사용자 체감으로는 대
 
 ## 10.5 PD disaggregation — 아예 분리하기
 
+*Prefill-Decode Disaggregation*
+
 ### 아이디어
 
 chunked prefill은 두 작업을 잘 섞는 방법이었다. 다른 답도 있다. **아예 분리한다.**
