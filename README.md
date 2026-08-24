@@ -45,7 +45,7 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 ### 시스템 관점에서 보고 싶다면
 
 ```
- 00-foundations 0.3~0.8  →  03-test-time-memory 3.7  →  10-serving 10.7  →  99-landscape 99.6~99.7
+ 00-foundations 0.3~0.8  →  03-test-time-memory 3.5  →  10-serving 10.7  →  99-landscape 99.6~99.7
    자원·HW 병목의 변화          read+write 추론          무엇이 먼저 터지나    전체 시스템 종합
 ```
 
