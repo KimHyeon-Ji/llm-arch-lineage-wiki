@@ -25,6 +25,8 @@ MoE의 답은 명확하다. **파라미터는 전부 두되, 토큰마다 일부
 | 세분화·공유 | **DeepSeekMoE** | expert 조합의 표현력과 공통 지식 | fine-grained routed expert + shared expert | 품질 향상, expert당 token 감소로 작은 GEMM 증가 |
 | 균형 제어 | auxiliary loss → aux-loss-free | 특정 expert 쏠림 | bias·통계로 load를 균등화 | straggler 감소, batch·분산 환경에 따라 효과 변동 |
 | Expert Parallelism | **EP · all-to-all** | expert weight가 한 장에 안 들어감 | expert를 device에 나누고 token을 이동 | compute 병목이 **communication·동기화 병목**으로 이동 |
+| 통신 제한 | **Node-Limited Routing** | 토큰이 너무 많은 노드로 흩어짐 | 토큰이 갈 수 있는 노드 수(`M`)를 제한 | 노드 간(scale-out) 트래픽 억제, 표현력은 약간 희생 |
+| 추론 시 재배치 | **EPLB** | 학습 분포와 다른 서빙 트래픽의 쏠림 | 인기 expert를 여러 GPU에 복제 | 라우팅은 그대로, expert 배치만 실시간 조정 |
 | 통신 압축 | **LatentMoE** | all-to-all payload와 expert weight traffic | 작은 latent 공간에서 routing·expert 계산 | network traffic 감소, down/up projection compute 추가 |
 
 > **이 장의 병목 이동:** dense FFN의 **compute** → MoE weight의 **capacity** → EP의
@@ -54,6 +56,10 @@ MoE의 답은 명확하다. **파라미터는 전부 두되, 토큰마다 일부
   fine-grained          │
   + shared expert    aux-loss-free (2024)
         │                │
+        │           capacity·dropping (병행)
+        │                │
+        │           EPLB — 추론 중 expert 복제 (2025)
+        │                │
         └───────┬────────┘
                 │
          granularity 논쟁 (2026)
@@ -64,6 +70,8 @@ MoE의 답은 명확하다. **파라미터는 전부 두되, 토큰마다 일부
 
       [시스템 쪽 귀결]
       Expert Parallelism → all-to-all 통신 압력
+              │
+      Node-Limited Routing — 목적지 자체를 제한 (V2→V3)
 ```
 > **그림 5.0** — 축5의 계보
 
@@ -151,6 +159,30 @@ FFN 하나 대신 **여러 개(expert)를 두고, 토큰마다 몇 개만 쓴다
 
 라우터는 작은 선형층 하나다. `x`로부터 `E`개 점수를 내고 상위 `k`개를 고른다.
 
+#### 점수를 어떻게 정규화하나 — softmax vs sigmoid
+
+📌 [T1] 초기 MoE(GShard, Switch)는 라우터 점수에 **softmax**를 썼다 — `E`개
+expert 점수의 합이 1이 되도록 한 번에 정규화한다. top-k를 뽑을 때도 이 확률을
+그대로 가중치로 쓴다.
+
+DeepSeek-V3부터는 **sigmoid**로 바뀌었다. 각 expert 점수를 서로 무관하게
+독립적으로 0~1 사이로 누른 뒤, 그중 상위 `k`개만 다시 정규화해서 가중치로 쓴다.
+
+```
+ softmax:  점수 = softmax(x·W_r)  — E개 전체가 처음부터 서로 경쟁해서 나눠 가짐
+ sigmoid:  점수 = sigmoid(x·W_r)  — 각자 독립 평가 → 상위 k개만 뽑아 재정규화
+```
+
+`E`가 256, 384, 896으로 커질수록 softmax의 문제가 두드러진다. E개가 하나의
+확률 예산을 나눠 가지므로, 승자가 뚜렷해도 점수가 흐려지거나 반대로 근소한
+차이가 과장되기 쉽다. sigmoid는 "이 expert가 이 토큰에 얼마나 맞는가"를 다른
+expert와 무관하게 독립적으로 평가하므로 이 왜곡이 없다.
+
+> 💡 `5.5`에서 볼 aux-loss-free의 bias 트릭이 sigmoid 위에서만 깔끔하게
+> 성립한다는 점도 짚어둘 만하다. bias는 top-k를 **고르는 데만** 관여하고
+> 최종 가중치 계산에는 관여하지 않는데, 각 expert 점수가 서로 독립적인
+> sigmoid라야 "고르기"와 "가중치 매기기"를 이렇게 깔끔히 분리할 수 있다.
+
 핵심은 이 한 줄이다.
 
 > **파라미터는 `E`배로 늘어나지만, 토큰당 연산은 `k`배에 그친다.**
@@ -192,6 +224,25 @@ DeepSeek-V3를 보면 감이 온다.
 네 번째 줄과 다섯 번째 줄이 실전에서 아프다. 특히 마지막이 그렇다 —
 배치 안 토큰들이 서로 다른 expert로 흩어지면, expert 하나가 받는 토큰이 몇 개 안 된다.
 GEMM이 되어야 할 것이 GEMV가 되면서 GPU 효율이 떨어진다.
+
+### 토큰 하나가 지나가는 길
+
+`00-foundations` `0.2`의 9번(FFN)이 갈라지는 지점이다.
+
+| # | 하는 일 | dense FFN과 다른 점 |
+|---|---|---|
+| 1 | hidden state `x`를 라우터에 넣어 `E`개 점수 계산 | **새로 생김** |
+| 2 | 상위 `k`개 expert 선택 + 정규화된 가중치 계산 | 새로 생김 |
+| 3 | (shared expert가 있다면) 무조건 계산 | `5.3` |
+| 4 | 선택된 `k`개 expert가 있는 GPU로 토큰을 보낸다 (dispatch) | **새로 생김 — all-to-all** |
+| 5 | 각 GPU에서 자기가 받은 토큰들에 대해 expert FFN 계산 | dense FFN과 연산 자체는 동일 |
+| 6 | 결과를 원래 GPU로 회수한다 (combine) | **새로 생김 — all-to-all** |
+| 7 | `k`개 결과를 가중합해 하나로 합친다 | 새로 생김 |
+
+**4번과 6번이 이 장 전체의 핵심이다.** dense FFN은 같은 GPU 안에서 끝나는
+계산 하나였는데, MoE는 토큰이 실제로 **다른 GPU로 이동**한다. `01`의 KV
+cache가 "이 GPU 안에서 얼마나 많이 읽는가"의 문제였다면, 여기서부터는
+"**토큰이 어디로 가는가**"라는 새로운 종류의 문제가 시작된다 — `5.6`의 주제다.
 
 ### 코드와 텐서
 
@@ -270,6 +321,7 @@ shared expert가 맡으면, 라우팅되는 expert들은 **특화에 집중**할
 | **DeepSeek-V4-Pro** ✅ | **384** | **6** | **1** | `noaux_tc` (앞 3층 hash) |
 | **DeepSeek-V4-Flash** ✅ | **256** | **6** | **1** | 동일 |
 | **Kimi K3** ✅ | **896** | **16** | **2** | `noaux_tc` + LatentMoE |
+| **gpt-oss-120B** ✅ | **128** | **4** | 없음 | (미공개, 표준 라우터) |
 
 ✅ 표시는 HuggingFace `config.json`에서 직접 확인한 값이다.
 
@@ -277,7 +329,16 @@ shared expert가 맡으면, 라우팅되는 expert들은 **특화에 집중**할
 > expert는 늘리고 활성은 줄인 것이다. 통신 목적지 수를 줄이려는 선택으로 보이는데,
 > 논문이 이유를 밝힌 대목은 확인하지 못했다.
 
-**추세가 분명하다. expert 개수가 계속 늘고 있다.**
+> 💡 **gpt-oss는 DeepSeek 계열과 다른 선택을 한 지점이 두 곳이다.** 라우터가
+> (DeepSeek의 sigmoid가 아니라) **softmax**를 쓰고, shared expert가 **없다**.
+> `E=128`은 DeepSeek-V3(256)의 절반, `k=4`도 절반이라 granularity 자체는
+> 훨씬 덜 잘게 쪼갠 축에 속한다 — `5.4`의 fine-grained ↔ coarse 스펙트럼에서
+> DeepSeek과 Arcee Trinity 사이 어디쯤이다. shared expert 없이도 성립한다는
+> 점에서, `5.3`의 "shared expert가 필수"라는 인상은 정정할 필요가 있다 —
+> **표준 설계일 뿐 유일한 정답은 아니다.**
+
+**추세가 분명하다. expert 개수가 계속 늘고 있다** — 다만 gpt-oss처럼 다른
+지점을 택하는 계열도 있다는 것 역시 함께 봐야 한다.
 
 ### 정리
 
@@ -418,23 +479,80 @@ bias를 "과부하면 낮추고 한산하면 올린다"는 **휴리스틱으로 
 > 품질 → 하이퍼파라미터 → (없음). 896개 expert를 굴리는 규모에서
 > 튜닝할 손잡이 하나를 없애는 게 왜 중요한지는 짐작이 간다.
 
-### 추론 시점의 쏠림
+### 그래도 넘치면 어떻게 하나 — capacity와 token dropping
 
-학습만의 문제가 아니다. 서빙에서도 들어오는 요청의 성격에 따라 특정 expert에
-토큰이 몰릴 수 있다. 코드 요청이 많은 시간대와 일반 대화가 많은 시간대의
-라우팅 분포가 다를 수 있다.
+라우팅을 아무리 잘 조정해도 **완벽한 균형은 보장되지 않는다.** 실제 구현은
+expert마다 처리할 수 있는 토큰 수의 상한, **capacity**를 미리 정해둔다.
 
-대응은 시스템 쪽이다 — 인기 expert를 여러 GPU에 복제하거나,
-expert 배치를 부하에 맞춰 재조정한다. `5.6`과 `10-serving`에서 다룬다.
+```
+ capacity = capacity_factor × (배치의 토큰 수 × k / E)
+```
+
+`capacity_factor = 1.0`이면 "완벽하게 균등했을 때" 딱 그만큼만 받는다는 뜻이다.
+실제로는 여유를 두려고 1.0보다 크게 잡는 경우가 많다.
+
+**넘치면 어떻게 되나.** GPU 커널은 정적인 shape을 좋아하므로, expert마다 고정
+크기 버퍼를 만들어두고 **버퍼가 차면 남는 토큰은 그냥 버린다(drop).** 버려진
+토큰은 그 expert를 거치지 않고 지나간다 (shared expert가 있으면 그쪽으로,
+없으면 사실상 이번 레이어의 라우팅 효과 없이 지나가는 식으로 처리된다).
+
+> 💡 **학습과 서빙의 `capacity_factor`가 다르면 문제가 생긴다.** 학습 때 토큰이
+> 잘리는 상황을 자주 겪은 모델과, 거의 안 겪은 모델은 다르게 행동한다. 학습
+> 때보다 서빙에서 `capacity_factor`를 낮춰 비용을 아끼려 하면, **모델이
+> 학습 때 보지 못한 모양의 손실**을 마주칠 수 있다.
+
+**dropless MoE**는 이 상한 자체를 없애려는 접근이다. 토큰을 하나도 안 버리려면
+expert마다 버퍼 크기가 배치마다 들쭉날쭉해야 하는데, 이는 `00-foundations`의
+"정적 shape이 커널을 빠르게 만든다"는 원칙과 정면으로 부딪힌다 — **품질(토큰
+손실 없음)과 커널 효율 사이의 또 다른 트레이드오프**다.
+
+`aux-loss-free`·Quantile Balancing이 "애초에 안 넘치게" 만드는 접근이라면,
+capacity·dropping은 "그래도 넘쳤을 때 무엇을 희생할까"에 대한 답이다. 서로
+대체재가 아니라 **같은 문제를 다른 층에서 다루는 것**이다.
+
+### EPLB — 추론 중에는 라우팅 대신 배치를 고친다
+
+학습 때의 균형 기법은 **학습 데이터 분포**에 맞춰 조정된다. 그런데 서빙에
+들어오는 실제 요청은 다르다. 코드 요청이 몰리는 시간대와 일반 대화가 몰리는
+시간대는 라우팅 분포 자체가 다를 수 있고, 이건 학습이 끝난 뒤에는 **모델
+자체를 바꿔서 대응할 수 없다.**
+
+📌 [T2] DeepSeek이 공개한 **EPLB(Expert Parallelism Load Balancer)**는 방향을
+아예 바꾼다. 라우팅을 건드리는 대신, **인기 expert를 여러 GPU에 복제**해서
+부하 자체를 여러 장에 나눠 흡수한다.
+
+```
+ 그대로 두면:              EPLB로 복제하면:
+ GPU 0: expert 3 (인기)     GPU 0: expert 3 사본 A
+ GPU 1: expert 7 (한산)     GPU 1: expert 3 사본 B   ← 복제
+ GPU 2: expert 3 (인기)     GPU 2: expert 7 + expert 12 (한산한 것끼리 한 GPU에)
+ GPU 3: expert 12 (한산)    GPU 3: expert 3 사본 C
+```
+> **그림 5.5** — 인기 expert는 여러 장으로 복제하고, 한산한 expert들은 한
+> GPU에 몰아 담아 GPU마다 실제 부하를 맞춘다.
+
+📌 [T2] 실제 서빙에서 관측된 expert별 부하 통계를 입력으로 받아 **어떤
+expert를 몇 번 복제하고 어느 GPU에 배치할지**를 계산하는 것이 EPLB의 역할이다.
+노드가 여럿이면 노드 안에서 먼저 맞추고 그다음 노드 사이에서 맞추는
+**계층적(hierarchical) 배치**도 지원한다 — `5.6`에서 볼 node-limited routing과
+같은 통신 위계를 그대로 활용하는 설계다. DeepSeek-V3/R1의 대규모 서빙에서
+쓰인다고 보고되며, decode처럼 **expert parallel 크기를 크게 잡을 수 있는
+상황**에서 특히 효과적이다.
+
+> 💡 **`5.5`의 나머지 균형 기법과 EPLB는 시점과 대상이 다르다.** aux-loss-free와
+> Quantile Balancing은 **학습 중** 라우터 자체를 고치고, EPLB는 **추론 중**
+> 라우터는 그대로 둔 채 **expert를 어디에 놓을지(배치)** 를 고친다. 하나는
+> "덜 쏠리게 학습시키기", 다른 하나는 "쏠려도 버틸 수 있게 배치하기"다 —
+> 서로 배타적이지 않고, 실전에서는 둘 다 쓰인다.
 
 ### 정리
 
 | | |
 |---|---|
-| **핵심 아이디어** | 라우터 점수에 expert별 bias를 더하고, 그 bias를 부하에 따라 규칙으로 조정해 균형을 맞춘다 |
-| **장점** | · **주 손실을 오염시키지 않는다** — aux loss가 치르던 품질 대가가 없음<br>· 구현이 단순하고 하이퍼파라미터가 적다<br>· EP 환경의 GPU 부하 불균형을 직접 완화 |
-| **한계** | · 학습 중 조정이라 **추론 시점의 분포 변화에는 대응하지 못한다**<br>· bias 조정 속도가 하이퍼파라미터로 남음<br>· 완벽한 균형을 보장하지는 않음 |
-| **대표 모델** | **DeepSeek-V3 이후** — 이후 다수 모델이 채택 |
+| **핵심 아이디어** | 라우터 점수에 expert별 bias를 더하고, 그 bias를 부하에 따라 규칙으로 조정해 균형을 맞춘다. 남는 불균형은 capacity·dropping으로, 추론 시점 쏠림은 EPLB의 expert 복제로 보완한다 |
+| **장점** | · **주 손실을 오염시키지 않는다** — aux loss가 치르던 품질 대가가 없음<br>· 구현이 단순하고 하이퍼파라미터가 적다<br>· EPLB로 **추론 시점의 분포 변화에도** 대응 가능 |
+| **한계** | · 학습 중 bias 조정만으로는 **추론 시점의 분포 변화에 대응하지 못한다** — EPLB가 필요한 이유<br>· capacity를 두면 여전히 일부 토큰이 drop될 수 있음<br>· 완벽한 균형을 보장하지는 않음 |
+| **대표 모델** | **DeepSeek-V3 이후** — 이후 다수 모델이 채택. EPLB는 DeepSeek-V3/R1의 실서빙에서 확인 |
 | **다음으로** | 균형을 맞춰야 하는 진짜 이유는 시스템에 있었다 → **Expert Parallelism** |
 
 ---
@@ -502,6 +620,37 @@ all-to-all의 시간 비중은 모델, expert parallel 크기, 배치, 토폴로
 NVIDIA Rubin의 공식 사양은 NVLink 6 scale-up 대역폭을 GPU당 최대 3.6 TB/s로
 제시한다. 이것만으로 MoE 효율이 보장되는 것은 아니며, collective 구현과 토큰
 배치가 실제 이용률을 결정한다.
+
+### Node-Limited Routing — 통신 목적지 자체를 줄이기
+
+위 "라우팅 제약" 행을 조금 더 뜯어보자. `5.5`의 균형 기법들은 "쏠림"을
+줄였다. 그런데 균형이 완벽해도 남는 문제가 있다 — **토큰 하나가 향하는
+목적지 수 자체**다. `E=256`, `k=8`이면 토큰 하나가 최악의 경우 **8개의
+서로 다른 GPU**, 심지어 서로 다른 노드로 흩어질 수 있다.
+
+📌 [T1] DeepSeek-V2가 **device-limited routing**을 처음 도입했다 — 토큰이 갈
+수 있는 GPU(device) 수 자체에 상한을 둔다. DeepSeek-V3는 이걸 노드 단위로
+정교화한 **node-limited routing**을 쓴다.
+
+```
+ 제한 없음:  토큰 하나 → 최대 8개 GPU, 여러 노드에 걸쳐 흩어질 수 있음
+
+ node-limited (M=4):
+   ① 각 노드 안에서 "이 토큰과 가장 잘 맞는 expert들의 점수 합"을 구한다
+   ② 그 합이 높은 상위 M(=4)개 노드만 후보로 남긴다
+   ③ 그 M개 노드 안에서만 실제 top-k expert를 고른다
+```
+
+📌 [T1] 왜 이게 중요한지는 대역폭 숫자를 보면 명확하다. 같은 노드 안(NVLink)은
+초당 약 160GB/s급인데, 노드를 넘어가는 링크(InfiniBand)는 초당 약 50GB/s급이다
+— **대략 4배 차이**다. `M=4`로 제한하면, 어차피 여러 expert가 같은 노드
+안에 있을 수 있어 중복 전송을 줄일 수 있고, 결과적으로 노드 간 트래픽이
+`M × (노드당 평균 페이로드)` 수준으로 억제된다.
+
+> 💡 **`5.4`의 granularity가 "얼마나 잘게 쪼갤까"였다면, 이건 "쪼갠 조각이
+> 어디까지 흩어지게 둘까"다.** 둘 다 표현력과 통신 비용 사이의 트레이드오프라는
+> 점에서 같은 구조의 질문이다. 그리고 이 M개 노드라는 위계는 `5.5`에서 본
+> EPLB의 계층적 배치가 그대로 활용하는 바로 그 구조다.
 
 ### LatentMoE — 통신 압력을 정면으로 겨냥한 답
 
@@ -620,22 +769,26 @@ MoE는 이 위키에서 **압력 이전을 가장 선명하게 보여주는 사�
 
 **T1 — 논문**
 - Shazeer et al. (2017), *Outrageously Large Neural Networks* — MoE의 원형
-- Lepikhin et al. (2020), *GShard*
-- Fedus et al. (2021), *Switch Transformer* — `k`=1 라우팅
+- Lepikhin et al. (2020), *GShard* — capacity factor·token dropping 개념
+- Fedus et al. (2021), *Switch Transformer* — `k`=1 라우팅, capacity factor
 - Shazeer (2020), *GLU Variants Improve Transformer* — SwiGLU
 - DeepSeek-AI (2024), *DeepSeekMoE*, arXiv:2401.06066 — fine-grained + shared expert
-- DeepSeek-AI (2024), *DeepSeek-V3*, arXiv:2412.19437 — `E`=256/`k`=8, aux-loss-free, 671B/37B
+- DeepSeek-AI (2024), *DeepSeek-V2*, arXiv:2405.04434 — device-limited routing
+- DeepSeek-AI (2024), *DeepSeek-V3*, arXiv:2412.19437 — `E`=256/`k`=8, aux-loss-free,
+  sigmoid 라우터, node-limited routing(M=4), 671B/37B
 - Zhou et al. (2022), *Mixture-of-Experts with Expert Choice Routing*
 - 각 모델 HuggingFace `config.json` — `num_experts`, `num_experts_per_tok`
 
 **T2 — 구현**
 - **DeepEP** (DeepSeek) — MoE 전용 all-to-all 통신 라이브러리
 - **DeepGEMM** — FP8 grouped GEMM
+- **EPLB** (DeepSeek, github.com/deepseek-ai/EPLB) — 인기 expert 복제, 계층적 배치
 - vLLM / SGLang의 EP 구현 — expert 배치, 계산·통신 중첩
 - NVIDIA NVLink / NVSwitch 문서 — 통신 대역폭
 
 **추가 공식 자료**
 - Kimi Team (2026), *Kimi K3*, arXiv:2607.24653 — Stable LatentMoE와 Quantile Balancing
+- OpenAI, *gpt-oss* 모델 카드/공식 문서 — `E`=128/`k`=4, softmax 라우터, MXFP4 quant
 - NVIDIA HGX Rubin 공식 사양 — NVLink 6 최대 대역폭
 
 **범위와 주의**
@@ -643,3 +796,7 @@ MoE는 이 위키에서 **압력 이전을 가장 선명하게 보여주는 사�
   서로 다른 환경의 백분율을 하나의 대표값으로 사용하지 않는다.
 - expert 수와 top-k는 품질·활성 연산·통신을 함께 바꾸므로 한 숫자만으로 모델을
   비교할 수 없다.
+- node-limited routing의 `M=4`, NVLink/IB 대역폭 비율(~4:1)은 DeepSeek-V3가
+  보고한 H800 기준 수치다. 세대·클러스터 구성에 따라 실제 비율은 달라진다.
+- EPLB의 배치 알고리즘은 관측된 부하 통계에 의존한다. 통계가 실제 트래픽과
+  다르게 흐르면(예: 급격한 워크로드 전환) 재계산 전까지는 효과가 줄어들 수 있다.

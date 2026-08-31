@@ -21,14 +21,20 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
 문제는 하나다. **다음 토큰을 알아야 그 다음 토큰을 만들 수 있다.**
 자기회귀 생성의 본질적인 직렬성이다. 이 파일은 그 벽을 우회하는 방법들이다.
 
+세 가지 서로 다른 방식으로 우회한다 — **① 누군가 미리 추측하고 검증한다
+(별도 모델, 또는 같은 모델의 일부)**, **② 추측을 아예 학습 목표에 넣어버린다**,
+**③ 추측이라는 개념 자체를 버리고 병렬 방정식으로 재해석한다.**
+
 ## 이 장의 발전 계보와 시스템 영향
 
 | 단계 | 대표 기법 | 해결하려는 병목 | 핵심 아이디어 | 시스템 영향 |
 |---|---|---|---|---|
 | 기준점 | autoregressive decode | 한 step에 한 token, 매번 weight 전체 read | next-token을 순차 생성 | 낮은 arithmetic intensity, TPOT가 memory bandwidth에 묶임 |
 | 외부 초안 | **Speculative Decoding** | target model 호출 횟수 | 작은 draft가 여러 token을 제안하고 target이 한 번에 검증 | target weight read amortization, draft memory·rollback 추가 |
+| 자기 초안 | **Self-Speculative (LayerSkip)** | 별도 draft 모델·파라미터 관리 | 같은 모델의 앞쪽 레이어로 초안, 전체로 검증 | 추가 메모리 0, 초안 품질이 target 앞부분에 의존 |
+| 추측 자체를 없앰 | **Lookahead Decoding** | draft 모델·추가 학습 없이 병렬성 확보 | Jacobi iteration 궤적에서 n-gram을 뽑아 그 자리에서 검증 | 학습·모델 불필요, 실이득은 draft 기반보다 작은 편 |
 | 내부 초안 | **Medusa** | 별도 draft model 관리 | 여러 prediction head가 미래 token 후보 생성 | 배포 단순화, head·tree verification compute 증가 |
-| feature 예측 | **EAGLE** | token-level draft의 불확실성 | hidden feature를 예측해 후보 생성 | acceptance 향상 가능, 별도 feature predictor 필요 |
+| feature 예측 | **EAGLE(-2/3)** | token-level draft의 불확실성, 정적 트리 | hidden feature 예측 + 문맥에 따라 동적으로 자라는 트리 | acceptance 대폭 향상, 별도 feature predictor 필요 |
 | 학습 목표 통합 | **MTP** | 미래 token 표현과 초안 품질 | 학습 때 여러 미래 token을 동시에 예측 | 학습 compute·모듈 증가, 추론 가속과 품질 개선을 함께 노림 |
 
 > **이 장의 병목 이동:** 한 token마다 반복되는 **weight memory traffic**을 여러 후보에
@@ -48,30 +54,39 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
       Speculative Decoding (2022)
       작은 draft 모델 + 큰 target 검증
                 │
-        ┌───────┴────────┐
-        │                │
-  [draft 모델이 부담]  [학습 목표를 바꾼다]
-        │                │
-   Medusa (2024)        MTP (2024)
-   여러 head            다음 k개를 예측
-   EAGLE (2024)         (DeepSeek-V3)
-   feature 수준 예측         │
-        │                    │
-        └────────┬───────────┘
-                 │
-        MTP 모듈을 draft로 재활용
-        (별도 모델 불필요)
+      ┌─────────┼──────────┬───────────────┐
+      │         │          │               │
+ [draft 모델   [모델 하나로   [학습 목표를    [추측 자체를
+  관리 부담]    스스로 추측]  바꾼다]        없앤다]
+      │         │          │               │
+  Medusa        LayerSkip    MTP (2024)   Lookahead
+  (2024)        (2024)       다음 k개      Decoding (2023)
+  여러 head     early-exit   예측          Jacobi iteration
+  EAGLE (2024)  self-spec    (DeepSeek-V3)  + n-gram pool
+  feature 예측       │            │               │
+      │              │            │               │
+ EAGLE-2/3            │            │               │
+ 동적 트리 (2024-25)   │            │               │
+      │              │            │               │
+      └──────┬───────┴─────┬──────┘               │
+             │              │                      │
+             └──────────────┴──────────────────────┘
+                             │
+                 [시스템 쪽 귀결] acceptance rate가
+                 모든 이득을 좌우하고, 배치 크기와 상충한다
 ```
-> **그림 8.0** — 축8의 계보
+> **그림 8.0** — 축8의 계보. 같은 뿌리(순차 생성의 직렬성)에서 네 갈래로 갈라진다.
 
 **목차**
 
 | | 절 | 한 줄 |
 |---|---|---|
 | [8.1](#81-speculative-decoding--추측하고-검증하기) | **Speculative Decoding** | 추측하고 검증하기 |
-| [8.2](#82-medusa와-eagle--draft-모델-없이) | **Medusa · EAGLE** | draft 모델 없이 |
-| [8.3](#83-mtp--학습-목표를-바꾸다) | **MTP** | 학습 목표를 바꾸다 |
-| [8.4](#84-시스템-관점--acceptance-rate가-모든-것을-정한다) | **시스템 관점** | acceptance rate가 전부 ★ |
+| [8.2](#82-self-speculative-decoding--모델-하나로-초안과-검증을-동시에) | **Self-Speculative** | 모델 하나로 초안과 검증을 |
+| [8.3](#83-lookahead-decoding--추측하지-않고-병렬로-푼다) | **Lookahead Decoding** | 추측하지 않고 병렬로 |
+| [8.4](#84-medusa와-eagle--draft-모델-없이) | **Medusa · EAGLE** | draft 모델 없이 |
+| [8.5](#85-mtp--학습-목표를-바꾸다) | **MTP** | 학습 목표를 바꾸다 |
+| [8.6](#86-시스템-관점--acceptance-rate가-모든-것을-정한다) | **시스템 관점** | acceptance rate가 전부 ★ |
 
 ---
 
@@ -181,22 +196,219 @@ forward로 `γ+1`개 위치의 확률분포가 **한꺼번에** 나온다. 그 �
 |---|---|
 | **핵심 아이디어** | 작은 모델이 여러 토큰을 추측하고, 큰 모델이 한 번의 forward로 검증한다 |
 | **장점** | · **출력 분포가 완전히 동일** — 품질 손실이 없다<br>· decode의 남는 연산 능력을 회수한다<br>· 모델 구조를 바꾸지 않아도 된다 |
-| **한계** | · **acceptance rate에 성패가 달렸다** — 낮으면 오히려 손해<br>· draft 모델을 따로 두고 관리해야 한다<br>· 거부된 토큰의 KV 계산이 낭비<br>· **배치가 크면 이득이 줄어든다** (`8.4`) |
+| **한계** | · **acceptance rate에 성패가 달렸다** — 낮으면 오히려 손해<br>· draft 모델을 따로 두고 관리해야 한다<br>· 거부된 토큰의 KV 계산이 낭비<br>· **배치가 크면 이득이 줄어든다** (`8.6`) |
 | **대표 구현** | vLLM, SGLang, TensorRT-LLM 등 주요 프레임워크 전반 |
-| **다음으로** | draft 모델을 따로 두는 부담을 없애려면 → **Medusa · EAGLE** |
+| **다음으로** | draft 모델을 따로 두는 부담을 없애려면 → **Self-Speculative Decoding** |
 
 ---
 
-## 8.2 Medusa와 EAGLE — draft 모델 없이
+## 8.2 Self-Speculative Decoding — 모델 하나로 초안과 검증을 동시에
+
+*LayerSkip*
+
+### 왜 나왔나
+
+`8.1`이 안고 있는 가장 큰 관리 부담은 **별도 draft 모델**이었다. `8.4`에서
+볼 Medusa·EAGLE은 "target에 작은 head를 붙이자"는 답을 택하는데, 그것도
+결국 **새 파라미터를 학습**해야 한다.
+
+더 급진적인 질문을 던질 수 있다. **새 파라미터를 아예 안 만들면 안 되나?**
+target 모델 안에는 이미 레이어가 수십 개 있다. 그중 **앞쪽 일부만 쓰면
+그 자체로 "작고 빠른 모델"이 되지 않을까.
+
+### 아이디어와 구조
+
+📌 [T1] LayerSkip은 학습 단계에서 두 가지를 함께 한다.
+
+```
+ ① layer dropout — 학습 중 뒤쪽 레이어일수록 더 자주 건너뛴다
+    (앞쪽 레이어가 "혼자서도 어느 정도 쓸모 있는 표현"을 만들도록 강제)
+
+ ② early-exit loss — 중간 레이어의 hidden state에도 LM head를 씌워
+    바로 손실을 계산한다 (본체의 최종 손실과 함께 학습)
+```
+
+이렇게 학습하면 **모델의 앞쪽 `E`개 레이어만 통과한 hidden state로도** 그럭저럭
+다음 토큰을 맞힐 수 있게 된다 — 원래 모델의 최종 출력에 쓰이는 그 LM head를
+그대로, 중간에서도 씌울 수 있는 것이다.
+
+```
+ 보통 모델:          x → L1 → L2 → ... → L_N → LM head → 토큰
+                                           (여기서만 예측 가능)
+
+ LayerSkip 학습 후:  x → L1 → ... → L_E  → LM head → "초안" 토큰
+                               │
+                               └──► L_{E+1} → ... → L_N → LM head → "진짜" 토큰
+```
+
+**draft를 만드는 것도, 검증하는 것도 같은 모델, 같은 가중치다.** 그래서
+"self-speculative"다 — `8.1`의 draft/target 두 체크포인트 구도와 근본적으로 다르다.
+
+### 추론에서 달라진 것
+
+| | `8.1` (별도 draft 모델) | Self-Speculative (LayerSkip) |
+|---|---|---|
+| draft 전용 파라미터 | 별도 체크포인트 전체 | **0 — 같은 모델 재사용** |
+| draft 전용 메모리 | 필요 | **불필요** |
+| draft·target vocab 문제 | 있음 (버전 동기화 등) | **애초에 없음 (같은 모델)** |
+| draft 품질의 근거 | 별도로 학습·distill된 작은 모델 | target **앞쪽 레이어만으로 학습된** 표현력 |
+| 적용 대상 | 아무 target에나 (draft만 구하면) | **이 방식으로 학습된 모델만** |
+
+### 토큰 하나가 지나가는 길
+
+```
+ ① draft:   x를 L1~L_E까지만 통과 → LM head → 토큰 하나 예측
+            (이 앞쪽 E개 레이어를 γ번 반복해서 γ개 토큰을 만든다)
+ ② verify:  γ개 토큰을 L1~L_N 전체로 검증
+            — ①에서 이미 계산해둔 L1~L_E의 활성값(KV 포함)을 재사용하고,
+              나머지 L_{E+1}~L_N만 새로 계산한다
+ ③ accept:  `8.1`과 동일한 rejection sampling
+```
+
+**②의 재사용이 이 기법의 진짜 최적화 지점이다.** draft와 verify가 완전히
+다른 두 forward가 아니라, **앞부분을 공유하는 하나의 forward를 어디서
+끊어 쓰느냐**의 문제로 바뀐다.
+
+### 코드와 텐서
+
+| # | 연산 | 비고 |
+|---|---|---|
+| 1 | draft: `L1~L_E` forward, `γ`회 반복 | 원래 모델의 일부만 씀 — 새 가중치 없음 |
+| 2 | verify: `L_{E+1}~L_N` forward, `γ+1`개 위치를 한 번에 | `8.1`처럼 GEMV가 GEMM으로 |
+| 3 | verify가 재사용하는 것 | draft 단계의 `L1~L_E` KV·activation |
+
+> 💡 **`8.1`은 "두 모델의 가중치를 각각 읽는" 비용이 있었다.** 여기는 **한
+> 모델의 가중치를 부분적으로만 읽는다** — draft 단계는 `E/N`만큼만 읽는다.
+> 별도 draft 모델을 서빙하는 부담이 "이 모델을 어디서 끊어 쓸까"라는
+> 훨씬 가벼운 문제로 바뀐 셈이다.
+
+### 정리
+
+| | |
+|---|---|
+| **핵심 아이디어** | 학습 시 앞쪽 레이어도 단독으로 예측 가능하도록 만들고, 추론 때 앞쪽 레이어로 초안을, 전체 레이어로 검증을 한다 |
+| **장점** | · **추가 파라미터·메모리가 0** — 별도 모델 관리 불필요<br>· draft-target vocab 불일치 문제가 원천적으로 없음<br>· 검증 단계가 draft 단계의 활성값을 재사용해 낭비가 적음 |
+| **한계** | · **이 방식으로 직접 학습(또는 fine-tune)된 모델에만 적용 가능** — 기존 체크포인트에 바로 쓰기는 어려움<br>· 초안 품질이 target 자신의 앞부분에 의존해 EAGLE만큼의 acceptance는 어려움<br>· 논문이 보고하는 speedup은 과제별 1.8~2.2배로 EAGLE 계열(3배 이상)보다 낮은 편 |
+| **대표 구현** | Meta LayerSkip · Draft & Verify · SWIFT 등 후속 연구 |
+| **다음으로** | 초안을 아예 만들지 않고 병렬로 풀 수는 없을까 → **Lookahead Decoding** |
+
+---
+
+## 8.3 Lookahead Decoding — 추측하지 않고 병렬로 푼다
+
+### 왜 나왔나
+
+지금까지 나온 기법 — `8.1`의 별도 모델, `8.2`의 레이어 재사용, `8.4`의 head,
+`8.5`의 MTP 모듈 — 은 전부 **같은 틀 안에 있다.** "누군가(다른 모델이든,
+앞쪽 레이어든, head든)가 먼저 추측하고, target이 검증한다."
+
+Lookahead Decoding은 그 틀 자체를 벗어난다. **추측하는 별도의 무언가가
+없다.** target 모델 혼자서, 자기회귀 생성을 아예 다른 문제로 바꿔 푼다.
+
+### 아이디어와 구조
+
+📌 [T1] 출발점은 수학적 재해석이다. 순서대로 하나씩 정하는 자기회귀 생성을,
+**여러 개의 미지수를 가진 비선형 연립방정식**으로 볼 수 있다. 이런 방정식은
+**Jacobi iteration**으로 병렬로 풀 수 있다 — 모든 미지수를 아무 값으로나
+초기화한 뒤, **한 스텝에 전부를 동시에** 갱신하는 걸 반복해서 정답(고정점)에
+수렴시킨다.
+
+```
+ 순차 생성(보통 decode):  x1 → x2 → x3 → x4    (한 번에 하나씩, 정확히 하나만)
+
+ Jacobi 생성:    [x1  x2  x3  x4] 를 아무 값으로나 초기화
+                      │  한 스텝: 전부 동시에 "지금 값 기준 다음 추정값" 계산
+                      ▼
+                 [x1' x2' x3' x4']
+                      │  또 한 스텝 ...
+                      ▼
+                 수렴하면 순차 생성과 **정확히 같은** 결과
+```
+
+📌 [T1] 문제는 Jacobi 자체는 수렴이 느려서 그것만으로는 이득이 크지 않다는
+것이다. Lookahead Decoding의 기여는, **이 반복 궤적(trajectory)에서 스쳐
+지나가는 여러 n-gram 후보를 버리지 않고 모아둔다**는 데 있다. 고정 크기의
+2D 윈도우(시퀀스 축 × 반복 축)로 궤적을 관리하면서, 서로 다른 위치에서
+만들어지는 n-gram들을 **pool**에 쌓는다.
+
+```
+ ┌─────────────────────────────────────┐
+ │  lookahead branch                    │
+ │  Jacobi 반복으로 여러 위치를 동시에 갱신 │
+ │  → 지나가는 n-gram들을 pool에 저장     │──┐
+ └─────────────────────────────────────┘  │
+                                           ▼
+                              지금 시퀀스 접두어와 이어지는
+                              유망한 n-gram을 pool에서 골라
+ ┌─────────────────────────────────────┐  │
+ │  verification branch                 │◄─┘
+ │  그 n-gram들을 `8.1`과 같은 방식으로   │
+ │  target 한 번의 forward로 검증        │
+ └─────────────────────────────────────┘
+```
+> **그림 8.3** — 두 갈래가 **같은 forward 스텝 안에서 동시에** 돈다. lookahead가
+> 미래 후보를 계속 만들어내고, verification이 그걸 그때그때 확인한다.
+
+📌 [T1] draft 모델도, 추가 학습도 필요 없다 — **순수하게 추론 알고리즘**이다.
+논문은 GPU 한 장 기준 데이터셋에 따라 **1.5~2.3배**의 지연 감소를 보고한다.
+
+### 추론에서 달라진 것
+
+| | `8.1` (별도 draft) | Lookahead Decoding |
+|---|---|---|
+| draft 모델 | 필요 | **불필요** |
+| 추가 학습 | 불필요 (모델만 있으면) | **불필요** |
+| 스텝당 계산 위치 수 | `γ+1` (draft가 만든 만큼) | **윈도우 크기 + 후보 n-gram 수** — 조절 가능 |
+| 유지할 상태 | draft의 KV cache | **n-gram pool** (텍스트 패턴 캐시) |
+| 이득의 원천 | draft 모델의 예측력 | **Jacobi 궤적이 우연히 맞히는 패턴들** |
+
+### 토큰 하나가 지나가는 길
+
+```
+ ① 고정 크기 2D 윈도우 안에서 여러 위치를 Jacobi 방식으로 한 스텝 갱신
+    (지금 값을 기준으로 "다음 추정값"을 동시에 계산)
+ ② 이 갱신 과정에서 스쳐 지나간 n-gram들을 pool에 기록
+ ③ 지금 확정된 접두어와 이어지는, pool 안의 유망한 n-gram들을 후보로 뽑음
+ ④ ①의 윈도우가 만든 후보 + ③에서 뽑은 후보를 한데 모아 target이 한 번의
+    forward로 검증 (`8.1`과 같은 원리)
+ ⑤ 맞는 데까지 채택. pool은 계속 갱신되며 다음 스텝에도 재사용됨
+```
+
+### 코드와 텐서
+
+| # | 연산 | shape | 비고 |
+|---|---|---|---|
+| 1 | 윈도우 갱신 | `(B, W×N, d)` 정도로 확장된 입력 | `W`=윈도우 폭, `N`=반복 깊이 |
+| 2 | pool에서 후보 조회 | 텐서 연산 아님 | n-gram 매칭 — 해시/캐시 조회 |
+| 3 | 검증 | `(B, 후보 개수, d)` → GEMM | `8.1`과 원리 동일 |
+
+> 💡 **draft 모델이 하던 일을 "과거에 이미 스쳐간 패턴의 기억"이 대신한다.**
+> `02-linear-attention`에서 상태를 "사전"에 비유했던 것과 닮은 발상이다 —
+> 다만 여기서 사전은 **신경망이 아니라 최근 n-gram들의 캐시**다.
+
+### 정리
+
+| | |
+|---|---|
+| **핵심 아이디어** | 자기회귀 생성을 Jacobi iteration으로 재해석해 여러 위치를 병렬로 갱신하고, 그 궤적에서 나온 n-gram을 그 자리에서 검증한다 |
+| **장점** | · **draft 모델도 추가 학습도 필요 없다** — 순수 추론 알고리즘<br>· 출력 분포가 원래 모델과 동일<br>· 어떤 기존 모델에도 바로 적용 가능 |
+| **한계** | · 실측 이득(1.5~2.3배)이 EAGLE 계열(3배 이상)보다 작은 편<br>· n-gram pool 관리·매칭에 별도 구현 복잡도가 있음<br>· 반복(iteration) 기반이라 튜닝할 하이퍼파라미터(윈도우 크기 등)가 있음 |
+| **대표 구현** | hao-ai-lab LookaheadDecoding (ICML 2024) |
+| **다음으로** | 다시 "누군가 추측하는" 쪽으로 — target에 직접 head를 붙이면 → **Medusa · EAGLE** |
+
+---
+
+## 8.4 Medusa와 EAGLE — draft 모델 없이
 
 *EAGLE = Extrapolation Algorithm for Greater Language-model Efficiency*
 
 ### 문제
 
 draft 모델은 관리 부담이 크다. 메모리를 차지하고, target과 어휘가 맞아야 하고,
-target을 바꾸면 draft도 다시 골라야 한다.
+target을 바꾸면 draft도 다시 골라야 한다. `8.2`의 self-speculative는 이 문제를
+풀었지만 대신 **모델을 처음부터 그 방식으로 학습해야 한다**는 제약이 남았다.
 
-**target 모델 자체가 draft 역할을 하게 할 수 없을까?**
+**target 모델은 그대로 두고, 위에 작은 것만 얹어서 draft 역할을 하게 할 수 없을까?**
 
 ### Medusa — head를 여러 개 붙인다
 
@@ -230,7 +442,7 @@ head 1은 t+1을, head 2는 t+2를, head 3은 t+3을 예측한다.
               └─► "dog" ──┬─► ...
                           └─► ...
 ```
-> **그림 8.2** — head마다 상위 `s`개를 남기면 경로 조합이 트리를 이룬다.
+> **그림 8.4** — head마다 상위 `s`개를 남기면 경로 조합이 트리를 이룬다.
 > "cat→sat→on"과 "cat→ran→to"는 **서로 다른 후보 시퀀스**다.
 
 **그런데 트리를 "한 번에" 검증한다는 게 어떻게 가능한가?** `8.1`의 검증은 후보가
@@ -275,19 +487,48 @@ state)를 예측**하고, **이전 단계에서 예측한 feature를 다음 단�
 **직전 단계의 정보를 이어받는다**는 점에서 Medusa보다 acceptance rate가
 눈에 띄게 높다.
 
+### EAGLE-2 · EAGLE-3 — 정적 트리에서 동적 트리로
+
+📌 [T1] 위에서 본 Medusa식 트리는 **고정된 모양**이었다 — 어느 자리든 상위
+`s`개를 남기는 규칙이 항상 같았다. EAGLE-2는 이게 최선이 아니라고 짚는다.
+**acceptance rate는 위치뿐 아니라 문맥에도 달려 있다** — 어떤 문맥에서는
+2등 후보도 자주 맞고, 어떤 문맥에서는 1등도 잘 안 맞는다.
+
+📌 [T1] EAGLE-2는 feature 예측기 자신의 **확신도(confidence)**를 트리를
+키우는 기준으로 쓴다. 확신도가 높은 가지는 더 깊게, 낮은 가지는 일찍 쳐낸다
+— **트리 모양이 매 스텝, 매 문맥마다 달라진다.**
+
+```
+ Medusa/EAGLE-1:  자리마다 항상 상위 s개  → 트리 모양 고정
+ EAGLE-2:         확신도 높은 가지만 더 키움 → 트리 모양이 문맥마다 다름
+```
+
+📌 [T1] 결과로 EAGLE-1 대비 20~40% 더 빠르다고 보고되며 (전체로는 3~4배대
+가속), Medusa의 정적 트리보다 **같은 검증 예산으로 더 많이 맞힌다.**
+
+📌 [T1] EAGLE-3는 다른 방향에서 개선한다. EAGLE-1/2는 "다음 하나의 hidden
+feature"만 예측하도록 제약돼 있었는데, EAGLE-3는 **여러 층의 semantic
+feature를 함께 융합**해서 예측하도록 이 제약을 푼다 — feature 하나에 갇히지
+않고 여러 수준의 표현을 동시에 쓴다.
+
+> 💡 **`5.4`의 granularity 논쟁과 결이 비슷하다.** 고정된 트리(Medusa)는
+> 단순하지만 낭비가 있고, 동적 트리(EAGLE-2)는 문맥에 맞춰 예산을 쓰지만
+> 구현이 복잡하다 — "얼마나 정적으로 둘 것인가"가 이 계열에서도 반복되는
+> 트레이드오프다.
+
 ### 정리
 
 | | |
 |---|---|
-| **핵심 아이디어** | 별도 draft 모델 대신 target 모델에 붙인 head(Medusa) 또는 feature 예측기(EAGLE)로 초안을 만든다 |
-| **장점** | · **별도 모델이 필요 없다** — 메모리와 관리 부담 감소<br>· target과 어휘·표현이 자동으로 일치<br>· EAGLE은 acceptance rate가 높다 |
-| **한계** | · head를 학습시키는 추가 단계가 필요<br>· Medusa는 head 간 의존성이 없어 acceptance가 제한적<br>· 트리 검증은 구현이 복잡하고 커널 지원이 필요 |
-| **대표 구현** | 주요 서빙 프레임워크에서 옵션으로 제공 |
+| **핵심 아이디어** | 별도 draft 모델 대신 target 모델에 붙인 head(Medusa) 또는 feature 예측기(EAGLE)로 초안을 만든다. EAGLE-2/3는 트리를 문맥에 맞춰 동적으로 키운다 |
+| **장점** | · **별도 모델이 필요 없다** — 메모리와 관리 부담 감소<br>· target과 어휘·표현이 자동으로 일치<br>· EAGLE-2/3는 acceptance rate가 매우 높다 (3~4배대 가속) |
+| **한계** | · head·예측기를 학습시키는 추가 단계가 필요<br>· Medusa는 head 간 의존성이 없어 acceptance가 제한적<br>· 트리 검증(특히 동적 트리)은 구현이 복잡하고 커널 지원이 필요 |
+| **대표 구현** | 주요 서빙 프레임워크에서 옵션으로 제공 (vLLM·SGLang의 EAGLE·EAGLE-2 지원) |
 | **다음으로** | head를 나중에 붙이지 말고 **처음부터 그렇게 학습**하면 → **MTP** |
 
 ---
 
-## 8.3 MTP — 학습 목표를 바꾸다
+## 8.5 MTP — 학습 목표를 바꾸다
 
 *Multi-Token Prediction*
 
@@ -311,13 +552,13 @@ DeepSeek-V3는 다음 토큰 외에 한 토큰을 추가로 예측하는 MTP 모
 
 ### MTP는 어떻게 생겼나 — Medusa와 뭐가 다른가
 
-`8.2`의 Medusa head들은 서로 독립적으로 **원래 hidden state 하나만** 보고
+`8.4`의 Medusa head들은 서로 독립적으로 **원래 hidden state 하나만** 보고
 각자 t+1, t+2, t+3을 예측했다. MTP는 다르게 짠다 — **직전 모듈의 출력을 다음
 모듈의 입력으로 이어받는 사슬(chain)**이다.
 
 ```
  Medusa:  hidden ──► head1 ──► t+1       hidden ──► head2 ──► t+2
-                     (서로 독립, 둘 다 원래 hidden만 봄 — 8.2 참고)
+                     (서로 독립, 둘 다 원래 hidden만 봄 — 8.4 참고)
 
  MTP:     본체 ──► hidden_t ──► t+1 예측
                        │
@@ -329,7 +570,7 @@ DeepSeek-V3는 다음 토큰 외에 한 토큰을 추가로 예측하는 MTP 모
 ```
 
 MTP 모듈은 "이전 표현 + 방금 나온 토큰의 embedding"을 받아 다음 표현을 만드는
-작은 블록이다. **인과적 사슬을 유지한다**는 점에서 Medusa보다 `8.2`의 EAGLE에
+작은 블록이다. **인과적 사슬을 유지한다**는 점에서 Medusa보다 `8.4`의 EAGLE에
 훨씬 가깝다 — 이 구조 덕분에 (같은 위치를 예측하더라도) Medusa보다 acceptance
 rate가 좋다.
 
@@ -364,8 +605,8 @@ MTP 모듈 전부를 **한 번에 병렬로** 학습시킬 수 있다 (teacher f
 위에서 본 자기회귀 루프가 **그대로 draft 역할을 한다.** 별도 모델도, 사후 학습도
 필요 없다.
 
-> 💡 **MTP는 `8.1`~`8.2`와 성격이 다르다.**
-> speculative decoding과 Medusa는 순수하게 추론 최적화다.
+> 💡 **MTP는 `8.1`~`8.4`와 성격이 다르다.**
+> speculative decoding과 Medusa·EAGLE은 순수하게 추론 최적화다.
 > MTP는 **학습 기법인데 추론 가속이 딸려온 것**이다.
 > 그래서 채택 문턱이 낮았다 — 어차피 품질 때문에 넣을 것이었으니까.
 
@@ -406,7 +647,7 @@ MTP 모듈 전부를 **한 번에 병렬로** 학습시킬 수 있다 (teacher f
 
 ---
 
-## 8.4 시스템 관점 — acceptance rate가 모든 것을 정한다
+## 8.6 시스템 관점 — acceptance rate가 모든 것을 정한다
 
 ### 이득의 구조
 
@@ -427,18 +668,19 @@ acceptance는 **작업 종류에 따라 크게 달라진다.** 코드나 정형�
 여기가 이 절의 핵심이다.
 
 `00-foundations` `0.6`에서 봤듯 **배치를 키우면 가중치 읽기가 amortize되어
-FFN이 compute-bound로 넘어간다.** 그런데 speculative decoding도 같은 원리로 이득을 낸다.
+FFN이 compute-bound로 넘어간다.** 그런데 이 장의 모든 기법(`8.1`~`8.5`)이
+같은 원리로 이득을 낸다 — 놀고 있는 연산 능력을 회수하는 것이었으니까.
 
 ```
- 배치가 작다  →  GPU가 놀고 있다  →  speculative가 그 여유를 쓴다  →  큰 이득
- 배치가 크다  →  GPU가 이미 바쁘다 →  여유가 없다               →  이득 감소
+ 배치가 작다  →  GPU가 놀고 있다  →  이 장의 기법들이 그 여유를 쓴다  →  큰 이득
+ 배치가 크다  →  GPU가 이미 바쁘다 →  여유가 없다                    →  이득 감소
 ```
 
 **둘은 같은 자원을 노린다.** 그래서 상충한다.
 
 | 상황 | 유리한 전략 |
 |---|---|
-| 저지연 요구, 소규모 배치 | **speculative decoding** |
+| 저지연 요구, 소규모 배치 | **이 장의 기법들** (`8.1`~`8.5`) |
 | 고처리량 요구, 대규모 배치 | 배치 키우기 |
 | 중간 | 둘의 균형점을 찾아야 함 |
 
@@ -450,10 +692,11 @@ FFN이 compute-bound로 넘어간다.** 그런데 speculative decoding도 같은
 
 | 무엇 | 왜 |
 |---|---|
-| **KV cache 증가** | 거부될 토큰의 KV도 일단 계산해서 넣었다가 롤백해야 한다 |
+| **KV cache 증가** | 거부될 토큰의 KV도 일단 계산해서 넣었다가 롤백해야 한다 (`8.2`의 재사용 활성값도 마찬가지) |
 | **지연 변동** | acceptance가 요청마다 달라 스텝 시간이 들쭉날쭉 |
 | **스케줄링 복잡도** | 배치 안 요청들이 서로 다른 수의 토큰을 뱉는다 |
 | **KV 롤백** | 거부된 부분을 캐시에서 되돌리는 로직 필요 (PagedAttention과 얽힘) |
+| **pool·트리 상태 관리** | Lookahead의 n-gram pool, Medusa/EAGLE의 트리 후보처럼 draft/verify 방식마다 별도 상태가 필요 |
 
 두 번째가 운영에서 성가시다. 평균 지연은 좋아지는데 **분산이 커진다.**
 SLO를 p99로 관리하면 개선이 기대보다 작아 보일 수 있다.
@@ -464,13 +707,17 @@ SLO를 p99로 관리하면 개선이 기대보다 작아 보일 수 있다.
 
 | 기법 | draft 출처 | 학습 필요 | 품질 영향 | 채택 문턱 |
 |---|---|---|---|---|
-| **Speculative** | 별도 작은 모델 | 없음 | **없음** | 낮음 (모델만 있으면) |
-| **Medusa** | 추가 head | head 학습 | 없음 | 중간 |
-| **EAGLE** | feature 예측기 | 예측기 학습 | 없음 | 중간 |
-| **MTP** | 학습된 MTP 모듈(chain) | **본 학습에 포함** | **향상** | 높음 (재학습) |
+| **Speculative** (`8.1`) | 별도 작은 모델 | 없음 | **없음** | 낮음 (모델만 있으면) |
+| **Self-Speculative** (`8.2`) | 같은 모델의 앞쪽 레이어 | 초기 학습/fine-tune 필요 | 없음 | 중간 (재학습 필요) |
+| **Lookahead** (`8.3`) | n-gram pool (Jacobi 궤적) | **없음** | 없음 | **가장 낮음** — 알고리즘만 |
+| **Medusa** (`8.4`) | 추가 head | head 학습 | 없음 | 중간 |
+| **EAGLE(-2/3)** (`8.4`) | feature 예측기 | 예측기 학습 | 없음 | 중간 |
+| **MTP** (`8.5`) | 학습된 MTP 모듈(chain) | **본 학습에 포함** | **향상** | 높음 (재학습) |
 
 MTP가 최근 넓게 퍼진 이유가 마지막 두 열에 있다. **품질 때문에 어차피 넣을 것이었고,
-추론 가속은 딸려온 것**이라 채택 결정이 쉬웠다.
+추론 가속은 딸려온 것**이라 채택 결정이 쉬웠다. 반대로 Lookahead Decoding은
+**아무 모델에나 즉시 적용**할 수 있다는 점에서 채택 문턱이 가장 낮다 — 대신
+얻는 이득도 가장 작다. **문턱과 이득이 반비례**하는 것이 이 장 전체의 패턴이다.
 
 ---
 
@@ -488,17 +735,29 @@ MTP가 최근 넓게 퍼진 이유가 마지막 두 열에 있다. **품질 때�
 **T1 — 논문**
 - Leviathan et al. (2022), *Fast Inference from Transformers via Speculative Decoding*, arXiv:2211.17192
 - Chen et al. (2023), *Accelerating Large Language Model Decoding with Speculative Sampling* — 분포 동일성 증명
+- Fu et al. (2024), *Break the Sequential Dependency of LLM Inference Using Lookahead Decoding*,
+  arXiv:2402.02057 (ICML 2024) — Jacobi iteration, n-gram pool, 1.5~2.3배 가속
+- Elhoushi et al. (2024), *LayerSkip: Enabling Early Exit Inference and Self-Speculative Decoding*,
+  arXiv:2404.16710 (ACL 2024) — layer dropout, early-exit loss, KV 재사용
 - Cai et al. (2024), *Medusa: Simple LLM Inference Acceleration Framework with Multiple Decoding Heads*
 - Li et al. (2024), *EAGLE: Speculative Sampling Requires Rethinking Feature Uncertainty*
+- Li et al. (2024), *EAGLE-2: Faster Inference of Language Models with Dynamic Draft Trees*,
+  arXiv:2406.16858 — 문맥 기반 동적 트리, EAGLE-1 대비 20~40% 추가 가속
+- Li et al. (2024/2025), *EAGLE-3* — 다층 semantic feature 융합
 - DeepSeek-AI (2024), *DeepSeek-V3*, arXiv:2412.19437 — MTP 설계와 학습 효과
 - Gloeckle et al. (2024), *Better & Faster Large Language Models via Multi-token Prediction* — MTP의 품질 근거
 
 **T2 — 구현**
+- hao-ai-lab **LookaheadDecoding** — Jacobi 기반 병렬 디코딩 참조 구현
+- Meta **LayerSkip** — self-speculative decoding 참조 구현
 - vLLM speculative decoding 문서 — acceptance rate 측정, 배치와의 상호작용
-- SGLang / TensorRT-LLM의 EAGLE·Medusa 구현
+- SGLang / TensorRT-LLM의 EAGLE·EAGLE-2·Medusa 구현
 - KV cache 롤백 처리 (PagedAttention과의 연동)
 
 **범위와 주의**
 - speculative decoding의 이득은 draft 길이만이 아니라 acceptance rate, 검증 batch,
   sampling 설정과 서빙 부하에 따라 달라진다.
 - MTP의 학습 품질 효과와 추론 가속 효과는 구분해서 평가해야 한다.
+- Self-Speculative(LayerSkip)와 Lookahead Decoding의 speedup 수치는 해당 논문의
+  실험 조건(모델 크기, 과제, 하드웨어)에 한정된다. `8.4`의 EAGLE-2/3 가속 배수와
+  단순 비교하지 않는다 — 벤치마크 설정이 서로 다르다.
