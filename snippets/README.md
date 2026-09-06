@@ -33,7 +33,7 @@ python snippets/test_equivalence.py
 | `test_swa_full_window` | `W ≥ S` → full attention과 동일 | `01` 1.6 |
 | `test_nsa_dense_limit` | top-k=전체 → dense와 동일 | `01` 1.7 |
 | `test_dsa_dense_limit` | 동일 (DSA·CSA) | `01` 1.8~1.9 |
-| `test_cla_layer_sharing` | group=1 → 독립, group=2 → 아래 레이어 KV 재사용 | `01` 1.10 |
+| `test_cla_layer_sharing` | group=1 → 독립, group=2 → 아래 레이어 KV 재사용 | `01` 1.11 |
 | `test_linear_attention_recurrent` | 재귀 형태 == 이차 형태, 상태 크기가 `S`와 무관 | `02` 2.1 |
 | `test_deltanet_forms` | 3단계 delta rule == `(I − βkkᵀ)S + βkvᵀ` | `02` 2.3 |
 | `test_linear_lineage` | KDA ⊃ Gated DeltaNet ⊃ DeltaNet | `02` 2.4 |

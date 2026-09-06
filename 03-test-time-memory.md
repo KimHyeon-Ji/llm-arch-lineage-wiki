@@ -190,7 +190,7 @@ memory ... acts as a long-term, more persistent, memory." (Behrouz et al. 2024,
 *Memory as Context · Memory as Gate · Memory as Layer*
 
 메모리 모듈을 만들었으면 attention과 어떻게 조합할지가 남는다.
-`02` `2.5`의 하이브리드 설계와 같은 구조의 질문이고, Titans는 세 가지를 제시한다.
+`02` `2.6`의 하이브리드 설계와 같은 구조의 질문이고, Titans는 세 가지를 제시한다.
 
 ```
  MAC — Memory as Context
@@ -219,7 +219,7 @@ memory ... acts as a long-term, more persistent, memory." (Behrouz et al. 2024,
 > NSA도 압축·선택·지역 세 갈래를 학습된 게이트로 섞었다.
 > **"싼 요약 + 정확한 지역 정보"를 어떻게 결합할 것인가**는 축을 넘나들며 반복되는 질문이다.
 >
-> 그리고 MAG는 `02` `2.5`의 3:1 하이브리드와 사실상 같은 발상이다 —
+> 그리고 MAG는 `02` `2.6`의 3:1 하이브리드와 사실상 같은 발상이다 —
 > 값싼 장기 갈래와 정확한 지역 갈래를 함께 두는 것.
 
 #### 계보 한눈에 보기
@@ -682,7 +682,7 @@ MLA가 RoPE와 충돌한 이유와 이름이 같은 HoPE/HOPE의 차이도 거�
 
 **연결되는 파일**
 - `02-linear-attention` 2.3~2.4 — delta rule과 이 축의 출발점
-- `02-linear-attention` 2.5 — 하이브리드 설계, 고정 상태의 검색 한계
+- `02-linear-attention` 2.6 — 하이브리드 설계, 고정 상태의 검색 한계
 - `01-attention` 1.7 — NSA의 세 갈래 구조 (MAC/MAG/MAL과 대조)
 - `10-serving` 10.3 — 하이브리드 상태의 prefix caching 문제
 
