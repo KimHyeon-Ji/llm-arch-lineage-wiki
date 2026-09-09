@@ -25,18 +25,18 @@ python snippets/test_equivalence.py
 
 | 검증 | 확인하는 것 | 문서 |
 |---|---|---|
-| `test_gqa_reduces_to_mha` | `n_kv = n_h` → MHA와 동일 | `01` 1.3 |
-| `test_mqa_is_gqa_with_one_group` | MQA == `n_kv=1` 인 GQA | `01` 1.2 |
-| `test_gqa_group_sharing` | 그룹 내 헤드가 같은 KV 참조 | `01` 1.3 |
-| **`test_mla_absorption`** | **흡수형 == naive, latent만 캐시해도 결과 불변** | `01` 1.4 |
-| `test_gate_identity` | gate=1 → 원본, gate=0 → 0 | `01` 1.5 |
-| `test_swa_full_window` | `W ≥ S` → full attention과 동일 | `01` 1.6 |
-| `test_nsa_dense_limit` | top-k=전체 → dense와 동일 | `01` 1.7 |
-| `test_dsa_dense_limit` | 동일 (DSA·CSA) | `01` 1.8~1.9 |
-| `test_cla_layer_sharing` | group=1 → 독립, group=2 → 아래 레이어 KV 재사용 | `01` 1.11 |
-| `test_linear_attention_recurrent` | 재귀 형태 == 이차 형태, 상태 크기가 `S`와 무관 | `02` 2.1 |
-| `test_deltanet_forms` | 3단계 delta rule == `(I − βkkᵀ)S + βkvᵀ` | `02` 2.3 |
-| `test_linear_lineage` | KDA ⊃ Gated DeltaNet ⊃ DeltaNet | `02` 2.4 |
+| `test_gqa_reduces_to_mha` | `n_kv = n_h` → MHA와 동일 | `01` 2.2 |
+| `test_mqa_is_gqa_with_one_group` | MQA == `n_kv=1` 인 GQA | `01` 2.1 |
+| `test_gqa_group_sharing` | 그룹 내 헤드가 같은 KV 참조 | `01` 2.2 |
+| **`test_mla_absorption`** | **흡수형 == naive, latent만 캐시해도 결과 불변** | `01` 2.3 |
+| `test_gate_identity` | gate=1 → 원본, gate=0 → 0 | `01` 2.4 |
+| `test_swa_full_window` | `W ≥ S` → full attention과 동일 | `01` 3.1 |
+| `test_nsa_dense_limit` | top-k=전체 → dense와 동일 | `01` 3.2 |
+| `test_dsa_dense_limit` | 동일 (DSA·CSA) | `01` 3.3~3.4 |
+| `test_cla_layer_sharing` | group=1 → 독립, group=2 → 아래 레이어 KV 재사용 | `01` 4.1 |
+| `test_linear_attention_recurrent` | 재귀 형태 == 이차 형태, 상태 크기가 `S`와 무관 | `02` 1.1 |
+| `test_deltanet_forms` | 3단계 delta rule == `(I − βkkᵀ)S + βkvᵀ` | `02` 2.2 |
+| `test_linear_lineage` | KDA ⊃ Gated DeltaNet ⊃ DeltaNet | `02` 2.3 |
 | `test_rope_relative` | `⟨R_m q, R_n k⟩` 가 `m − n` 에만 의존 | `04` 4.2 |
 
 ---
@@ -44,7 +44,7 @@ python snippets/test_equivalence.py
 ## 볼 만한 것 두 개
 
 **`test_mla_absorption`** — 이 위키에서 가장 확인할 가치가 있는 부분이다.
-`01-attention` 1.4에서 up-projection을 매 토큰마다 명시적으로 복원하지 않아도 된다고
+`01-attention` 2.3에서 up-projection을 매 토큰마다 명시적으로 복원하지 않아도 된다고
 했는데, 코드로 보면 결합법칙이 명확하다.
 
 ```

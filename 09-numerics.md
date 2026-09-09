@@ -273,7 +273,7 @@ KV cache는 다르다. `B × S × L`에 비례한다. **배치와 컨텍스트�
  MLA             ×  FP8 KV             =  더 작게
 ```
 
-`01-attention` `1.11`의 CLA/YOCO(레이어 방향)와도 곱해진다.
+`01-attention` `4.1`의 CLA/YOCO(레이어 방향)와도 곱해진다.
 **서로 직교하는 절감 수단이 셋 있는 셈이다** — 가로(헤드·차원), 세로(레이어), 정밀도(비트).
 
 ### attention quantization
@@ -308,7 +308,7 @@ KV를 저정밀로 저장하는 것을 넘어, **attention 내부 계산까지**
 
 ### 어디서 극단값이 생기나
 
-여기서 `01-attention` `1.5`와 연결된다.
+여기서 `01-attention` `2.4`와 연결된다.
 
 > **attention sink가 극단값의 주요 원인 중 하나다.**
 >
@@ -321,7 +321,7 @@ KV를 저정밀로 저장하는 것을 넘어, **attention 내부 계산까지**
 ### 그래서 축들이 연결된다
 
 ```
- Gated Attention (01-attention 1.5)
+ Gated Attention (01-attention 2.4)
         │
         │  softmax의 강제 배분을 게이트로 흡수
         ▼

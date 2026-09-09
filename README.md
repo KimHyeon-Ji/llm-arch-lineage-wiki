@@ -28,11 +28,11 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 
 | 찾는 것 | 어디로 |
 |---|---|
-| MQA, GQA, MLA | [01-attention](01-attention.md) 1.2~1.4 |
-| **CSA, HCA** (DeepSeek-V4) | [01-attention](01-attention.md) 1.9 |
-| NSA, MoBA, DSA | [01-attention](01-attention.md) 1.7~1.8 |
-| **KDA** (Kimi Linear/K3) | [02-linear-attention](02-linear-attention.md) 2.4 |
-| Gated DeltaNet (Qwen3-Next) | [02-linear-attention](02-linear-attention.md) 2.4 |
+| MQA, GQA, MLA | [01-attention](01-attention.md) 2.1~2.3 |
+| **CSA, HCA** (DeepSeek-V4) | [01-attention](01-attention.md) 3.4 |
+| NSA, MoBA, DSA | [01-attention](01-attention.md) 3.2~3.3 |
+| **KDA** (Kimi Linear/K3) | [02-linear-attention](02-linear-attention.md) 2.3 |
+| Gated DeltaNet (Qwen3-Next) | [02-linear-attention](02-linear-attention.md) 2.3 |
 | RoPE, YaRN, **HoPE** | [04-position](04-position.md) |
 | MoE, expert granularity | [05-moe](05-moe.md) |
 | **mHC** (DeepSeek-V4) | [06-norm-residual](06-norm-residual.md) 6.6 |
@@ -55,8 +55,8 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 
 | 컴포넌트 | 바로가기 | 이 장에서 보이는 병목 이동 |
 |---|---|---|
-| **Attention** | [01 시스템 영향표](01-attention.md#이-장의-발전-계보와-시스템-영향) | KV capacity → read bandwidth → sparse gather |
-| **Linear Attention** | [02 시스템 영향표](02-linear-attention.md#이-장의-발전-계보와-시스템-영향) | KV traffic → state-update kernel·memory accuracy |
+| **Attention** | [01 문서 지도](01-attention.md#문서-지도) | KV capacity → read bandwidth → sparse gather |
+| **Linear Attention** | [02 문서 지도](02-linear-attention.md#문서-지도) | KV traffic → state-update kernel·memory accuracy |
 | **Test-Time Memory** | [03 RNN·update 계보](03-test-time-memory.md#31-두-계보가-만나는-지점--rnn에서-test-time-memory까지) | fixed state → gradient update → multi-rate update |
 | **Position** | [04 시스템 영향표](04-position.md#이-장의-발전-계보와-시스템-영향) | 위치 표현 → context extrapolation → attention/KV layout 제약 |
 | **MoE** | [05 시스템 영향표](05-moe.md#이-장의-발전-계보와-시스템-영향) | dense compute → weight capacity → all-to-all communication |

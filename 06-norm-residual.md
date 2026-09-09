@@ -253,7 +253,7 @@ logit이 커지면 softmax가 포화되어 거의 one-hot이 되고, gradient가
 
 **zero-centered RMSNorm** — gain 파라미터를 `γ` 대신 `1 + w`로 두고 `w`를 학습한다.
 초기값이 자연스럽게 항등에 가까워져 학습 초반이 안정된다.
-Qwen3-Next에서 gated attention(`01-attention` `1.5`)과 함께 쓰인다.
+Qwen3-Next에서 gated attention(`01-attention` `2.4`)과 함께 쓰인다.
 
 **depth-scaled gain** — gain을 `1/√L`로 초기화한다 (`L`은 총 층수).
 `6.2`에서 본 "residual stream이 층마다 커지는" 문제를 초기화 단계에서 억제한다.
@@ -262,7 +262,7 @@ Qwen3-Next에서 gated attention(`01-attention` `1.5`)과 함께 쓰인다.
 **norm 배치 변형** — sublayer 앞뒤 모두에 norm을 두는 sandwich norm,
 그 변형인 peri-LN 등이 있다. Post-LN과 Pre-LN 사이 어딘가를 찾으려는 시도들이다.
 
-> 💡 `01-attention` `1.3`에서 말한 **"두 극단 사이에 눈금 긋기"** 가 여기서도 반복된다.
+> 💡 `01-attention` `2.2`에서 말한 **"두 극단 사이에 눈금 긋기"** 가 여기서도 반복된다.
 > Post-LN도 Pre-LN도 아닌 중간 지점을 찾는 것이다.
 
 ### 코드와 텐서
@@ -416,7 +416,7 @@ mHC의 답은 **혼합 행렬이 아무 값이나 갖지 못하게 하는 것**�
 
 논문의 설정이 실제 배포 모델에 그대로 쓰였음을 확인할 수 있다.
 `hc_` 접두사가 **Hyper-Connections**를 가리킨다는 점도 여기서 분명해진다 —
-`01-attention` 1.9의 HCA(Heavily Compressed Attention)와는 **별개**다.
+`01-attention` 3.4의 HCA(Heavily Compressed Attention)와는 **별개**다.
 
 ### 추론에서 달라진 것
 
@@ -429,7 +429,7 @@ mHC의 답은 **혼합 행렬이 아무 값이나 갖지 못하게 하는 것**�
 | KV cache | — | **영향 없음** |
 
 마지막 줄이 중요하다. **mHC는 KV cache와 무관하다.**
-DeepSeek-V4에서 CSA/HCA(`01-attention` `1.9`)와 함께 발표되어 묶여 보이기 쉽지만,
+DeepSeek-V4에서 CSA/HCA(`01-attention` `3.4`)와 함께 발표되어 묶여 보이기 쉽지만,
 전혀 다른 문제를 푸는 별개의 기여다.
 
 > ⚠️ 추론 시 Sinkhorn 사영을 미리 계산해둘 수 있는지는 원문 확인 전이다.

@@ -654,7 +654,7 @@ NVIDIA Rubin의 공식 사양은 NVLink 6 scale-up 대역폭을 GPU당 최대 3.
 
 ### LatentMoE — 통신 압력을 정면으로 겨냥한 답
 
-발상은 `01-attention` 1.4의 MLA와 정확히 같다. **작은 공간에서 일하고 나온다.**
+발상은 `01-attention` 2.3의 MLA와 정확히 같다. **작은 공간에서 일하고 나온다.**
 
 ```
             ┌── down-proj ──┐                    ┌── up-proj ──┐

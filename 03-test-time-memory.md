@@ -145,7 +145,7 @@ memory ... acts as a long-term, more persistent, memory." (Behrouz et al. 2024,
 
 키를 넣으면 값이 나오도록 메모리를 학습시킨다.
 
-> 💡 `02-linear-attention` `2.1`에서 상태를 **"키를 주면 값을 돌려주는 사전"** 이라 불렀다.
+> 💡 `02-linear-attention` `1.1`에서 상태를 **"키를 주면 값을 돌려주는 사전"** 이라 불렀다.
 > Titans는 그 비유를 문자 그대로 구현한다. **사전이 신경망이고, 진짜로 학습된다.**
 
 **놀라움(surprise) = 그 손실의 gradient**
@@ -190,7 +190,7 @@ memory ... acts as a long-term, more persistent, memory." (Behrouz et al. 2024,
 *Memory as Context · Memory as Gate · Memory as Layer*
 
 메모리 모듈을 만들었으면 attention과 어떻게 조합할지가 남는다.
-`02` `2.6`의 하이브리드 설계와 같은 구조의 질문이고, Titans는 세 가지를 제시한다.
+`02` `3.1`의 하이브리드 설계와 같은 구조의 질문이고, Titans는 세 가지를 제시한다.
 
 ```
  MAC — Memory as Context
@@ -215,16 +215,16 @@ memory ... acts as a long-term, more persistent, memory." (Behrouz et al. 2024,
 | **MAG** | SWA 갈래 + 메모리 갈래를 게이트로 결합 | 분할이 없어 **학습 효율 좋음** | 아주 긴 의존 관계에 덜 강함 |
 | **MAL** | 메모리 층 → SWA 층 직렬 | 가장 단순 | **각 층이 병목**이 되어 제약이 큼 |
 
-> 💡 **`01-attention` `1.7`의 NSA와 구도가 닮았다.**
+> 💡 **`01-attention` `3.2`의 NSA와 구도가 닮았다.**
 > NSA도 압축·선택·지역 세 갈래를 학습된 게이트로 섞었다.
 > **"싼 요약 + 정확한 지역 정보"를 어떻게 결합할 것인가**는 축을 넘나들며 반복되는 질문이다.
 >
-> 그리고 MAG는 `02` `2.6`의 3:1 하이브리드와 사실상 같은 발상이다 —
+> 그리고 MAG는 `02` `3.1`의 3:1 하이브리드와 사실상 같은 발상이다 —
 > 값싼 장기 갈래와 정확한 지역 갈래를 함께 두는 것.
 
 #### 계보 한눈에 보기
 
-`02-linear-attention` `2.4`의 표를 한 줄 늘리면 이렇게 된다.
+`02-linear-attention` `2.3`의 표를 한 줄 늘리면 이렇게 된다.
 
 | 모듈 | 메모리의 형태 | 갱신 방식 |
 |---|---|---|
@@ -293,7 +293,7 @@ gradient**로 유도한다는 차이가 있다.
 
 ### 학습은 어떻게 병렬화하나
 
-`02` `2.1`에서 본 그 문제가 여기서도 나온다. 재귀는 순차적이라 GPU를 못 채운다.
+`02` `1.1`에서 본 그 문제가 여기서도 나온다. 재귀는 순차적이라 GPU를 못 채운다.
 
 📌 [T1] 해법도 같은 계열이다.
 
@@ -377,7 +377,7 @@ the inner objective ... with respect to only the current input" (Behrouz et al.
 논문은 설명한다.
 
 Muon이 선택된 이유가 시스템적이다 — **대부분의 연산이 행렬곱이라 시퀀스 방향으로
-병렬화된다.** 2차 정보를 쓰면서도 `02` `2.1`의 chunked 병렬화를 유지할 수 있다.
+병렬화된다.** 2차 정보를 쓰면서도 `02` `1.1`의 chunked 병렬화를 유지할 수 있다.
 
 > 💡 **최적화 이론이 아키텍처 안으로 들어오고 있다.**
 > 축2가 "1차 경사하강을 재귀로 푼 것"이었다면 ATLAS는 2차로 올라간다.
@@ -484,7 +484,7 @@ optimization." 둘은 별개가 아니라 **같은 것의 서로 다른 층위**
 ```
 > **그림 3.4** — 두 극단 사이를 여러 단계로 채운다.
 
-> 💡 `01-attention` `1.3`에서 말한 **"두 극단 사이에 눈금 긋기"** 가 또 나온다.
+> 💡 `01-attention` `2.2`에서 말한 **"두 극단 사이에 눈금 긋기"** 가 또 나온다.
 > GQA가 MHA와 MQA 사이에 눈금을 그었듯, CMS는 **attention과 FFN 사이**에 눈금을 긋는다.
 
 **self-modifying — 갱신 방식을 갱신한다**
@@ -614,7 +614,7 @@ SGLang이 Mamba 상태용으로 별도 풀을 만든 선례(`10.3`, 📌 [T2])�
 
 **⑤ 병렬화는 풀렸다.**
 📌 [T1] 청크 단위 행렬곱 + parallel associative scan으로 학습 병렬화는 해결됐다
-(`3.2` "학습은 어떻게 병렬화하나" 참고). `02` `2.1`에서 본 chunked parallel과
+(`3.2` "학습은 어떻게 병렬화하나" 참고). `02` `1.1`에서 본 chunked parallel과
 같은 계열의 해법이다. 이게 없었으면 대규모 실험 자체가 어려웠을 것이다.
 
 ### 압력의 관점에서
@@ -681,9 +681,9 @@ MLA가 RoPE와 충돌한 이유와 이름이 같은 HoPE/HOPE의 차이도 거�
 - Google Research 블로그, *Introducing Nested Learning* — 중첩 최적화 관점, CMS 설명
 
 **연결되는 파일**
-- `02-linear-attention` 2.3~2.4 — delta rule과 이 축의 출발점
-- `02-linear-attention` 2.6 — 하이브리드 설계, 고정 상태의 검색 한계
-- `01-attention` 1.7 — NSA의 세 갈래 구조 (MAC/MAG/MAL과 대조)
+- `02-linear-attention` 2.2~2.3 — delta rule과 이 축의 출발점
+- `02-linear-attention` 3.1 — 하이브리드 설계, 고정 상태의 검색 한계
+- `01-attention` 3.2 — NSA의 세 갈래 구조 (MAC/MAG/MAL과 대조)
 - `10-serving` 10.3 — 하이브리드 상태의 prefix caching 문제
 
 **범위와 주의**
