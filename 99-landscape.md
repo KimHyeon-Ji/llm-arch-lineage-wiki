@@ -32,6 +32,7 @@
 | 2024~ | **MLA·CSA·HCA** | KV 차원과 후보 수 | 저차원 또는 압축 토큰으로 저장·검색 | KV 감소, projection·indexer·불규칙 접근 필요 |
 | 2023~ | **Mamba·DeltaNet·KDA** | 길이에 비례하는 KV | 과거를 고정 크기 recurrent state로 요약 | 해당 층의 KV 소멸, scan·state-update kernel 필요 |
 | 2025~ | **Titans·ATLAS** | 고정 update의 표현력 | 추론 중 neural memory를 최적화 | 읽기뿐 아니라 update compute·write traffic·요청별 상태 관리 발생 |
+| 2026~ | **Sleep** | 온라인 갱신만으로는 지식이 휘발됨 | 입력 없는 시간대에 빠른 기억을 파라미터로 굳힘 | 서빙 계획에 오프라인 consolidation 슬롯이 들어오고, 사용자별로 가중치가 갈라짐 |
 | 2025~ | **HOPE·CMS** | 단일 갱신 속도 | 메모리마다 다른 갱신 주기 | multi-rate read+write 실행과 계층적 상태 관리가 연구 과제 |
 
 ```

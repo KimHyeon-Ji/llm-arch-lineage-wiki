@@ -41,6 +41,7 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 | MXFP4 vs NVFP4 | [09-numerics](09-numerics.md) 9.3 |
 | PagedAttention, prefix caching | [10-serving](10-serving.md) |
 | **Titans, ATLAS, HOPE** (Google) | [03-test-time-memory](03-test-time-memory.md) |
+| **Sleep** (wake/sleep 분리, 오프라인 consolidation) | [03-test-time-memory](03-test-time-memory.md) 3.5 |
 | **모델별 조합 비교** | [99-landscape](99-landscape.md) 99.1 |
 
 ### 시스템 관점에서 보고 싶다면
@@ -86,7 +87,7 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 | **[00-foundations](00-foundations.md)** | — | 기준점. 토큰 하나가 어떻게 흐르고 무엇이 비싼가 |
 | **[01-attention](01-attention.md)** ★ | 메모리 | KV를 어떻게 줄이고, 필요한 토큰만 읽을 것인가 |
 | **[02-linear-attention](02-linear-attention.md)** | 메모리 | KV를 아예 안 만들면? |
-| **[03-test-time-memory](03-test-time-memory.md)** | 메모리 갱신 | ⚠️ **연구 단계** — 추론 중에 학습하는 메모리 (Titans·ATLAS·HOPE) |
+| **[03-test-time-memory](03-test-time-memory.md)** | 메모리 갱신 | ⚠️ **연구 단계** — 추론 중에 학습하는 메모리 (Titans·ATLAS·HOPE·Sleep) |
 | **[04-position](04-position.md)** | 길이 일반화 | 순서를 어떻게 알려주고, 학습보다 긴 입력을 어떻게 다루나 |
 | **[05-moe](05-moe.md)** | 연산량 · 통신 | 파라미터는 늘리고 연산은 그대로 |
 | **[06-norm-residual](06-norm-residual.md)** | 안정성 | 깊은 모델을 어떻게 버티게 하나 |
