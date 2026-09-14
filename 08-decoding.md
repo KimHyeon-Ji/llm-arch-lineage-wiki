@@ -21,9 +21,10 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
 문제는 하나다. **다음 토큰을 알아야 그 다음 토큰을 만들 수 있다.**
 자기회귀 생성의 본질적인 직렬성이다. 이 파일은 그 벽을 우회하는 방법들이다.
 
-세 가지 서로 다른 방식으로 우회한다 — **① 누군가 미리 추측하고 검증한다
+네 가지 서로 다른 방식으로 우회한다 — **① 누군가 미리 추측하고 검증한다
 (별도 모델, 또는 같은 모델의 일부)**, **② 추측을 아예 학습 목표에 넣어버린다**,
-**③ 추측이라는 개념 자체를 버리고 병렬 방정식으로 재해석한다.**
+**③ 추측이라는 개념 자체를 버리고 병렬 방정식으로 재해석한다**,
+**④ 추측을 만드는 일마저 병렬화한다 — 초안 블록 하나를 한 번의 forward로 뽑는다.**
 
 ## 이 장의 발전 계보와 시스템 영향
 
@@ -36,10 +37,14 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
 | 내부 초안 | **Medusa** | 별도 draft model 관리 | 여러 prediction head가 미래 token 후보 생성 | 배포 단순화, head·tree verification compute 증가 |
 | feature 예측 | **EAGLE(-2/3)** | token-level draft의 불확실성, 정적 트리 | hidden feature 예측 + 문맥에 따라 동적으로 자라는 트리 | acceptance 대폭 향상, 별도 feature predictor 필요 |
 | 학습 목표 통합 | **MTP** | 미래 token 표현과 초안 품질 | 학습 때 여러 미래 token을 동시에 예측 | 학습 compute·모듈 증가, 추론 가속과 품질 개선을 함께 노림 |
+| 병렬 초안 | **DFlash** (block diffusion) | draft 자체가 순차적이라 `γ`에 비례해 늘어나는 초안 지연 | 마스크 블록을 한 번의 forward로 denoise, target feature를 draft 전 레이어 K/V에 주입 | 초안 지연이 `γ`와 무관해짐, 대신 뒤쪽 위치 acceptance 급락(suffix decay) |
+| 부하 인지 검증 | **DSpark** | 통과 못 할 draft가 batch 용량을 먹는 검증 낭비 | 병렬 backbone + 1차 마르코프 head, survival 확률과 엔진 처리량 프로파일로 요청별 검증 길이 결정 | 고부하에서도 이득 유지, confidence head·cost table·가변 길이 검증 batch |
 
 > **이 장의 병목 이동:** 한 token마다 반복되는 **weight memory traffic**을 여러 후보에
 > 나눠 쓰는 대신, 성능이 **acceptance rate·검증 compute·batch 크기**에 의존하게 된다.
 > 작은 batch에서는 latency를 줄이지만 큰 batch에서는 남는 compute가 적어 이득이 줄어든다.
+> 마지막 두 줄은 그 다음 단계다 — **초안 생성의 직렬성**까지 없애고 나면, 남는 문제는
+> "한정된 검증 예산을 어느 요청의 어느 위치에 줄 것인가"라는 **스케줄링**이 된다.
 
 ---
 
@@ -54,28 +59,29 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
       Speculative Decoding (2022)
       작은 draft 모델 + 큰 target 검증
                 │
-      ┌─────────┼──────────┬───────────────┐
-      │         │          │               │
- [draft 모델   [모델 하나로   [학습 목표를    [추측 자체를
-  관리 부담]    스스로 추측]  바꾼다]        없앤다]
-      │         │          │               │
-  Medusa        LayerSkip    MTP (2024)   Lookahead
-  (2024)        (2024)       다음 k개      Decoding (2023)
-  여러 head     early-exit   예측          Jacobi iteration
-  EAGLE (2024)  self-spec    (DeepSeek-V3)  + n-gram pool
-  feature 예측       │            │               │
-      │              │            │               │
- EAGLE-2/3            │            │               │
- 동적 트리 (2024-25)   │            │               │
-      │              │            │               │
-      └──────┬───────┴─────┬──────┘               │
-             │              │                      │
-             └──────────────┴──────────────────────┘
+      ┌─────────┼──────────┬───────────────┬──────────────────┐
+      │         │          │               │                  │
+ [draft 모델   [모델 하나로   [학습 목표를    [추측 자체를       [초안 만드는 일도
+  관리 부담]    스스로 추측]  바꾼다]        없앤다]            병렬로]
+      │         │          │               │                  │
+  Medusa        LayerSkip    MTP (2024)   Lookahead        block diffusion
+  (2024)        (2024)       다음 k개      Decoding (2023)   drafting
+  여러 head     early-exit   예측          Jacobi iteration  DFlash (2026)
+  EAGLE (2024)  self-spec    (DeepSeek-V3)  + n-gram pool    forward 1회 = γ개
+  feature 예측       │            │               │                  │
+      │              │            │               │            DSpark (2026)
+ EAGLE-2/3            │            │               │            semi-AR head
+ 동적 트리 (2024-25)   │            │               │            + 부하 인지 검증
+      │              │            │               │                  │
+      └──────┬───────┴─────┬──────┘               │                  │
+             │              │                      │                  │
+             └──────────────┴──────────────────────┴──────────────────┘
                              │
                  [시스템 쪽 귀결] acceptance rate가
                  모든 이득을 좌우하고, 배치 크기와 상충한다
 ```
-> **그림 8.0** — 축8의 계보. 같은 뿌리(순차 생성의 직렬성)에서 네 갈래로 갈라진다.
+> **그림 8.0** — 축8의 계보. 같은 뿌리(순차 생성의 직렬성)에서 다섯 갈래로 갈라진다.
+> 맨 오른쪽 갈래만 **검증이 아니라 초안 쪽**의 직렬성을 겨냥한다.
 
 **목차**
 
@@ -86,7 +92,8 @@ H100 SXM의 BF16 dense 기준 균형점은 약 295 FLOP/byte다.
 | [8.3](#83-lookahead-decoding--추측하지-않고-병렬로-푼다) | **Lookahead Decoding** | 추측하지 않고 병렬로 |
 | [8.4](#84-medusa와-eagle--draft-모델-없이) | **Medusa · EAGLE** | draft 모델 없이 |
 | [8.5](#85-mtp--학습-목표를-바꾸다) | **MTP** | 학습 목표를 바꾸다 |
-| [8.6](#86-시스템-관점--acceptance-rate가-모든-것을-정한다) | **시스템 관점** | acceptance rate가 전부 ★ |
+| [8.6](#86-diffusion-초안--초안-자체를-한-번에-만든다) | **Diffusion 초안** | 초안을 블록째 한 번에 |
+| [8.7](#87-시스템-관점--acceptance-rate가-모든-것을-정한다) | **시스템 관점** | acceptance rate가 전부 ★ |
 
 ---
 
@@ -196,7 +203,7 @@ forward로 `γ+1`개 위치의 확률분포가 **한꺼번에** 나온다. 그 �
 |---|---|
 | **핵심 아이디어** | 작은 모델이 여러 토큰을 추측하고, 큰 모델이 한 번의 forward로 검증한다 |
 | **장점** | · **출력 분포가 완전히 동일** — 품질 손실이 없다<br>· decode의 남는 연산 능력을 회수한다<br>· 모델 구조를 바꾸지 않아도 된다 |
-| **한계** | · **acceptance rate에 성패가 달렸다** — 낮으면 오히려 손해<br>· draft 모델을 따로 두고 관리해야 한다<br>· 거부된 토큰의 KV 계산이 낭비<br>· **배치가 크면 이득이 줄어든다** (`8.6`) |
+| **한계** | · **acceptance rate에 성패가 달렸다** — 낮으면 오히려 손해<br>· draft 모델을 따로 두고 관리해야 한다<br>· 거부된 토큰의 KV 계산이 낭비<br>· **배치가 크면 이득이 줄어든다** (`8.7`) |
 | **대표 구현** | vLLM, SGLang, TensorRT-LLM 등 주요 프레임워크 전반 |
 | **다음으로** | draft 모델을 따로 두는 부담을 없애려면 → **Self-Speculative Decoding** |
 
@@ -643,11 +650,322 @@ MTP 모듈 전부를 **한 번에 병렬로** 학습시킬 수 있다 (teacher f
 | **장점** | · **품질이 향상된다** — 원래 목적이 이것<br>· **별도 draft 모델 없이** speculative decoding 가능<br>· 모듈이 본체와 함께, 인과적 사슬로 학습되어 acceptance rate가 좋다<br>· 추가 파라미터가 작다 |
 | **한계** | · **처음부터 그렇게 학습해야 한다** — 기존 모델에 적용 불가<br>· 학습 비용이 약간 늘어난다<br>· `k`를 키울수록 먼 토큰의 예측 정확도가 급격히 떨어짐 |
 | **대표 모델** | **DeepSeek-V3 / V3.2 / V4** |
-| **다음으로** | 이 모든 것의 효과는 하나의 숫자에 달려 있다 → **acceptance rate** |
+| **다음으로** | 여기까지 초안은 전부 **순차적으로** 만들어졌다. 초안 블록을 한 번에 뽑을 수는 없나 → **Diffusion 초안** |
 
 ---
 
-## 8.6 시스템 관점 — acceptance rate가 모든 것을 정한다
+## 8.6 Diffusion 초안 — 초안 자체를 한 번에 만든다
+
+*block diffusion drafting · DFlash · DSpark*
+
+### 왜 나왔나
+
+`8.1`~`8.5`가 병렬화한 것은 전부 **검증**이었다. target forward 한 번으로 `γ+1`개
+위치를 한꺼번에 확인한다. 그런데 그 앞에 아직 손대지 않은 직렬성이 하나 남아 있다.
+
+**초안을 만드는 일 자체는 여전히 순차적이다.**
+
+EAGLE의 feature 예측기도, MTP 모듈 사슬도, LayerSkip의 앞쪽 레이어도 결국 작은
+자기회귀 루프다. `γ`개를 뽑으려면 `γ`번 돈다.
+
+```
+ 자기회귀 draft:  T_draft = γ · t_step      ← γ에 비례해서 늘어난다
+```
+
+`t_step`이 작을 뿐 **구조는 본체와 똑같다.** 그래서 `γ`를 키우면 어느 지점부터
+검증에서 버는 것보다 초안에서 잃는 게 커진다 — `8.4`에서 트리를 아무리 영리하게
+키워도 draft 깊이를 마음껏 늘리지 못했던 이유가 여기에 있다.
+
+> **초안 블록 하나를, 한 번의 forward로 통째로 만들 수는 없나?**
+
+마침 그 모양으로 생성하는 모델 계열이 옆에서 따로 자라고 있었다.
+**diffusion language model**이다.
+
+### 잠깐 — diffusion language model이란
+
+자기회귀는 왼쪽에서 오른쪽으로 한 칸씩 채운다. masked diffusion LM은 다르게 간다.
+**출력 자리를 전부 `[MASK]`로 깔아놓고, 반복하면서 일부씩 확정(unmask)한다.**
+
+```
+ step 0:  [M] [M] [M] [M] [M] [M] [M] [M]
+ step 1:  [M] cat [M] [M] on  [M] [M] mat     ← 확신 있는 자리부터 확정
+ step 2:  The cat [M] [M] on  the [M] mat
+ step 3:  The cat sat down on the big mat     ← 완성
+```
+> **그림 8.6** — 매 스텝 모든 위치를 동시에 예측하고, 확신도가 높은 자리만
+> 확정한다. 스텝 수가 토큰 수보다 훨씬 적을 수 있다는 게 이 방식의 매력이다.
+
+LLaDA(8B), Dream(7B) 같은 공개 모델이 이 방식으로 자기회귀 모델과 견줄 만한
+품질에 도달했다. 그런데 **실제 속도는 기대만큼 나오지 않았다.** 이유가 두 가지다.
+
+📌 [T1] **① KV cache를 못 쓴다.** 모든 위치가 서로를 보는 bidirectional attention
+이라 `01-attention`에서 본 causal 구조의 전제가 깨진다. 이미 확정된 토큰의 K/V도
+다음 스텝에서 문맥이 바뀌면 달라지므로, 원칙적으로는 **매 스텝 시퀀스 전체를
+다시 계산해야 한다.** 병렬성을 얻는 대신 캐시를 잃는 거래다.
+
+📌 [T1] **② 한 스텝에 여러 자리를 동시에 확정하면 의존성이 깨진다.** 각 위치는
+자기 자리의 **주변분포**만 보고 고른다. "a"와 "the"가 각각 0.5인 자리가 둘 있을 때
+독립적으로 뽑으면, 결합분포에서는 거의 일어나지 않는 조합이 나온다.
+그래서 한 번에 많이 확정할수록 품질이 떨어진다.
+
+두 문제에 대한 대응이 이 절의 재료가 된다.
+
+| 문제 | 대응 | 방식 |
+|---|---|---|
+| KV cache 부재 | **Fast-dLLM** | 블록 단위 **근사** KV cache — 블록 안 여러 스텝 동안 K/V를 재사용. 학습 불필요, LLaDA·Dream에서 최대 27.6배 처리량 보고 |
+| 동시 확정의 품질 저하 | **confidence 기반 병렬 디코딩** | 확신도가 임계값을 넘는 자리만 확정하고 나머지는 다음 스텝으로 미룬다 |
+| 둘 다 구조적으로 | **Block Diffusion (BD3-LM)** | **블록 사이는 자기회귀, 블록 안은 diffusion.** KV cache와 가변 길이 생성이 되살아난다 |
+
+> 💡 **마지막 줄이 이 장과 만나는 지점이다.** "블록 하나를 한 번에, 블록끼리는
+> 순서대로"는 speculative decoding의 draft가 정확히 원하는 모양이다 —
+> 검증으로 확정된 앞부분을 조건으로 삼아, 다음 `γ`개를 한 번에 제안하면 된다.
+
+### DFlash — block diffusion을 draft로 쓴다
+
+📌 [T1] DFlash(2026, ICML 2026)는 draft 모델을 작은 자기회귀 모델에서
+**가벼운 block diffusion 모델**로 바꾼다.
+
+```
+ EAGLE:   [확정된 문맥] ─► 예측기 ─► t+1 ─► 예측기 ─► t+2 ─► ... ─► t+γ
+                            (γ번 순차 실행)
+
+ DFlash:  [확정된 문맥] + [M][M][M]...[M]  ─── forward 1회 ───►  t+1 ... t+γ
+                          γ개 마스크                              (동시에)
+```
+> **그림 8.6b** — draft의 forward 횟수가 `γ`에서 **1**로 떨어진다.
+> 이미지 diffusion과 달리 denoising을 여러 번 돌지 않는다 — 어차피 target이
+> 검증하므로, **한 스텝짜리 거친 초안이면 충분하다.**
+
+설계에서 중요한 건 세 가지다.
+
+**① 초안 지연이 `γ`와 무관해진다.**
+
+```
+ 자기회귀 draft:   T_draft = γ · t_step   (γ에 비례)
+ block diffusion:  T_draft = t_parallel   (γ와 무관, O(1))
+```
+
+📌 [T1] 그래서 길이를 공격적으로 잡을 수 있다 — 5-layer DFlash가 **16 토큰**을
+내는 쪽이 EAGLE-3가 **8 토큰**을 내는 쪽보다 지연도 낮고 acceptance length도 높다.
+
+**② target의 feature를 draft의 모든 레이어에 주입한다 (KV injection).**
+
+📌 [T1] target의 2번째 층부터 뒤에서 3번째 층 사이에서 **균등하게 고른 5개 층**의
+hidden state를 이어붙여 draft hidden 공간으로 projection한 뒤, draft의 **모든 레이어
+K/V projection에 직접 주입**한다. 입력에만 조건을 넣는 EAGLE식 조건화와 다른 점이고,
+덕분에 **draft 레이어를 깊게 할수록 acceptance length가 같이 는다.** projection
+파라미터는 Qwen3.5-35B 기준 약 42MB로, 수십 GB짜리 본체 옆에서는 무시할 수준이다.
+
+> 💡 `8.4`의 EAGLE-3가 "여러 층의 semantic feature를 융합"한 것과 같은 방향이다.
+> **target이 이미 계산해둔 표현을 draft에게 얼마나 넘겨주느냐**가 이 계열의
+> 공통 조절 손잡이다.
+
+**③ 학습을 추론 상황과 똑같이 만든다.**
+
+📌 [T1] 응답에서 anchor 토큰을 무작위로 뽑아 그 자리를 블록의 첫 위치로 삼고
+나머지를 마스킹한다. 추론 때 "직전 검증에서 확정된 토큰이 다음 블록을 조건화하는"
+상황을 그대로 재현하는 것이다. 손실은 위치 가중 cross-entropy로,
+`w_k = exp(-(k-1)/γ)` — **앞쪽 위치를 더 무겁게 본다.** 앞이 틀리면 뒤는 어차피
+전부 버려지기 때문이다.
+
+**검증은 하나도 바뀌지 않는다.** 표준 speculative sampling + tree attention이고,
+따라서 `8.1`의 **"근사가 아니다"가 그대로 적용된다** — 출력 분포는 target 단독
+샘플링과 같다.
+
+📌 [T1] 보고된 수치: Qwen3-8B 평균 4.9배, Qwen3-4B 수학 과제 최대 5.15배,
+EAGLE-3(tree size 16) 대비 2.4배, SGLang 서빙 concurrency 1에서 5.1배.
+
+### 그런데 뒤로 갈수록 틀린다 — suffix decay
+
+병렬 초안에는 구조적인 약점이 있다. 한 번의 forward로 `γ`개를 동시에 내면
+**k번째 위치는 k-1번째가 실제로 무엇으로 뽑혔는지 모른다.** 앞 토큰을 조건으로
+받는 게 아니라, 가능한 모든 앞 토큰에 대해 **주변화(marginalize)한** 예측이다.
+DSpark 논문은 이걸 *multi-modal collision*이라 부른다 — 여러 갈래의 가능성이
+한 분포에 뭉개져서, 어느 갈래에도 정확히 맞지 않는 토큰이 나온다.
+
+📌 [T1] 위치별 조건부 acceptance를 재보면 방향이 정반대다.
+
+| 위치 | DFlash (병렬 초안) | EAGLE-3 (자기회귀 초안) |
+|---|---|---|
+| 1번째 | **~0.88** (math) — 더 깊은 backbone의 capacity 이득 | ~0.81 |
+| 2~7번째 | code 0.87 → **0.78**, chat 0.72 → **0.63**으로 급락 | 평평하거나 오히려 상승 |
+
+```
+ acceptance
+   ▲
+   │ ●─── 병렬 초안: 첫 자리는 이기는데
+   │  ╲
+   │   ╲──●
+   │ ○────○────○   자기회귀 초안: 낮게 시작해서 평평하게 간다
+   └────────────────────►  블록 안 위치 k
+```
+> **그림 8.6c** — 첫 자리는 병렬 초안이, 뒤 자리는 자기회귀 초안이 이긴다.
+> 그러면 **둘을 겹치면 되지 않나** — 그게 다음 항목이다.
+
+### DSpark — 병렬 backbone 위에 아주 얇은 순차 head
+
+📌 [T1] DSpark(2026, DeepSeek-AI · Peking University)는 DFlash를 **병렬 backbone**
+으로 그대로 쓰고, 그 위에 **1차 마르코프 의존성만** 얹는다. 완전한 자기회귀도,
+완전한 병렬도 아닌 **semi-autoregressive** 구조다.
+
+위치 `k`의 로짓에, 직전에 **실제로 샘플된** 토큰 `x_{k-1}`에만 의존하는
+전이 편향(transition bias)을 더한다.
+
+```
+ B = W1 W2,   W1 ∈ R^(V×r),  W2 ∈ R^(r×V),   r = 256 (기본값)
+
+ B(x_{k-1}, ·) = W1[x_{k-1}] W2  ∈ R^V        ← 위치 k의 로짓에 더한다
+```
+
+`V×V` 크기의 전이 행렬을 **저랭크로 압축해 들고 있는 것**이다. 순차 실행이
+필요하긴 하다 — `x_{k-1}`이 정해져야 `x_k`의 편향을 계산할 수 있으니. 다만 그
+순차 부분이 **레이어 forward가 아니라 embedding lookup 한 번 + `(r, V)` 곱
+한 번**이다. 사실상 공짜다.
+
+> 💡 **저랭크 압축이라는 도구가 또 나온다.** `01-attention` `2.3`의 MLA는 KV를,
+> `02-linear-attention`은 attention 행렬을 저랭크로 눌렀다. 여기서는
+> **토큰 전이 행렬**을 누른다 — "전부 들고 있지 말고 중요한 랭크만"이라는
+> 같은 손잡이가 전혀 다른 자리에서 쓰이고 있다.
+
+📌 [T1] 효과는 그림 8.6c의 곡선을 평평하게 펴는 것이다 — math에서 0.93으로
+시작해 블록 끝까지 높은 조건부 acceptance를 유지한다. 결과적으로 평균 채택 길이
+`τ`가 EAGLE-3 대비 26.7~30.9%, DFlash 대비 16.3~18.4% 높아진다 (Qwen3-4B/8B/14B).
+
+### 검증 예산을 요청마다 다르게 — confidence-scheduled verification
+
+여기서부터가 DSpark의 두 번째 절반이고, 이 장에서 처음 나오는 발상이다.
+
+지금까지 `γ`(또는 트리 크기)는 **고정**이었다. 문제는 이것이다 —
+**검증에 넣은 토큰은 맞든 틀리든 batch 용량을 먹는다.** 서버가 한가할 때는
+상관없지만, 부하가 높을 때 통과 확률 0.3짜리 draft를 검증에 밀어넣는 것은
+**다른 요청의 자리를 빼앗는 짓**이다. `8.7`에서 볼 "배치 크기와 상충한다"가
+여기서 구체적인 스케줄링 문제로 나타난다.
+
+DSpark는 두 조각으로 푼다.
+
+**① 살아남을 확률을 예측한다 — confidence head**
+
+📌 [T1] 각 draft 위치 `k`마다 스칼라 하나를 낸다.
+
+```
+ c_k = σ( w^T [ h_k ; W1[x_{k-1}] ] ) ∈ (0,1)
+
+ 의미: "앞의 토큰들이 전부 채택됐다는 조건에서,
+        위치 k의 draft 토큰이 target 검증을 통과할 조건부 확률"
+```
+
+그대로 쓰면 **과신(overconfident)한다.** 그래서 사후 보정을 한 단계 넣는다 —
+*Sequential Temperature Scaling*: 왼쪽에서 오른쪽으로 결합확률을 차례로
+보정하며, 각 위치에서 1차원 grid search로 Expected Calibration Error를 최소화한다.
+
+**② 그 확률로 검증 길이를 고른다 — hardware-aware prefix scheduler**
+
+목표 함수는 개별 요청의 지연이 아니라 **시스템 전체 처리량**이다.
+
+```
+ Θ = τ · SPS(B)
+
+  τ       기대 채택 토큰 수 (confidence로 계산)
+  B       target에 보내는 총 batch 크기 (모든 요청의 검증 토큰 합)
+  SPS(B)  그 batch 크기에서 엔진이 내는 초당 step 수
+          ← 엔진 초기화 때 한 번 프로파일해 cost table로 들고 있는다
+```
+
+📌 [T1] 스케줄러는 greedy로 푼다 — **모든 요청의 가능한 prefix 확장을 survival
+확률 내림차순으로 한 줄로 세우고**, 높은 것부터 하나씩 검증 예산에 넣으면서
+cost table로 `Θ`를 갱신한다. `Θ`가 더 이상 오르지 않으면 멈춘다.
+
+```
+ 요청 A: [0.95] [0.91] [0.72] [0.40] ...
+ 요청 B: [0.93] [0.60] ...              ─► 전부 한 줄로 정렬
+ 요청 C: [0.97] [0.94] [0.88] [0.81] ...
+
+ 정렬:  0.97 0.95 0.94 0.93 0.91 0.88 0.81 0.72 0.60 0.40 ...
+                                       ↑
+                           Θ = τ·SPS(B)가 꺾이는 지점에서 컷
+
+ 결과: C는 4개, A는 2개, B는 1개 — 요청마다 검증 길이가 다르다
+```
+> **그림 8.6d** — 검증 예산이 "요청당 몇 개"가 아니라 **"시스템 전체에서
+> 확률 높은 순서대로"** 배분된다. 부하가 오르면 `SPS(B)` 곡선이 컷을 앞으로
+> 당기고, 한가하면 뒤로 민다.
+
+📌 [T1] 실제 동작: MTP-1이 요청당 정적으로 2 토큰을 검증하던 자리에서, 중간
+부하일 때 요청당 대략 4~6 토큰으로 늘어난다.
+
+📌 [T1] DeepSeek-V4 서빙 시스템에 실제 트래픽으로 배포한 결과, 같은 처리량
+수준에서 사용자당 생성 속도가 **V4-Flash 60~85%**, **V4-Pro 57~78%** 빨라졌다
+(MTP-1 기준). 특히 사용자당 120 tok/s 같은 **엄격한 interactivity 목표**에서는
+baseline의 처리량이 급락하는데 DSpark는 그렇지 않아, 이전에는 닿지 못하던
+운영 구간이 열렸다고 보고한다. 코드·체크포인트는 MIT로 공개됐다.
+
+> 💡 **도메인 편차는 그대로 남는다.** Qwen3-4B 기준 채택 길이가 math ~5.57,
+> code ~5.12인데 chat은 ~3.49다. `8.7`에서 볼 "작업 종류가 acceptance를 정한다"는
+> 관찰이, 가장 정교한 스케줄러를 붙인 뒤에도 사라지지 않는다.
+
+### 추론에서 달라진 것
+
+| | 자기회귀 draft (`8.4` EAGLE) | 병렬 draft (DFlash) | semi-AR + 스케줄 (DSpark) |
+|---|---|---|---|
+| draft forward 횟수 | `γ`회 | **1회** | **1회** + 저랭크 곱 |
+| draft 지연 | `γ · t_step` | `t_parallel` (`γ`와 무관) | `t_parallel` + α (무시 가능) |
+| 위치별 acceptance | 평평, 낮게 시작 | **첫 자리 높고 뒤로 급락** | **높고 평평** |
+| 검증 길이 | 고정 `γ` / 고정 트리 | 고정 블록 | **요청·부하마다 동적** |
+| 추가 상태 | draft KV | draft KV + target feature 주입 | + confidence head · 엔진 cost table |
+| 출력 분포 | 보존 | 보존 | 보존 |
+
+### 토큰 하나가 지나가는 길
+
+```
+ ① 조건화:   직전 검증에서 확정된 토큰 + target 5개 층의 hidden을
+             draft 모든 레이어의 K/V로 주입
+ ② draft:    [M] × γ 를 넣고 backbone forward 1회 → γ개 위치의 로짓
+ ③ 순차 보정: k=1..γ 순서로 x_{k-1}을 보고 B(x_{k-1},·)를 더해 샘플
+             (레이어를 도는 게 아니라 저랭크 곱 한 번씩)
+ ④ 확률 예측: confidence head가 위치마다 c_k → STS로 보정
+ ⑤ 스케줄:   전체 요청의 c를 정렬해 Θ = τ·SPS(B)가 최대가 되는 지점까지만 채택
+ ⑥ verify:   잘린 길이만큼 target이 한 번에 검증 (tree attention)
+ ⑦ accept:   `8.1`과 동일한 rejection sampling — 분포는 그대로
+```
+
+**⑤가 이 절의 새로움이다.** `8.1`~`8.5`에서 "몇 개를 검증할까"는 하이퍼파라미터였다.
+여기서는 **매 스텝, 요청마다, 현재 부하를 보고 정해지는 값**이 된다.
+
+### 코드와 텐서
+
+| # | 연산 | 텐서 | 비고 |
+|---|---|---|---|
+| 1 | target feature 추출 | `(B, 1, d)` × 5개 층 → concat `(B, 1, 5d)` | projection으로 draft 공간에 매핑 |
+| 2 | draft backbone forward | `(B, γ, d_draft)` → 로짓 `(B, γ, V)` | **forward 1회** — `γ`와 무관 |
+| 3 | 전이 편향 | `W1[x_{k-1}]`: `(B, r)` → `× W2`: `(B, V)` | `k`마다 한 번, `r` = 256 |
+| 4 | confidence | `(B, γ)` | head 하나, 위치당 스칼라 |
+| 5 | target 검증 | `(B, L_k+1, d)` — `L_k`가 요청마다 다름 | **ragged batch** |
+
+> 💡 **5번이 서빙 쪽에 새 부담을 만든다.** `8.1`에서 검증 입력은 `(B, γ+1, d)`로
+> 모든 요청이 같은 길이였다. 여기서는 요청마다 길이가 달라서, `10-serving`의
+> continuous batching·PagedAttention과 얽히는 지점이 하나 더 늘어난다.
+> **이득을 얻은 자리와 복잡도를 치른 자리가 정확히 같다.**
+
+### 정리
+
+| | |
+|---|---|
+| **핵심 아이디어** | 초안을 **블록째 한 번의 forward로** 만든다 (block diffusion). 병렬 초안의 suffix decay는 저랭크 1차 마르코프 head로 메우고, 검증 길이는 survival 확률과 엔진 처리량 프로파일로 요청마다 다르게 정한다 |
+| **장점** | · **초안 지연이 `γ`에 비례하지 않는다** — 긴 블록을 공격적으로 제안 가능<br>· target feature를 모든 draft 레이어에 주입해 acceptance가 높다<br>· **검증 예산을 부하에 맞춰 배분** — 고부하에서 이득이 덜 깎인다<br>· 검증은 표준 speculative sampling이라 **출력 분포가 보존된다** |
+| **한계** | · draft를 **target마다 새로 학습**해야 한다 (backbone + head + confidence)<br>· 병렬 backbone은 EAGLE류 예측기보다 무겁다 — 깊이로 acceptance를 사는 구조<br>· suffix decay는 **완화지 제거가 아니다** — 블록을 키울수록 다시 나타난다<br>· confidence 보정·cost table·요청별 가변 길이 검증 등 **서빙 쪽 상태가 늘어난다**<br>· 보고된 수치는 각 논문의 모델·엔진 조건에 한정된다 |
+| **대표 구현** | DFlash (z-lab, ICML 2026) · **DSpark** (DeepSeek-V4 서빙 시스템, MIT 공개, SGLang·llama.cpp 지원) |
+| **다음으로** | 이 모든 기법의 이득은 결국 하나의 숫자로 수렴한다 → **acceptance rate** |
+
+> 💡 **본체까지 diffusion으로 갈 것인가는 아직 열린 질문이다.**
+> LLaDA·Dream, 그리고 상용 쪽의 Mercury·Gemini Diffusion처럼 **본체 자체를**
+> diffusion으로 돌리는 시도가 따로 진행 중이다. 다만 지금 프로덕션에 먼저 안착한
+> 것은 **"본체는 자기회귀, 초안만 diffusion"** 이라는 절충이다 —
+> 검증이 분포를 지켜주니 초안은 거칠어도 되고, 거칠어도 되는 자리에서
+> diffusion의 병렬성은 순수한 이득이기 때문이다.
+
+---
+
+## 8.7 시스템 관점 — acceptance rate가 모든 것을 정한다
 
 ### 이득의 구조
 
@@ -684,6 +1002,12 @@ FFN이 compute-bound로 넘어간다.** 그런데 이 장의 모든 기법(`8.1`
 | 고처리량 요구, 대규모 배치 | 배치 키우기 |
 | 중간 | 둘의 균형점을 찾아야 함 |
 
+> 💡 **`8.6`의 DSpark는 이 표를 "둘 중 하나 고르기"에서 "매 스텝 계산하기"로
+> 바꾼 것이다.** `Θ = τ · SPS(B)`를 최대화하는 검증 길이를 부하마다 다시 푸니까,
+> 위 표의 세 행이 **하나의 스케줄러 안에서 연속적으로 이어진다.**
+> 다만 트레이드오프 자체가 사라지는 건 아니다 — 한가할 때 길게, 바쁠 때 짧게라는
+> 결론은 그대로고, **그 결정을 사람이 아니라 엔진이 한다**는 점이 달라진다.
+
 > 💡 **아키텍처 결정이 서빙 시나리오에 의존한다는 패턴이 또 나온다.**
 > `05-moe` `5.4`의 granularity도, `07-shape` `7.1`의 depth도 같은 구조였다.
 > **"무엇이 좋은가"에 답하려면 "어떤 배치로 서빙할 것인가"를 먼저 정해야 한다.**
@@ -713,11 +1037,18 @@ SLO를 p99로 관리하면 개선이 기대보다 작아 보일 수 있다.
 | **Medusa** (`8.4`) | 추가 head | head 학습 | 없음 | 중간 |
 | **EAGLE(-2/3)** (`8.4`) | feature 예측기 | 예측기 학습 | 없음 | 중간 |
 | **MTP** (`8.5`) | 학습된 MTP 모듈(chain) | **본 학습에 포함** | **향상** | 높음 (재학습) |
+| **DFlash** (`8.6`) | block diffusion 초안 (forward 1회) | draft 학습 | 없음 | 중간~높음 (target마다 학습) |
+| **DSpark** (`8.6`) | 병렬 backbone + 마르코프 head | draft·head·confidence 학습 | 없음 | 높음 (학습 + 엔진 통합) |
 
 MTP가 최근 넓게 퍼진 이유가 마지막 두 열에 있다. **품질 때문에 어차피 넣을 것이었고,
 추론 가속은 딸려온 것**이라 채택 결정이 쉬웠다. 반대로 Lookahead Decoding은
 **아무 모델에나 즉시 적용**할 수 있다는 점에서 채택 문턱이 가장 낮다 — 대신
 얻는 이득도 가장 작다. **문턱과 이득이 반비례**하는 것이 이 장 전체의 패턴이다.
+
+`8.6`의 DFlash·DSpark는 그 반비례선의 반대쪽 끝에 있다. **target마다 draft를
+학습시키고 엔진에 스케줄러까지 넣어야** 하지만, 초안의 직렬성을 없애고 검증
+예산을 부하에 맞춰 배분하는 만큼 이득도 가장 크다. 자기 모델과 서빙 스택을
+전부 소유한 쪽에서 먼저 나온 것이 우연은 아니다.
 
 ---
 
@@ -746,6 +1077,16 @@ MTP가 최근 넓게 퍼진 이유가 마지막 두 열에 있다. **품질 때�
 - Li et al. (2024/2025), *EAGLE-3* — 다층 semantic feature 융합
 - DeepSeek-AI (2024), *DeepSeek-V3*, arXiv:2412.19437 — MTP 설계와 학습 효과
 - Gloeckle et al. (2024), *Better & Faster Large Language Models via Multi-token Prediction* — MTP의 품질 근거
+- Nie et al. (2025), *Large Language Diffusion Models* (LLaDA), arXiv:2502.09992 — 8B 규모 masked diffusion LM
+- Arriola et al. (2025), *Block Diffusion: Interpolating Between Autoregressive and Diffusion
+  Language Models*, arXiv:2503.09573 (ICLR 2025 Oral) — 블록 간 AR + 블록 내 diffusion, KV cache·가변 길이
+- Wu et al. (2025), *Fast-dLLM: Training-free Acceleration of Diffusion LLM by Enabling KV Cache
+  and Parallel Decoding*, arXiv:2505.22618 — 블록 단위 근사 KV cache, confidence 임계 병렬 디코딩
+- Chen, Liang, Liu (2026), *DFlash: Block Diffusion for Flash Speculative Decoding*,
+  arXiv:2602.06036 (ICML 2026) — block diffusion drafter, target feature KV injection
+- DeepSeek-AI · Peking University (2026), *DSpark: Confidence-Scheduled Speculative Decoding with
+  Semi-Autoregressive Generation*, arXiv:2607.05147 — 저랭크 전이 편향, confidence head·STS,
+  hardware-aware prefix scheduler, DeepSeek-V4 배포 결과
 
 **T2 — 구현**
 - hao-ai-lab **LookaheadDecoding** — Jacobi 기반 병렬 디코딩 참조 구현
@@ -753,6 +1094,10 @@ MTP가 최근 넓게 퍼진 이유가 마지막 두 열에 있다. **품질 때�
 - vLLM speculative decoding 문서 — acceptance rate 측정, 배치와의 상호작용
 - SGLang / TensorRT-LLM의 EAGLE·EAGLE-2·Medusa 구현
 - KV cache 롤백 처리 (PagedAttention과의 연동)
+- NVlabs **Fast-dLLM** — diffusion LLM용 근사 KV cache·병렬 디코딩 참조 구현
+- z-lab **DFlash** — block diffusion drafter 참조 구현
+- **DSpark / DeepSpec** (MIT) — draft 학습·평가 파이프라인과 체크포인트 공개,
+  SGLang(GPU 서빙)·llama.cpp(엣지) 쪽 지원
 
 **범위와 주의**
 - speculative decoding의 이득은 draft 길이만이 아니라 acceptance rate, 검증 batch,
@@ -761,3 +1106,10 @@ MTP가 최근 넓게 퍼진 이유가 마지막 두 열에 있다. **품질 때�
 - Self-Speculative(LayerSkip)와 Lookahead Decoding의 speedup 수치는 해당 논문의
   실험 조건(모델 크기, 과제, 하드웨어)에 한정된다. `8.4`의 EAGLE-2/3 가속 배수와
   단순 비교하지 않는다 — 벤치마크 설정이 서로 다르다.
+- `8.6`의 DFlash 배수(Qwen3 계열, greedy, SGLang)와 DSpark의 프로덕션 수치
+  (DeepSeek-V4 자체 서빙 시스템, MTP-1 기준 상대값)는 **측정 조건이 서로 다르고
+  다른 절의 수치와도 다르다.** 특히 DSpark의 이득은 confidence 보정과 엔진
+  프로파일이 그 시스템에 맞춰져 있다는 전제 위에 있다.
+- 본체를 diffusion으로 돌리는 dLLM(LLaDA·Dream 등)의 처리량 수치와, 본체는
+  자기회귀로 두고 **초안에만** block diffusion을 쓰는 `8.6`의 수치는 서로 다른
+  이야기다. 섞어 읽지 않는다.

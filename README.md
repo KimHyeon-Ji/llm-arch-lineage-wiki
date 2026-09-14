@@ -37,6 +37,7 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 | MoE, expert granularity | [05-moe](05-moe.md) |
 | **mHC** (DeepSeek-V4) | [06-norm-residual](06-norm-residual.md) 6.6 |
 | MTP, speculative decoding | [08-decoding](08-decoding.md) |
+| **DFlash, DSpark** (block diffusion 초안) | [08-decoding](08-decoding.md) 8.6 |
 | MXFP4 vs NVFP4 | [09-numerics](09-numerics.md) 9.3 |
 | PagedAttention, prefix caching | [10-serving](10-serving.md) |
 | **Titans, ATLAS, HOPE** (Google) | [03-test-time-memory](03-test-time-memory.md) |
@@ -62,7 +63,7 @@ Titans·HOPE까지 이어진다. 최신 모델은 사례로 쓰되, 계보를 �
 | **MoE** | [05 시스템 영향표](05-moe.md#이-장의-발전-계보와-시스템-영향) | dense compute → weight capacity → all-to-all communication |
 | **Norm & Residual** | [06 시스템 영향표](06-norm-residual.md#이-장의-발전-계보와-시스템-영향) | gradient stability → low precision·depth → activation traffic |
 | **Shape** | [07 시스템 영향표](07-shape.md#이-장의-발전-계보와-시스템-영향) | parameter budget → serial depth·TP communication |
-| **Decoding** | [08 시스템 영향표](08-decoding.md#이-장의-발전-계보와-시스템-영향) | serial weight read → speculative verification·acceptance rate |
+| **Decoding** | [08 시스템 영향표](08-decoding.md#이-장의-발전-계보와-시스템-영향) | serial weight read → speculative verification·acceptance rate → 검증 예산 스케줄링 |
 | **Numerics** | [09 시스템 영향표](09-numerics.md#이-장의-발전-계보와-시스템-영향) | bit reduction → scale/outlier·kernel support |
 | **Serving** | [10 시스템 영향표](10-serving.md#이-장의-발전-계보와-시스템-영향) | HBM capacity → fragmentation·scheduling → network transfer |
 

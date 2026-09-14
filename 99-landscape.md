@@ -61,7 +61,7 @@
 | **Gemma 3** | local SWA와 global attention을 5:1로 배치 | RoPE | dense | RMSNorm, QK-Norm | — |
 | **DeepSeek-V3** | MLA | decoupled RoPE | 256 routed, top-8 + shared expert | RMSNorm | MTP, FP8 mixed-precision training |
 | **DeepSeek-V3.2** | MLA + DSA | decoupled RoPE | V3 계열 MoE | RMSNorm | MTP |
-| **DeepSeek-V4-Pro** | CSA와 HCA 교대 | RoPE 계열 | 384 routed, top-6 + shared expert | mHC | MTP, 부분별 FP4/FP8 배포 |
+| **DeepSeek-V4-Pro** | CSA와 HCA 교대 | RoPE 계열 | 384 routed, top-6 + shared expert | mHC | MTP → **DSpark**(block diffusion 초안 + 부하 인지 검증), 부분별 FP4/FP8 배포 |
 | **Qwen3-Next** | Gated DeltaNet과 Gated Attention의 hybrid | partial RoPE | MoE | zero-centered RMSNorm | — |
 | **Kimi Linear** | KDA와 MLA를 3:1로 배치 | MLA 층은 NoPE | MoE | — | 장문 decode용 recurrent kernel |
 | **Kimi K3** | 3 KDA + 1 Gated MLA 반복, 마지막에 MLA 추가 | **모든 MLA 층도 NoPE** | Stable LatentMoE, 896 중 16 routed expert 활성 | Block AttnRes | MXFP4-aware post-training |
