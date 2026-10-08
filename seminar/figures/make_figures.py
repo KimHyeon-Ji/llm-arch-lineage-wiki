@@ -227,7 +227,7 @@ def fig_mla_cache():
 
 # ---------------------------------------------------------------- 4. MLA 흡수
 def fig_mla_absorb():
-    f = Fig("04-mla-absorb", 1560, 560)
+    f = Fig("04-mla-absorb", 1560, 740)
     # 왼쪽 : 펴서 비교
     f.title(40, 44, "펴서 비교 — 논문 수식 그대로")
     f.stack(60, 110, 110, 7, "c", hi_last=False)
@@ -242,7 +242,7 @@ def fig_mla_absorb():
     f.text(596, 190, "·", 30)
     f.box(622, 162, 110, 36, "q", "q_C", "1 × 128")
 
-    f.line(780, 30, 780, 520, "#d3d6e2", 2, "6 6")
+    f.line(780, 30, 780, 430, "#d3d6e2", 2, "6 6")
 
     # 오른쪽 : 쿼리를 옮겨서
     x0 = 830
@@ -258,9 +258,22 @@ def fig_mla_absorb():
     f.text(x0 + 605, 298, "S × 512  ·  그대로", 16, color=MUTED, mono=True)
     f.text(x0 + 345, 330, "K를 만들지 않는다", 17, color=MUTED)
 
-    f.rect(40, 440 + 20, 1480, 76, "#f6f5fd", "#d9d2f3", 10, 1.5)
-    f.text(780, 492, "q_C · (c · W_UK)ᵀ   =   (q_C · W_UKᵀ) · cᵀ", 22, mono=True, weight=700)
-    f.text(780, 522, "같은 값이다. 괄호만 옮겼다.   전체 점수 = q̃ · cᵀ  +  q_R · k_Rᵀ (RoPE 64차원 몫)", 16, color=MUTED)
+    f.rect(40, 450, 1480, 270, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    ex, nx = 150, 800
+    # 1행 : 원래 식 + 키의 정체
+    f.text(ex + 34, 500, "q_C · k_Cᵀ", 24, "start", 700, mono=True)
+    f.text(ex + 196, 500, "원래의 점수", 16, "start", color=MUTED)
+    f.rect(nx - 16, 470, 300, 46, KINDS["k"][0], KINDS["k"][1], 8, 2.5)
+    f.text(nx + 134, 501, "k_C = c · W_UK", 23, weight=700, color="#a8327f", mono=True)
+    f.text(nx + 300, 500, "키는 캐시의 c에서 만들어진다", 16, "start", color=MUTED)
+    rows = [(552, "= q_C · (c · W_UK)ᵀ", "k_C 자리에 넣는다"),
+            (604, "= q_C · W_UKᵀ · cᵀ", "전치하면 곱의 순서가 뒤집힌다   (A · B)ᵀ = Bᵀ · Aᵀ"),
+            (656, "= (q_C · W_UKᵀ) · cᵀ  =  q̃ · cᵀ", "앞의 둘을 먼저 곱한다 (결합 법칙)")]
+    for y, eq, note in rows:
+        f.text(ex, y, eq, 24, "start", 700, mono=True)
+        f.text(nx - 16, y, note, 16, "start", color=MUTED)
+    f.text(ex, 700, "값은 그대로다. 곱하는 순서만 바뀌었다.    전체 점수 = q̃ · cᵀ + q_R · k_Rᵀ (RoPE 64차원 몫)", 16, "start",
+           color=MUTED)
     return f
 
 
@@ -514,7 +527,7 @@ def fig_knobs():
     f.line(110, 424, 370, 424, PURPLE, 2)
     f.line(110, 416, 110, 432, PURPLE, 2)
     f.line(370, 416, 370, 432, PURPLE, 2)
-    f.text(240, 454, "① 토큰 하나의 폭", 18, weight=700, color=PURPLE)
+    f.text(240, 454, "① 토큰당 저장량", 18, weight=700, color=PURPLE)
     f.line(84, 160, 84, 400, "#3b7dd8", 2)
     f.line(76, 160, 92, 160, "#3b7dd8", 2)
     f.line(76, 400, 92, 400, "#3b7dd8", 2)
@@ -523,7 +536,7 @@ def fig_knobs():
     f.line(376, 154, 412, 118, "#4d9a56", 2)
     f.text(424, 112, "③ 층 수", 18, "start", 700, "#4d9a56")
 
-    rows = [("①", "폭을 줄인다", "Compressed Attention", "MQA · GQA · MLA", "쓰기에서 무엇을 남길지 바꾼다", PURPLE, "q"),
+    rows = [("①", "토큰당 저장량을 줄인다", "Compressed Attention", "MQA · GQA · MLA", "쓰기에서 무엇을 남길지 바꾼다", PURPLE, "q"),
             ("②", "읽는 위치를 줄인다", "Sparse Attention", "SWA · DSA · CSA · HCA · QSA", "읽기에서 얼마나 훑을지 바꾼다",
              "#3b7dd8", "i"),
             ("③", "층 사이 중복을 줄인다", "Layer Sharing", "CLA · YOCO · IndexShare", "①②와 겹쳐 쓸 수 있다",
@@ -672,7 +685,7 @@ def fig_swa():
 # ---------------------------------------------------------------- 16. 저장 × 읽기
 def fig_store_read():
     f = Fig("16-store-read", 1560, 500)
-    f.title(40, 44, "지금까지 — 저장한 폭과 읽는 줄 수")
+    f.title(40, 44, "지금까지 — 토큰당 저장량과 읽는 줄 수")
     rows = 14
 
     def panel(x, w, kind, name, cap, picked=None):
@@ -688,13 +701,13 @@ def fig_store_read():
     f.line(40, 106, 40, 386, "#8b90a3", 2)
     f.raw(f'<text transform="translate(28,246) rotate(-90)" font-family="{FONT}" font-size="15" text-anchor="middle" '
           f'fill="{MUTED}">길이 S</text>')
-    f.text(60, 96, "폭 32,768", 15, "start", color=MUTED, mono=True)
-    f.text(790, 96, "폭 576", 15, "start", color=MUTED, mono=True)
-    f.text(1130, 96, "폭 576", 15, "start", color=MUTED, mono=True)
+    f.text(60, 96, "토큰당 32,768개 값", 15, "start", color=MUTED)
+    f.text(790, 96, "576개 값", 15, "start", color=MUTED)
+    f.text(1130, 96, "576개 값", 15, "start", color=MUTED)
     f.text(830, 240, "토큰 하나는 얇아졌다.", 17, "start")
     f.text(830, 268, "줄 수는 그대로다.", 17, "start", 700)
     f.text(1170, 254, "관련 있는 줄만.", 17, "start", 700, "#b87410")
-    f.text(60, 486, "폭은 실제 비율이다 (32,768 : 576).", 15, "start", color=MUTED)
+    f.text(60, 486, "막대의 가로 길이는 실제 비율이다 (32,768 : 576).", 15, "start", color=MUTED)
     return f
 
 
@@ -825,9 +838,33 @@ def fig_amortize():
     return f
 
 
+# ---------------------------------------------------------------- 21. MHA vs MQA
+def fig_mha_mqa():
+    f = Fig("21-mha-vs-mqa", 1560, 520)
+    panels = [("MHA · KV 헤드 8개", 8, 150, "쿼리 헤드마다 자기 K, V를 읽는다"),
+              ("MQA · KV 헤드 1개", 1, 930, "모든 쿼리 헤드가 같은 K, V를 읽는다")]
+    for name, nkv, x0, note in panels:
+        f.title(x0 + 232, 50, name, 24, "middle")
+        qx = [x0 + i * 60 for i in range(8)]
+        for x in qx:
+            f.box(x, 90, 46, 46, "q", "q", fs=19)
+        g = 8 // nkv
+        for j in range(nkv):
+            cx = sum(qx[j * g:(j + 1) * g]) / g
+            for i in range(j * g, (j + 1) * g):
+                f.line(qx[i] + 23, 138, cx + 23, 288, "#a3a7b8", 1.8)
+            f.box(cx, 290, 46, 46, "k", "k", fs=19)
+            f.box(cx, 344, 46, 46, "v", "v", fs=19)
+        f.text(x0 + 232, 432, note, 18, weight=600)
+        f.text(x0 + 232, 462, f"캐시  ( S × {nkv} × d_h ) × 2", 16, color=MUTED, mono=True)
+    f.line(780, 70, 780, 470, "#d3d6e2", 2, "6 6")
+    f.text(780, 504, "쿼리 헤드 8개 기준.  점수 계산은 양쪽 모두 8번이다.  읽어 오는 K, V만 8장에서 1장으로 줄어든다.", 17)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
-        fig_dsa_structure, fig_journey, fig_amortize]
+        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
