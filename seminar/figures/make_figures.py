@@ -1,7 +1,8 @@
 """세미나용 그림 생성기. 실행: python make_figures.py  → 같은 폴더에 *.svg, *.png
 
 수치의 근거
-- Llama 3 70B      : HF config (num_attention_heads 64, num_key_value_heads 8, 80층)
+- Qwen3-235B-A22B  : HF config (94층, num_attention_heads 64, num_key_value_heads 4, head_dim 128)
+- GPU              : H100 80 GB · 3.35 TB/s · BF16 dense 989 TFLOPS, B200 192 GB · 8 TB/s · 2.25 PFLOPS
 - MLA              : deepseek-ai/DeepSeek-V3 inference/model.py (kv_cache 512 + pe_cache 64)
 - DSA              : deepseek-ai/DeepSeek-V3.2-Exp inference/model.py, config_671B_v3.2.json
                      (index_n_heads 64, index_head_dim 128, index_topk 2048, indexer 키 캐시 FP8)
@@ -168,7 +169,7 @@ def fig_heads():
             f.box(cx, 330, 42, 42, "v", "v", fs=18)
         f.text(x0 + 200, 410, f"캐시 {nkv}장  ·  ( S × {nkv} × d_h )", 17, color=MUTED, mono=True)
     f.text(780, 452, "쿼리 헤드 8개 기준. 쿼리 헤드 수는 그대로 두고, 캐시에 남길 K · V만 줄인다.  "
-                     "(Llama 3 70B: 쿼리 64 · KV 8)", 17, color=INK)
+                     "(Qwen3-235B: 쿼리 64 · KV 4)", 17, color=INK)
     return f
 
 
@@ -288,7 +289,7 @@ def fig_patterns():
 # ---------------------------------------------------------------- 6. DSA
 def fig_dsa():
     f = Fig("06-dsa", 1560, 600)
-    f.title(40, 44, "DSA — 같은 캐시를 두 번 훑는다 (DeepSeek-V3.2)")
+    f.title(40, 44, "DSA — 같은 컨텍스트를 두 번 훑는다 (DeepSeek-V3.2)")
     n = 28
     sel = {3, 9, 12, 19, 24}
     x0, cw = 420, 34
@@ -445,8 +446,8 @@ def fig_qsa():
     f.rect(60 + 5 * pitch - 6, 94, 2 * step + 6, 42, "none", "#6b4fc8", 8, 1.5, "5 4")
     f.text(60 + 5 * pitch + step - 3, 160, "아직 덜 찬 블록", 15, color=PURPLE)
     f.text(60 + 5 * pitch + step - 3, 180, "항상 읽는다", 15, color=PURPLE)
-    f.text(860, 122, "토큰 — 캐시는 토큰 단위로 그대로 둔다", 16, "start", color=MUTED)
-    f.text(860, 214, "블록 키 = 블록 안 키 4개의 평균 (학습 없음)", 16, "start", color=MUTED)
+    f.text(860, 122, "토큰 — 본 attention의 KV는 토큰 단위 그대로 둔다", 16, "start", color=MUTED)
+    f.text(860, 214, "블록 키 = 색인 키 4개의 평균.  색인 쿼리 헤드는 4개", 16, "start", color=MUTED)
     f.text(60, 270, "→  indexer가 블록마다 점수를 매겨 상위 512개 블록(= 2,048토큰)을 고른다", 17, "start", 600)
     f.text(60, 302, "→  고른 블록 안의 토큰 4개를 전부 읽는다.  읽는 위치가 4개씩 이어져 있다.", 17, "start", 600)
 
@@ -466,9 +467,9 @@ def fig_qsa():
 
 # ---------------------------------------------------------------- 10. 캐시의 실제 크기
 def fig_cache_size():
-    f = Fig("10-cache-size", 1560, 560)
-    f.title(40, 44, "KV cache의 실제 크기 — Llama 3 70B")
-    chips = [("2", "K, V", "n"), ("80", "층  L", "q"), ("S", "길이", "c"), ("8", "KV 헤드  n_kv", "k"),
+    f = Fig("10-cache-size", 1560, 600)
+    f.title(40, 44, "KV cache의 크기 — Qwen3-235B-A22B")
+    chips = [("2", "K, V", "n"), ("94", "층  L", "q"), ("S", "길이", "c"), ("4", "KV 헤드  n_kv", "k"),
              ("128", "헤드 차원  d_h", "v"), ("2 B", "BF16", "n")]
     x = 60
     for i, (big, small, kind) in enumerate(chips):
@@ -478,22 +479,24 @@ def fig_cache_size():
             f.text(x + 172, 130, "×", 24, color=MUTED)
         x += 194
     f.text(x + 10, 130, "×  요청 수", 22, "start", 600)
-    f.text(60, 240, "토큰 하나", 19, "start", 700)
-    f.text(220, 240, "2 × 80 × 8 × 128 × 2 B  =  327,680 B  =  320 KiB", 19, "start", mono=True)
-    f.text(60, 278, "32K 대화 하나", 19, "start", 700)
-    f.text(220, 278, "320 KiB × 32,768 토큰  =  10 GiB", 19, "start", mono=True)
+    rows = [("토큰 하나", "2 × 94 × 4 × 128 × 2 B  =  192,512 B  ≈  192.5 KB"),
+            ("32K 대화 하나", "192.5 KB × 32,768 토큰  ≈  6.3 GB"),
+            ("1M 토큰이라면", "192.5 KB × 1,000,000 토큰  ≈  192.5 GB")]
+    for i, (k, v) in enumerate(rows):
+        f.text(60, 240 + i * 38, k, 19, "start", 700)
+        f.text(240, 240 + i * 38, v, 19, "start", mono=True)
 
-    # 80 GB GPU
-    gx, gy, gw = 60, 350, 1440
-    f.text(gx, gy - 14, "80 GB GPU 한 장 (= 74.5 GiB)", 18, "start", 700)
+    gx, gy, gw = 60, 400, 1440
+    f.text(gx, gy - 14, "H100 한 장 · 80 GB", 18, "start", 700)
     f.rect(gx, gy, gw, 70, "#f4f5f9", "#b9bdcc", 8, 2)
-    bw = gw * 10 / 74.5
-    for i in range(7):
+    bw = gw * 6.308 / 80
+    for i in range(12):
         f.rect(gx + i * bw + 3, gy + 6, bw - 6, 58, KINDS["q"][0], KINDS["q"][1], 6, 1.5)
-        f.text(gx + i * bw + bw / 2, gy + 42, "32K 대화", 16)
-    f.text(gx + 7 * bw + (gw - 7 * bw) / 2, gy + 42, "4.5 GiB", 14, color=MUTED)
-    f.text(gx, gy + 110, "가중치를 하나도 올리지 않아도 32K 대화 일곱 개에서 찬다.", 18, "start")
-    f.text(gx, gy + 142, "이 숫자는 이미 GQA로 8배 줄인 것이다. MHA(KV 헤드 64)였다면 대화 하나가 80 GiB.", 16, "start",
+        f.text(gx + i * bw + bw / 2, gy + 42, "32K", 16)
+    f.text(gx + 12 * bw + (gw - 12 * bw) / 2, gy + 42, "4.3 GB", 13, color=MUTED)
+    f.text(gx, gy + 110, "가중치를 하나도 올리지 않아도 32K 대화 열두 개에서 찬다.  "
+                         "1M 토큰 대화는 하나가 B200 한 장(192 GB)을 넘는다.", 18, "start")
+    f.text(gx, gy + 142, "KV 헤드를 4개로 줄인 GQA의 숫자다. 헤드마다 따로 뒀다면(KV 헤드 64) 여기에 16을 곱해야 한다.", 16, "start",
            color=MUTED)
     return f
 
@@ -501,7 +504,7 @@ def fig_cache_size():
 # ---------------------------------------------------------------- 11. 줄일 수 있는 곳 셋
 def fig_knobs():
     f = Fig("11-three-knobs", 1560, 500)
-    f.title(40, 44, "KV cache를 줄일 수 있는 곳은 셋")
+    f.title(40, 44, "KV cache를 줄이는 세 방향")
     # 층이 겹친 캐시 블록
     for d in (40, 20, 0):
         f.rect(110 + d, 160 - d, 260, 240, "#f4f2fc" if d else "#eceafa", "#6b4fc8", 6, 1.8)
@@ -523,7 +526,7 @@ def fig_knobs():
     rows = [("①", "폭을 줄인다", "Compressed Attention", "MQA · GQA · MLA", "쓰기에서 무엇을 남길지 바꾼다", PURPLE, "q"),
             ("②", "읽는 위치를 줄인다", "Sparse Attention", "SWA · DSA · CSA · HCA · QSA", "읽기에서 얼마나 훑을지 바꾼다",
              "#3b7dd8", "i"),
-            ("③", "층 사이 중복을 줄인다", "Layer Sharing", "CLA · YOCO · IndexShare", "오늘은 여기까지만 — ①②와 겹쳐 쓸 수 있다",
+            ("③", "층 사이 중복을 줄인다", "Layer Sharing", "CLA · YOCO · IndexShare", "①②와 겹쳐 쓸 수 있다",
              "#4d9a56", "v")]
     for i, (n, what, fam, who, note, col, kind) in enumerate(rows):
         y = 110 + i * 118
@@ -538,7 +541,7 @@ def fig_knobs():
 # ---------------------------------------------------------------- 12. 오늘 따라갈 길
 def fig_lineage():
     f = Fig("12-lineage", 1560, 640)
-    f.title(40, 44, "오늘 따라갈 길")
+    f.title(40, 44, "기법의 계보")
 
     def node(x, y, name, year, who, kind, w=250, dash=None):
         f.rect(x, y, w, 62, KINDS[kind][0], KINDS[kind][1], 10, 2, dash)
@@ -738,9 +741,93 @@ def fig_dsa_structure():
     return f
 
 
+# ---------------------------------------------------------------- 19. 토큰 하나가 지나가는 길
+def fig_journey():
+    f = Fig("19-token-journey", 1560, 520)
+    f.title(40, 44, "decode 한 스텝 — 토큰 하나가 지나가는 길")
+    y = 170
+    f.box(40, y, 130, 56, "n", "Embedding", mono=False, fs=17)
+    f.arrow(174, y + 28, 226, y + 28)
+    # 레이어 묶음
+    f.rect(230, 96, 1010, 250, "#fafbfd", "#b9bdcc", 12, 2, "7 6")
+    f.text(250, 124, "레이어 — L번 반복", 17, "start", 700)
+    f.rect(258, 142, 590, 112, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(274, 164, "Attention", 16, "start", 700, PURPLE)
+    f.box(274, 178, 150, 56, "q", "q, k, v 만들기", mono=False, fs=16)
+    f.arrow(428, 206, 456, 206)
+    f.box(460, 178, 150, 56, "k", "캐시에 쓰기", mono=False, fs=16)
+    f.arrow(614, 206, 642, 206)
+    f.rect(646, 178, 186, 56, SOLID["q"], SOLID["q"], 6)
+    f.text(739, 213, "캐시 전체 읽기", 17, weight=700, color="#ffffff")
+    f.arrow(852, 198, 906, 198)
+    f.rect(910, 142, 300, 112, KINDS["v"][0], KINDS["v"][1], 10, 1.5)
+    f.text(1060, 190, "FFN", 22, weight=700)
+    f.text(1060, 222, "파라미터의 대부분", 15, color=MUTED)
+    f.arrow(1244, y + 28, 1296, y + 28)
+    f.box(1300, y, 130, 56, "n", "LM Head", mono=False, fs=17)
+    f.text(1365, y + 84, "다음 토큰", 15, color=MUTED)
+    # 주석
+    f.line(739, 238, 739, 384, PURPLE, 2, "5 5")
+    f.text(739, 410, "컨텍스트 길이 S에 비례하는 유일한 단계", 19, weight=700, color=PURPLE)
+    f.text(739, 440, "길어질수록 이 칸의 비중이 커진다", 16, color=MUTED)
+    f.line(1060, 258, 1060, 384, "#4d9a56", 2, "5 5")
+    f.text(1150, 410, "짧은 컨텍스트에서 가장 비싼 단계", 19, weight=700, color="#4d9a56")
+    f.text(1150, 440, "토큰마다 가중치를 전부 읽는다 — S와 무관", 16, color=MUTED)
+    f.text(349, 300, "가중치 읽기", 15, color=MUTED)
+    f.text(535, 300, "한 줄", 15, color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 20. 나눠 쓰는 것과 못 나눠 쓰는 것
+def fig_amortize():
+    f = Fig("20-weights-vs-kv", 1560, 640)
+    f.title(40, 44, "가중치는 요청들이 나눠 쓰고, KV cache는 나눠 쓰지 못한다")
+    # 왼쪽 : 가중치
+    f.text(380, 96, "가중치", 21, weight=700)
+    for i in range(4):
+        f.box(120 + i * 140, 130, 100, 40, "q", f"요청 {i + 1}", mono=False, fs=16)
+        f.line(170 + i * 140, 172, 380, 248, "#a3a7b8", 1.8)
+    f.rect(200, 250, 360, 80, KINDS["v"][0], KINDS["v"][1], 10, 2)
+    f.text(380, 298, "가중치 한 벌", 19, weight=600)
+    f.text(380, 366, "한 번 읽어 네 요청에 쓴다", 17, weight=700, color="#4d9a56")
+    f.text(380, 394, "요청이 늘어도 읽는 양은 그대로", 16, color=MUTED)
+    f.line(780, 80, 780, 410, "#d3d6e2", 2, "6 6")
+    # 오른쪽 : KV
+    f.text(1170, 96, "KV cache", 21, weight=700)
+    for i in range(4):
+        x = 910 + i * 140
+        f.box(x, 130, 100, 40, "q", f"요청 {i + 1}", mono=False, fs=16)
+        f.line(x + 50, 172, x + 50, 204, "#a3a7b8", 1.8)
+        f.stack(x, 208, 100, 6 if i != 2 else 4, "k" if i % 2 == 0 else "c", 14, hi_last=False)
+    f.text(1170, 366, "요청마다 자기 것을 따로 읽는다", 17, weight=700, color="#c2479c")
+    f.text(1170, 394, "요청이 늘면 읽는 양도 그만큼 늘어난다", 16, color=MUTED)
+
+    # 균형점 눈금 (로그)
+    import math
+    ax, aw, ay = 120, 1320, 520
+    f.text(40, ay - 46, "바이트 하나를 읽는 동안 할 수 있는 계산 (FLOP / byte, 로그 눈금)", 18, "start", 700)
+    f.line(ax, ay, ax + aw, ay, "#8b90a3", 2)
+
+    def px(v):
+        return ax + aw * math.log10(v) / 3
+
+    for v in (1, 10, 100, 1000):
+        f.line(px(v), ay - 6, px(v), ay + 6, "#8b90a3", 2)
+        f.text(px(v), ay + 28, str(v), 15, color=MUTED, mono=True)
+    f.rect(px(1), ay - 16, px(2) - px(1), 32, SOLID["k"], "none", 6)
+    f.text(px(1.4), ay + 62, "decode가 시키는 일", 17, weight=700, color="#c2479c")
+    f.text(px(1.4), ay + 88, "바이트당 1 ~ 2", 15, color=MUTED)
+    for v, name in ((281, "B200 ≈ 281"), (295, "H100 ≈ 295")):
+        f.rect(px(v) - 3, ay - 18, 6, 36, PURPLE, "none", 2)
+    f.text(px(288), ay + 62, "GPU가 할 수 있는 일", 17, weight=700, color=PURPLE)
+    f.text(px(288), ay + 88, "H100 ≈ 295  ·  B200 ≈ 281", 15, color=MUTED)
+    f.text((px(2) + px(281)) / 2, ay - 22, "두 자릿수 넘게 남는다 — 속도를 정하는 것은 메모리 대역폭이다", 16, color=INK)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
-        fig_dsa_structure]
+        fig_dsa_structure, fig_journey, fig_amortize]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
