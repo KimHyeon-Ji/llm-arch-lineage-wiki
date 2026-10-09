@@ -862,9 +862,86 @@ def fig_mha_mqa():
     return f
 
 
+# ---------------------------------------------------------------- 22. MLA 전체 흐름
+def fig_mla_flow():
+    f = Fig("22-mla-flow", 1560, 800)
+    f.title(40, 44, "MLA 전체 흐름 — decode 한 스텝 (DeepSeek-V3)")
+    PINK, AMB = "#c2479c", "#b87410"
+    f.box(40, 300, 90, 54, "n", "x", "지금 토큰 · 7168")
+
+    # ---- 저장하는 쪽
+    f.text(200, 96, "저장하는 쪽 — 한 줄 쓴다", 19, "start", 700, PINK)
+    f.curve(134, 314, 170, 314, 170, 146, 216, 146)
+    f.box(220, 120, 200, 52, "c", "c_KV", "512", fs=20)
+    f.curve(134, 322, 180, 322, 180, 236, 216, 236)
+    f.box(220, 210, 110, 52, "k", "k_R", "64 · RoPE", fs=20)
+    f.text(192, 136, "W_DKV", 13, "end", color=MUTED, mono=True)
+    f.text(222, 200, "W_KR", 13, "start", color=MUTED, mono=True)
+
+    # ---- 캐시
+    cx = 900
+    f.rect(cx, 78, 420, 208, "#fafbfd", "#b9bdcc", 10, 2, "7 6")
+    f.text(cx + 210, 66, "캐시 — 과거 토큰 전부", 17, weight=700)
+    f.stack(cx + 24, 104, 250, 6, "c", 18)
+    f.stack(cx + 306, 104, 90, 6, "k", 18)
+    f.text(cx + 149, 258, "c_KV  S × 512", 15, color=MUTED, mono=True)
+    f.text(cx + 351, 258, "k_R  S × 64", 15, color=MUTED, mono=True)
+    f.arrow(424, 146, cx - 6, 146)
+    f.arrow(334, 236, cx - 6, 236)
+    f.text(660, 134, "끝에 붙인다", 15, color=MUTED)
+
+    # ---- 묻는 쪽
+    f.text(200, 404, "묻는 쪽 — 지금 토큰의 쿼리", 19, "start", 700, PURPLE)
+    f.curve(134, 340, 170, 340, 150, 480, 196, 480)
+    f.box(200, 454, 110, 52, "n", "c_Q", "1536", fs=19)
+    f.curve(314, 470, 350, 470, 340, 446, 376, 446)
+    f.curve(314, 490, 350, 490, 340, 566, 376, 566)
+    f.box(380, 420, 150, 52, "q", "q_C", "128 헤드 × 128", fs=19)
+    f.arrow(534, 446, 626, 446)
+    f.text(580, 432, "× W_UKᵀ", 13, color=MUTED, mono=True)
+    f.box(630, 420, 190, 52, "q", "q̃", "128 헤드 × 512", fs=20)
+    f.box(380, 540, 150, 52, "q", "q_R", "128 헤드 × 64 · RoPE", fs=19)
+
+    # ---- 점수
+    f.rect(930, 420, 170, 52, "#ffffff", AMB, 8, 2.2)
+    f.text(1015, 452, "내용 점수", 18, weight=700, color=AMB)
+    f.text(1015, 496, "q̃ · c_KVᵀ", 15, color=MUTED, mono=True)
+    f.rect(1130, 540, 170, 52, "#ffffff", PINK, 8, 2.2)
+    f.text(1215, 572, "위치 점수", 18, weight=700, color=PINK)
+    f.text(1215, 616, "q_R · k_Rᵀ", 15, color=MUTED, mono=True)
+    f.arrow(824, 446, 926, 446)
+    f.arrow(534, 566, 1126, 566)
+    f.arrow(1015, 292, 1015, 414)
+    f.text(1027, 362, "읽기 ①", 15, "start", 700, PURPLE)
+    f.arrow(1251, 292, 1251, 534, dash="5 5")
+    # ---- 합, softmax
+    f.curve(1104, 446, 1380, 446, 1400, 470, 1400, 494)
+    f.curve(1304, 566, 1350, 566, 1350, 524, 1378, 520)
+    f.raw('<circle cx="1400" cy="517" r="19" fill="#ffffff" stroke="#5d6377" stroke-width="2"/>')
+    f.text(1400, 525, "+", 24)
+    f.arrow(1400, 540, 1400, 654)
+    f.text(1412, 606, "softmax", 15, "start", color=MUTED)
+    f.box(1340, 658, 120, 52, "q", "p", fs=20)
+    f.text(1476, 690, "128 × S", 15, "start", color=MUTED, mono=True)
+
+    # ---- 섞기 → 값 펴기 → 출력 (오른쪽에서 왼쪽으로)
+    f.arrow(1336, 684, 1154, 684)
+    f.box(900, 658, 250, 52, "c", "섞기  p · c_KV", "128 × 512", mono=False, fs=18)
+    f.text(1250, 670, "읽기 ②", 15, weight=700, color=PURPLE)
+    f.arrow(896, 684, 714, 684)
+    f.text(805, 670, "× W_UV", 13, color=MUTED, mono=True)
+    f.box(500, 658, 210, 52, "v", "값 펴기", "128 헤드 × 128", mono=False, fs=18)
+    f.arrow(496, 684, 334, 684)
+    f.text(415, 670, "W_O", 13, color=MUTED, mono=True)
+    f.box(220, 658, 110, 52, "n", "출력", "7168", mono=False, fs=18)
+    f.text(40, 780, "캐시를 읽는 곳은 두 군데다 — 점수를 낼 때(읽기 ①)와 섞을 때(읽기 ②).  K와 V는 어디에서도 만들지 않는다.", 16, "start",
+           color=MUTED)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
-        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa]
+        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
