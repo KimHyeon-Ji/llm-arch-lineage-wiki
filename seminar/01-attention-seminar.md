@@ -201,6 +201,8 @@ attention 한 번으로는 **한 가지 관계밖에 못 본다**는 것이 문�
 
 ### 3.1 MHA — 기준점
 
+*Multi-Head Attention*
+
 > **MHA** · 2017 · Google (Transformer 원 논문)
 > GPT-2 / 3 · Llama 1 · Llama 2 7B — **2023년 이전의 사실상 전부**
 
@@ -230,6 +232,8 @@ MHA의 캐시는 헤드 수에 정비례한다. 헤드가 64개면 캐시도 64�
 
 ### 3.2 MQA — KV 헤드 하나
 
+*Multi-Query Attention*
+
 > **MQA** · 2019 · Google
 > PaLM · Falcon · StarCoder — 대형 모델에서는 **곧 GQA로 대체됨**
 
@@ -251,6 +255,8 @@ MQA는 효과가 확실했다. 그런데 큰 모델에 적용하자 **품질이 
 ---
 
 ### 3.3 GQA — KV 헤드를 그룹으로
+
+*Grouped-Query Attention*
 
 > **GQA** · 2023 · Google
 > Llama 3 · Gemma 3 · **Qwen3** · gpt-oss — **지금의 사실상 표준**
@@ -306,6 +312,8 @@ MLA의 진짜 기여는 **그 펴는 연산을 없앤 것**이다.
 ---
 
 ### 3.4 MLA — 저장하는 값 자체를 압축한다
+
+*Multi-head Latent Attention*
 
 > **MLA** · 2024 · DeepSeek
 > DeepSeek-V2 / V3 / R1 · Kimi K2 · GLM-5 — **긴 컨텍스트를 노리는 대형 모델에서 채택 확대 중**
@@ -535,6 +543,8 @@ DeepSeek-V3: 헤드 128, `c_KV` 512, 헤드당 K 128 · V 128. `S` = 4,096.
 
 ### 4.1 SWA — 최근 것만 읽는다
 
+*Sliding Window Attention*
+
 > **SWA** · 2023 · Mistral
 > Mistral 7B (`W` = 4,096) · Gemma 2 / 3 (지역 층 5 : 전역 층 1) · gpt-oss (`W` = 128, 1 : 1)
 
@@ -563,6 +573,8 @@ DeepSeek-V3.2의 답은 가벼웠다. MLA 앞에 **아주 싼 고르는 모듈 �
 ---
 
 ### 4.2 DSA — 싸게 찾고, 비싸게 본다
+
+*DeepSeek Sparse Attention*
 
 > **DSA** · 2025 · DeepSeek
 > DeepSeek-V3.2 · GLM-5 / 5.2 / 5.3
@@ -713,6 +725,8 @@ DeepSeek-V4의 답은 두 단계를 겹치는 것이었다. **먼저 토큰들�
 ---
 
 ### 4.3 CSA · HCA — 묶고 나서 고른다
+
+*Compressed Sparse Attention · Heavily Compressed Attention*
 
 > **CSA · HCA** · 2026 · DeepSeek
 > DeepSeek-V4-Pro (1.6T) · V4-Flash (284B) — **1M 컨텍스트가 목표**
@@ -884,6 +898,8 @@ CSA · HCA는 여기에 압축하지 않은 최근 128토큰을 함께 본다.
 ---
 
 ### 4.4 QSA — 블록 단위로 고른다
+
+*Qwen Sparse Attention*
 
 > **QSA** · 2026 · Alibaba (Qwen)
 > Qwen3.8-Flash-Next (125B) — 48층 중 12층
