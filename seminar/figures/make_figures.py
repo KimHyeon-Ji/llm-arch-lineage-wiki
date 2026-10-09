@@ -203,7 +203,7 @@ def fig_mla_cache():
     f.box(990, y + 76, 250, 44, "v", "v  헤드당 128", fs=17)
     f.text(1260, y - 2, "× 128 헤드", 16, "start", color=MUTED)
     f.text(1260, y + 104, "× 128 헤드", 16, "start", color=MUTED)
-    f.text(1115, y + 160, "쓸 때 만들어 내는 값 — 저장하지 않는다", 16, color=MUTED)
+    f.text(1115, y + 160, "정의상의 K · V — 저장하지 않고, 실제 decode에서는 만들지도 않는다", 16, color=MUTED)
 
     # 크기 비교 막대 (길이 비례)
     by = 380
@@ -229,7 +229,7 @@ def fig_mla_cache():
 def fig_mla_absorb():
     f = Fig("04-mla-absorb", 1560, 740)
     # 왼쪽 : 펴서 비교
-    f.title(40, 44, "펴서 비교 — 논문 수식 그대로")
+    f.title(40, 44, "펴서 비교 — 정의식을 그대로 실행 (naive)")
     f.stack(60, 110, 110, 7, "c", hi_last=False)
     f.text(115, 290, "캐시 c", 17, weight=600)
     f.text(115, 312, "S × 512", 16, color=MUTED, mono=True)
@@ -251,7 +251,7 @@ def fig_mla_absorb():
     f.arrow(x0 + 114, 168, x0 + 226, 168)
     f.text(x0 + 170, 154, "× W_UKᵀ", 15, color=MUTED, mono=True)
     f.box(x0 + 230, 150, 230, 36, "q", "q̃", "1 × 512  ·  헤드마다 다르다")
-    f.text(x0 + 345, 250, "쿼리 1개만 옮긴다", 18, weight=700, color=PURPLE)
+    f.text(x0 + 345, 250, "쿼리만 옮긴다 — 헤드마다 한 번", 18, weight=700, color=PURPLE)
     f.text(x0 + 492, 176, "·", 30)
     f.stack(x0 + 530, 96, 150, 7, "c", hi_last=False)
     f.text(x0 + 605, 276, "캐시 c", 17, weight=600)
@@ -939,9 +939,175 @@ def fig_mla_flow():
     return f
 
 
+# ---------------------------------------------------------------- 23. KV cache의 모양
+def fig_kv_cache():
+    f = Fig("23-kv-cache", 1560, 560)
+    f.title(40, 44, "KV cache — 토큰마다 한 줄, 층마다 한 벌")
+    x0, y0, w, rows, rh = 470, 130, 230, 8, 26
+    # 뒤에 겹친 층
+    for d in (28, 14):
+        f.rect(x0 + d, y0 - d, 2 * w + 30, rows * (rh + 4) + 6, "#fafbfd", "#c9cddb", 8, 1.5)
+    f.rect(x0 - 12, y0 - 12, 2 * w + 54, rows * (rh + 4) + 20, "#ffffff", "#b9bdcc", 8, 1.5)
+    f.stack(x0, y0, w, rows, "k", rh)
+    f.stack(x0 + w + 30, y0, w, rows, "v", rh)
+    f.text(x0 + w / 2, y0 - 44, "K", 20, weight=700)
+    f.text(x0 + w + 30 + w / 2, y0 - 44, "V", 20, weight=700)
+    f.text(x0 + 2 * w + 80, y0 - 44, "층마다 한 벌", 16, "start", color=MUTED)
+    # 행 번호
+    labels = ["토큰 1", "토큰 2", "토큰 3", "", "⋮", "", "", "토큰 S"]
+    for r, lab in enumerate(labels):
+        if lab:
+            f.text(x0 - 26, y0 + r * (rh + 4) + 19, lab, 15, "end", color=MUTED)
+    # 쓰기
+    ly = y0 + (rows - 1) * (rh + 4) + rh / 2
+    f.box(60, ly - 62, 150, 40, "k", "k", fs=18)
+    f.box(60, ly - 14, 150, 40, "v", "v", fs=18)
+    f.text(135, ly - 82, "지금 토큰", 16, color=MUTED)
+    f.arrow(214, ly - 20, 370, ly - 2)
+    f.text(60, ly + 60, "쓰기 — 끝에 한 줄 붙인다", 18, "start", 700, "#c2479c")
+    f.text(60, ly + 86, "쓴 줄은 고치지 않는다", 15, "start", color=MUTED)
+    # 읽기
+    bx = x0 + 2 * w + 80
+    top, bot = y0, y0 + rows * (rh + 4) - 4
+    f.raw(f'<path d="M{bx},{top} C{bx + 22},{top} {bx + 22},{top} {bx + 22},{top + 20} L{bx + 22},{bot - 20} '
+          f'C{bx + 22},{bot} {bx + 22},{bot} {bx},{bot}" fill="none" stroke="{PURPLE}" stroke-width="2.4"/>')
+    f.text(bx + 44, (top + bot) / 2 - 6, "읽기 — 전부", 18, "start", 700, PURPLE)
+    f.text(bx + 44, (top + bot) / 2 + 20, "토큰을 하나 만들 때마다", 15, "start", color=MUTED)
+    f.text(bx + 44, (top + bot) / 2 + 44, "처음부터 끝까지 이어서 읽는다", 15, "start", color=MUTED)
+    f.text(40, 520, "길이가 S이면 읽기와 쓰기의 비는 S : 1이다.  수명은 요청이 끝날 때까지다.", 17, "start")
+    return f
+
+
+# ---------------------------------------------------------------- 24. KV cache의 크기 (막대)
+def fig_kv_bars():
+    f = Fig("24-kv-size", 1560, 640)
+    f.title(40, 44, "KV cache — 살아 있는 토큰 수가 크기를 정한다 (BF16)")
+    f.text(1520, 44, "모든 층의 캐시 합", 16, "end", color=MUTED)
+    ax, aw, top, vmax = 440, 980, 168, 300.0
+
+    def px(v):
+        return ax + aw * v / vmax
+
+    models = [
+        ("Qwen3-32B", "GQA · 64층 · KV 헤드 8", 34.4, 274.9),
+        ("Qwen3-235B-A22B", "GQA · 94층 · KV 헤드 4", 25.2, 201.9),
+        ("DeepSeek-V3", "MLA · 61층 · 576값", 9.2, 73.7),
+    ]
+    bot = 518
+    f.rect(ax, 78, 20, 14, "#b8abe8", "none", 3)
+    f.text(ax + 30, 91, "토큰 13만 — 128K 요청 1개, 또는 8K 요청 16개", 14, "start", color=MUTED)
+    f.rect(ax + 420, 78, 20, 14, SOLID["q"], "none", 3)
+    f.text(ax + 450, 91, "토큰 105만 — 128K 요청 8개, 또는 8K 요청 128개", 14, "start", color=MUTED)
+    # GPU 한 장의 메모리
+    for v, name in ((80, "H100 · 80 GB"), (192, "B200 · 192 GB")):
+        f.line(px(v), top - 24, px(v), bot, "#8b90a3", 1.6, "5 5")
+        f.text(px(v), top - 32, name, 14, color=INK)
+    # 눈금
+    for v in (0, 50, 100, 150, 200, 250, 300):
+        f.line(px(v), top - 6, px(v), bot, "#eceef4", 1.5)
+        f.text(px(v), bot + 24, f"{v}", 14, color=MUTED, mono=True)
+    f.text(px(vmax) + 38, bot + 24, "GB", 14, "start", color=MUTED)
+
+    for i, (name, desc, one, eight) in enumerate(models):
+        y = top + i * 116
+        f.text(ax - 24, y + 18, name, 18, "end", 700)
+        f.text(ax - 24, y + 42, desc, 14, "end", color=MUTED)
+
+        for j, (label, value, color) in enumerate((("요청 1개", one, "#b8abe8"),
+                                                   ("동시 8개", eight, SOLID["q"]))):
+            by = y + j * 42
+            wbar = max(px(value) - ax, 4)
+            f.rect(ax, by, wbar, 32, color, "none", 4)
+            tx = ax + wbar + 10
+            f.raw(f'<text x="{tx}" y="{by + 23}" font-family="{FONT}" font-size="16" font-weight="700" '
+                  f'fill="{INK}" stroke="#ffffff" stroke-width="6" paint-order="stroke">{value:.1f} GB</text>')
+    f.line(ax, top - 6, ax, bot, "#8b90a3", 2)
+
+    f.rect(40, 566, 1480, 48, "#f4f1fc", "#d8d0f1", 8, 1.5)
+    f.text(780, 597,
+           "Qwen3-32B · 128K 요청 2개 → KV cache 68.7 GB  ›  BF16 가중치 약 65.6 GB",
+           18, weight=700, color=PURPLE)
+    return f
+
+
+# ---------------------------------------------------------------- 25. MHA와 MLA의 점수 계산을 텐서로
+def fig_mla_tensor():
+    f = Fig("25-mha-vs-mla-tensor", 1560, 700)
+    f.title(40, 44, "점수 계산을 텐서로 놓고 보면 — MHA와 MLA")
+    U = 0.31          # 차원 1 = 0.31px  (128 → 40px, 512 → 159px)
+    SW = 330          # 길이 S를 나타내는 가로
+    RED, GRN = "#c2479c", "#4d9a56"
+
+    def sheets(x, y, w, h, kind, n=3, off=7):
+        for i in range(n - 1, -1, -1):
+            f.rect(x + i * off, y - i * off, w, h, KINDS[kind][0], KINDS[kind][1], 5, 1.8)
+
+    # ---------------- MHA
+    y = 150
+    f.text(40, y + 30, "MHA", 22, "start", 700)
+    f.text(40, y + 56, "헤드마다 따로", 15, "start", color=MUTED)
+    qw, kh = 128 * U, 128 * U
+    sheets(230, y + 8, qw, 16, "q")
+    f.text(230 + qw / 2 + 7, y + 62, "q  1 × 128", 15, color=MUTED, mono=True)
+    f.text(230 + qw / 2 + 7, y + 84, "× 128 헤드", 14, color=MUTED)
+    f.text(330, y + 26, "·", 30)
+    sheets(370, y - 4, SW, kh, "k")
+    f.text(370 + SW / 2, y + kh / 2 + 2, "Kᵀ", 18, mono=True)
+    f.text(370 + SW / 2 + 7, y + 62, "128 × S", 15, color=MUTED, mono=True)
+    f.text(370 + SW / 2 + 7, y + 84, "× 128장 — 헤드마다 한 장", 14, weight=700, color=RED)
+    f.text(750, y + 26, "=", 24)
+    sheets(790, y + 8, SW, 16, "q")
+    f.text(790 + SW / 2 + 7, y + 62, "점수  128 × S", 15, color=MUTED, mono=True)
+    f.text(1160, y + 20, "행렬 × 벡터를 128번", 17, "start", 600)
+    f.text(1160, y + 46, "읽은 값을 한 번씩만 쓴다", 15, "start", color=MUTED)
+
+    f.line(40, 290, 1520, 290, "#e3e5ee", 2, "6 6")
+
+    # ---------------- MLA
+    y = 340
+    f.text(40, y + 80, "MLA", 22, "start", 700)
+    f.text(40, y + 106, "캐시는 하나", 15, "start", color=MUTED)
+    qh, qw2, ch = 42, 512 * U, 512 * U
+    f.rect(130, y + 58, 60, 36, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
+    f.text(160, y + 82, "q_C", 15, mono=True)
+    f.arrow(194, y + 76, 226, y + 76)
+    f.text(210, y + 50, "① 새로 생긴 변환", 14, weight=700, color=RED)
+    f.text(210, y + 122, "× W_UKᵀ", 13, color=MUTED, mono=True)
+    f.text(210, y + 142, "토큰당 한 번", 13, color=MUTED)
+    f.rect(230, y + 55, qw2 - 30, qh, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
+    f.text(230 + (qw2 - 30) / 2, y + 82, "q̃", 18, mono=True)
+    f.text(230 + (qw2 - 30) / 2, y + 122, "128 × 512", 15, color=MUTED, mono=True)
+    f.text(372, y + 82, "·", 30)
+    f.rect(400, y, SW, ch, KINDS["c"][0], KINDS["c"][1], 5, 1.8)
+    f.text(400 + SW / 2, y + ch / 2 + 6, "c_KVᵀ", 18, mono=True)
+    f.text(400 + SW / 2, y + ch + 26, "512 × S", 15, color=MUTED, mono=True)
+    f.text(400 + SW / 2, y + ch + 48, "한 장 — 전 헤드가 같이 읽는다", 14, weight=700, color=GRN)
+    # 내적 길이 표시
+    bx = 400 + SW + 14
+    f.line(bx, y, bx, y + ch, RED, 2.2)
+    f.line(bx - 6, y, bx + 6, y, RED, 2.2)
+    f.line(bx - 6, y + ch, bx + 6, y + ch, RED, 2.2)
+    f.text(bx + 14, y + ch / 2 - 6, "② 내적이 길어진다", 14, "start", 700, RED)
+    f.text(bx + 14, y + ch / 2 + 16, "128 → 512 (+ 위치 64)", 14, "start", color=MUTED)
+    f.text(bx + 14, y + ch / 2 + 36, "캐시 한 줄마다 치른다", 14, "start", color=MUTED)
+    f.text(960, y + 82, "=", 24)
+    f.rect(1000, y + 55, SW, qh, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
+    f.text(1000 + SW / 2, y + 122, "점수  128 × S", 15, color=MUTED, mono=True)
+    f.text(1000, y + 20, "행렬 × 행렬 한 번", 17, "start", 600)
+    f.text(1000, y + 42, "읽은 값을 128번 쓴다", 15, "start", color=MUTED)
+
+    # ---------------- 요약
+    f.rect(40, 600, 1480, 76, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(70, 632, "줄어든 것", 17, "start", 700, GRN)
+    f.text(180, 632, "캐시 128장 → 1장.  한 줄에 저장하는 값 2 · n_h · d_h → d_c + d_r", 17, "start")
+    f.text(70, 660, "늘어난 것", 17, "start", 700, RED)
+    f.text(180, 660, "① 쿼리를 옮기고 값을 펴는 변환 (길이와 무관)    ② 길어진 내적 (길이에 비례)", 17, "start")
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
-        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow]
+        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
