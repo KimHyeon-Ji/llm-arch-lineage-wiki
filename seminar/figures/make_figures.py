@@ -301,45 +301,59 @@ def fig_patterns():
 
 # ---------------------------------------------------------------- 6. DSA
 def fig_dsa():
-    f = Fig("06-dsa", 1560, 600)
-    f.title(40, 44, "DSA — 같은 컨텍스트를 두 번 훑는다 (DeepSeek-V3.2)")
-    n = 28
-    sel = {3, 9, 12, 19, 24}
-    x0, cw = 420, 34
-    # ① indexer
-    y = 100
-    f.text(40, y + 22, "① lightning indexer", 20, "start", 700, "#3b7dd8")
-    f.text(40, y + 48, "모든 토큰에 값싼 점수를 매긴다", 16, "start", color=MUTED)
-    f.cells(x0, y, [KINDS["i"][0]] * n, cw, 34, 4, 4)
+    f = Fig("06-dsa", 1560, 720)
+    f.title(40, 44, "DSA — MLA 앞에 indexer를 둔다 (DeepSeek-V3.2)")
+    BLUE, AMB = "#3b7dd8", "#b87410"
+    n, x0, cw = 28, 420, 34
+    sel = [3, 9, 12, 19, 24]
+
+    def cx(i):
+        return x0 + i * (cw + 4) + cw / 2
+
+    # ---- 지금까지 : MLA만
+    y = 92
+    f.text(40, y + 22, "지금까지 — MLA만", 20, "start", 700)
+    f.text(40, y + 48, "100만 줄을 전부, 비싸게 읽는다", 16, "start", color=MUTED)
+    f.cells(x0, y, [SOLID["c"]] * n, cw, 34, 4, 4)
+    f.line(40, 176, 1520, 176, "#e3e5ee", 2, "6 6")
+
+    # ---- ① 후보 찾기
+    y1 = 216
+    f.rect(36, y1 - 14, 360, 132, "#f1f6fe", "#b9d3f5", 10, 1.5)
+    f.rect(52, y1 - 2, 96, 26, BLUE, "none", 13)
+    f.text(100, y1 + 16, "추가된 단계", 14, weight=700, color="#ffffff")
+    f.text(52, y1 + 52, "① lightning indexer", 20, "start", 700, BLUE)
+    f.text(52, y1 + 78, "전부 훑어 후보를 찾는다 — 싸게", 16, "start", color=MUTED)
+    f.text(52, y1 + 102, "점수만 매겨 큰 것을 고른다", 16, "start", color=MUTED)
+    f.cells(x0, y1, [KINDS["i"][0]] * n, cw, 34, 4, 4)
     heights = [5, 9, 4, 30, 8, 6, 11, 5, 7, 27, 6, 9, 25, 5, 8, 10, 4, 7, 6, 31, 9, 5, 8, 6, 28, 7, 5, 9]
     for i, h in enumerate(heights):
-        f.rect(x0 + i * (cw + 4) + 9, y + 78 - h, 16, h, "#3b7dd8" if i in sel else "#b9d3f5", "none", 2)
-    f.text(40, y + 76, "I(t,s) = Σ w_h · ReLU( q_h · k_s )", 15, "start", color=MUTED, mono=True)
-    # ② top-k
-    y2 = 230
-    f.text(40, y2 + 22, "② top-k", 20, "start", 700)
-    f.text(40, y2 + 48, "점수가 높은 2,048개의 위치", 16, "start", color=MUTED)
-    f.cells(x0, y2, [SOLID["i"] if i in sel else OFF for i in range(n)], cw, 34, 4, 4)
+        f.rect(cx(i) - 8, y1 + 82 - h, 16, h, BLUE if i in sel else "#b9d3f5", "none", 2)
+    f.text(x0 + n * (cw + 4) + 6, y1 + 80, "점수", 14, "start", color=MUTED)
     for i in sel:
-        f.arrow(x0 + i * (cw + 4) + 17, y2 + 40, x0 + i * (cw + 4) + 17, y2 + 92)
-    # ③ MLA
-    y3 = 330
-    f.text(40, y3 + 22, "③ MLA attention", 20, "start", 700, "#b87410")
-    f.text(40, y3 + 48, "고른 위치의 latent만 읽는다", 16, "start", color=MUTED)
-    f.cells(x0, y3, [SOLID["c"] if i in sel else OFF for i in range(n)], cw, 34, 4, 4)
-    f.text(x0, y3 + 62, "0", 14, color=MUTED, mono=True)
-    f.text(x0 + (n - 1) * (cw + 4) + 17, y3 + 62, "S (지금)", 14, color=MUTED, mono=True)
+        f.arrow(cx(i), y1 + 90, cx(i), y1 + 150)
+    f.text(cx(sel[2]) + 16, y1 + 126, "위치만 넘긴다 — 2,048개", 15, "start", color=MUTED)
 
-    # 비교 표
-    ty = 450
-    f.rect(40, ty, 720, 120, "#f1f6fe", "#b9d3f5", 10, 1.5)
-    f.text(64, ty + 34, "indexer — 넓고 얕게", 19, "start", 700, "#3b7dd8")
-    f.text(64, ty + 64, "범위  S 전부   ·   키  128차원 1개 (FP8)", 17, "start")
-    f.text(64, ty + 94, "쿼리  64 헤드 × 128   ·   토큰마다 키 캐시가 따로 든다", 17, "start")
-    f.rect(800, ty, 720, 120, "#fef7ea", "#f0cf93", 10, 1.5)
-    f.text(824, ty + 34, "MLA attention — 좁고 깊게", 19, "start", 700, "#b87410")
-    f.text(824, ty + 64, "범위  k = 2,048   ·   캐시  c_KV 512 + k_R 64", 17, "start")
-    f.text(824, ty + 94, "쿼리  128 헤드 × 512   ·   출력은 여기서만 만든다", 17, "start")
+    # ---- ② MLA attention
+    y2 = y1 + 158
+    f.text(52, y2 + 22, "② MLA attention", 20, "start", 700, AMB)
+    f.text(52, y2 + 48, "고른 줄만 읽는다 — 원래 하던 계산", 16, "start", color=MUTED)
+    f.cells(x0, y2, [SOLID["c"] if i in sel else OFF for i in range(n)], cw, 34, 4, 4)
+    f.text(x0, y2 + 60, "0", 14, color=MUTED, mono=True)
+    f.text(cx(n - 1), y2 + 60, "S (지금)", 14, color=MUTED, mono=True)
+
+    # ---- 두 단계 비교
+    ty = 496
+    f.rect(40, ty, 720, 124, "#f1f6fe", "#b9d3f5", 10, 1.5)
+    f.text(64, ty + 34, "① indexer — 넓고 얕게", 19, "start", 700, BLUE)
+    f.text(64, ty + 66, "읽는 범위   S줄 전부", 17, "start")
+    f.text(64, ty + 96, "한 줄        128바이트  ·  점수만 낸다", 17, "start")
+    f.rect(800, ty, 720, 124, "#fef7ea", "#f0cf93", 10, 1.5)
+    f.text(824, ty + 34, "② MLA attention — 좁고 깊게", 19, "start", 700, AMB)
+    f.text(824, ty + 66, "읽는 범위   고른 2,048줄", 17, "start")
+    f.text(824, ty + 96, "한 줄        1,152바이트  ·  출력을 만든다", 17, "start")
+    f.text(780, 672, "MLA만   S × 비싼 단가          →          DSA   S × 싼 단가  +  k × 비싼 단가", 18, weight=700,
+           mono=False)
     return f
 
 
