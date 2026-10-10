@@ -475,41 +475,72 @@ def fig_v4_layers():
 
 # ---------------------------------------------------------------- 9. QSA
 def fig_qsa():
-    f = Fig("09-qsa", 1560, 560)
-    f.title(40, 44, "QSA — 4토큰 블록 단위로 고른다 (Qwen3.8-Flash-Next)")
-    step = 30
-    n = 22
-    picked = {1, 3}
-    # 토큰
-    pitch = 4 * step + 14
-    for i in range(n):
-        b = i // 4
-        on = b in picked or i >= 20
-        f.rect(60 + b * pitch + (i % 4) * step, 100, 24, 30, "#6b4fc8" if on else OFF, "none", 4)
-    for b in range(5):
-        gx = 60 + b * pitch
-        f.rect(gx - 6, 94, 4 * step + 6, 42, "none", "#b9bdcc", 8, 1.5)
-        f.arrow(gx + 2 * step - 3, 140, gx + 2 * step - 3, 188)
-        f.rect(gx + 2 * step - 37, 192, 68, 32, SOLID["i"] if b in picked else KINDS["i"][0], KINDS["i"][1], 5)
-    f.rect(60 + 5 * pitch - 6, 94, 2 * step + 6, 42, "none", "#6b4fc8", 8, 1.5, "5 4")
-    f.text(60 + 5 * pitch + step - 3, 160, "아직 덜 찬 블록", 15, color=PURPLE)
-    f.text(60 + 5 * pitch + step - 3, 180, "항상 읽는다", 15, color=PURPLE)
-    f.text(860, 122, "토큰 — 본 attention의 KV는 토큰 단위 그대로 둔다", 16, "start", color=MUTED)
-    f.text(860, 214, "블록 키 = 색인 키 4개의 평균.  색인 쿼리 헤드는 4개", 16, "start", color=MUTED)
-    f.text(60, 270, "→  indexer가 블록마다 점수를 매겨 상위 512개 블록(= 2,048토큰)을 고른다", 17, "start", 600)
-    f.text(60, 302, "→  고른 블록 안의 토큰 4개를 전부 읽는다.  읽는 위치가 4개씩 이어져 있다.", 17, "start", 600)
+    f = Fig("09-qsa", 1560, 640)
+    f.title(40, 44, "무엇을 묶나 — CSA와 QSA (Qwen3.8-Flash-Next)")
+    BLUE, AMB, TOK = "#3b7dd8", "#b87410", "#6b4fc8"
+    cw, gap, GG, m, k = 18, 4, 12, 4, 6
+    pitch = cw + gap
+    bw = m * pitch - gap
+    CX, QX = 270, 930
+    W = k * (bw + GG) - GG
+    sel = {1, 4}
 
-    # 층 배치
-    y = 380
-    f.text(40, y, "층 배치 · 48층", 19, "start", 700)
-    for i in range(48):
-        q = i % 4 == 3
-        f.rect(230 + i * 26, y + 20, 22, 34, "#6b4fc8" if q else "#cfd3e0", "none", 3)
-    f.rect(230, y + 80, 22, 24, "#cfd3e0", "none", 3)
-    f.text(262, y + 98, "Gated DeltaNet 36층 — 고정 크기 상태를 고쳐 쓴다. KV cache 없음", 16, "start")
-    f.rect(880, y + 80, 22, 24, "#6b4fc8", "none", 3)
-    f.text(912, y + 98, "QSA 12층 — KV cache 있음", 16, "start")
-    f.text(230, y + 140, "3 : 1 반복.  KV cache가 길이에 따라 자라는 층은 넷 중 하나뿐이다.", 16, "start", color=MUTED)
+    f.text(CX, 96, "CSA", 26, "start", 700)
+    f.text(CX + 70, 96, "KV를 묶는다 → 엔트리를 읽는다", 18, "start", color=MUTED)
+    f.text(QX, 96, "QSA", 26, "start", 700)
+    f.text(QX + 70, 96, "색인 키만 묶는다 → 원본 토큰을 읽는다", 18, "start", color=MUTED)
+    f.line(QX - 44, 76, QX - 44, 610, "#e3e5ee", 2, "6 6")
+    f.rect(30, 168, 1500, 112, "#f6f5fd", "#d9d2f3", 10, 1.5)
+
+    f.text(48, 138, "원본 토큰", 19, "start", 700)
+    f.text(160, 138, "S개", 15, "start", color=MUTED, mono=True)
+    f.text(48, 222, "① 묶기", 21, "start", 700, PURPLE)
+    f.text(48, 248, "4토큰씩", 15, "start", color=MUTED)
+    f.text(48, 336, "② indexer · top-k", 21, "start", 700, BLUE)
+    f.text(48, 362, "S/4개에 점수를 매긴다", 15, "start", color=MUTED)
+    f.text(48, 432, "③ attention", 21, "start", 700, AMB)
+    f.text(48, 458, "무엇을 읽나", 15, "start", color=MUTED)
+    f.text(48, 566, "1M 토큰이면", 19, "start", 700)
+
+    hs = [9, 34, 7, 12, 30, 8]
+    for x0, qsa in ((CX, False), (QX, True)):
+        for j in range(k):
+            bx = x0 + j * (bw + GG)
+            c = bx + bw / 2
+            f.cells(bx, 120, ["#c9cddb"] * m, cw, 24, gap, 4)
+            f.rect(bx - 3, 116, bw + 6, 32, "none", "#b0a3e6", 7, 1.5)
+            if qsa:
+                f.arrow(c, 152, c, 222)
+                f.rect(c - 36, 226, 72, 34, KINDS["i"][0], KINDS["i"][1], 6)
+            else:
+                for i in range(m):
+                    f.line(bx + i * pitch + cw / 2, 150, c, 222, "#9a9fb3", 1.3)
+                f.rect(c - 36, 226, 72, 34, KINDS["c"][0], KINDS["c"][1], 6)
+            on = j in sel
+            f.rect(c - 11, 358 - hs[j], 22, hs[j], BLUE if on else "#b9d3f5", "none", 3)
+            if on:
+                f.arrow(c, 366, c, 404)
+            if qsa:
+                f.cells(bx, 412, [TOK if on else OFF] * m, cw, 28, gap, 4)
+                if on:
+                    f.rect(bx - 3, 408, bw + 6, 36, "none", TOK, 7, 1.6)
+            else:
+                f.rect(c - 36, 410, 72, 34, SOLID["c"] if on else OFF, KINDS["c"][1] if on else "none", 6)
+    f.text(CX + W + 6, 249, "압축 엔트리", 14, "start", color=MUTED)
+    f.text(QX + W + 6, 249, "블록 키", 14, "start", color=MUTED)
+
+    f.text(CX, 474, "압축 엔트리를 읽는다", 16, "start", 700)
+    f.text(CX, 498, "원본 토큰은 남지 않는다 · 캐시 길이 S/4", 15, "start", color=MUTED)
+    f.text(QX, 474, "블록 안의 원본 토큰 4개를 통째로 읽는다", 16, "start", 700)
+    f.text(QX, 498, "KV cache는 토큰 단위 그대로 · 캐시 길이 S", 15, "start", color=MUTED)
+
+    for x0, a_, b_ in ((CX, "250,000 엔트리", "1,024개 읽는다"), (QX, "250,000 블록", "512블록 = 2,048토큰")):
+        f.rect(x0, 532, 590, 56, "#fafbfd", "#d3d6e2", 10, 1.5)
+        f.text(x0 + 20, 567, "1,000,000 토큰", 18, "start")
+        f.text(x0 + 172, 567, "→", 18)
+        f.text(x0 + 194, 567, a_, 18, "start", 700)
+        f.text(x0 + 362, 567, "→", 18)
+        f.text(x0 + 384, 567, b_, 18, "start", 700)
     return f
 
 
@@ -1308,18 +1339,16 @@ def fig_compress():
     return f
 
 
-# ---------------------------------------------------------------- 28. CSA · HCA 텐서 연산
-def fig_v4_tensor():
-    f = Fig("28-v4-tensor", 1560, 680)
-    f.title(40, 44, "텐서 연산으로 보면 — CSA와 HCA")
+# ---------------------------------------------------------------- 텐서 연산 카드
+def _cards(f):
     GRN, RED = "#4d9a56", "#c2479c"
     cw_, ch_, x0, px = 262, 200, 130, 280
     BG = {"g": ("#f3faf4", "#bfe0c4", GRN), "r": ("#fdf3f9", "#efc3de", RED), "n": ("#f7f8fb", "#d3d6e2", "#7b8196")}
 
-    def g_comp(gx, gy, l2):
-        f.rect(gx, gy, 228, 16, KINDS["c"][0], KINDS["c"][1], 4, 1.6)
+    def g_comp(gx, gy, l2, kind="c"):
+        f.rect(gx, gy, 228, 16, KINDS[kind][0], KINDS[kind][1], 4, 1.6)
         f.arrow(gx + 12, gy + 19, gx + 12, gy + 31)
-        f.rect(gx, gy + 34, l2, 16, SOLID["c"], KINDS["c"][1], 4, 1.6)
+        f.rect(gx, gy + 34, l2, 16, SOLID[kind], KINDS[kind][1], 4, 1.6)
 
     def g_idx(gx, gy):
         f.rect(gx, gy + 8, 34, 34, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
@@ -1368,6 +1397,16 @@ def fig_v4_tensor():
         for i in range(4):
             f.arrow(x0 + i * px + cw_ + 1, y + ch_ / 2, x0 + (i + 1) * px - 2, y + ch_ / 2, color=color)
 
+    return card, none, arrows, g_comp, g_idx, g_topk, g_gather, g_att, (cw_, ch_, x0, px)
+
+
+# ---------------------------------------------------------------- 28. CSA · HCA 텐서 연산
+def fig_v4_tensor():
+    f = Fig("28-v4-tensor", 1560, 680)
+    f.title(40, 44, "텐서 연산으로 보면 — CSA와 HCA")
+    GRN, RED = "#4d9a56", "#c2479c"
+    card, none, arrows, g_comp, g_idx, g_topk, g_gather, g_att, (cw_, ch_, x0, px) = _cards(f)
+
     # ---- CSA
     y = 78
     f.text(40, y + 96, "CSA", 26, "start", 700)
@@ -1405,10 +1444,111 @@ def fig_v4_tensor():
     return f
 
 
+# ---------------------------------------------------------------- 29. QSA 읽기 패턴
+def fig_qsa_read():
+    f = Fig("29-qsa-read", 1560, 470)
+    f.title(40, 44, "같은 양을 읽어도 — 토큰 단위와 블록 단위")
+    TOK, RED, GRN = "#6b4fc8", "#c2479c", "#4d9a56"
+    n, cw, gap, x0 = 64, 14, 4, 330
+    pitch = cw + gap
+    dsa = {2, 7, 11, 12, 19, 23, 28, 30, 35, 41, 44, 46, 51, 55, 58, 62}
+    blocks = {1, 6, 9, 13}
+
+    y = 96
+    f.text(40, y + 16, "DSA", 24, "start", 700)
+    f.text(40, y + 42, "토큰 하나씩 고른다", 16, "start", color=MUTED)
+    f.cells(x0, y, [TOK if i in dsa else OFF for i in range(n)], cw, 30, gap, 3)
+    f.text(x0, y + 58, "읽는 토큰 2,048개  ·  읽는 곳 최대 2,048군데", 17, "start", 600)
+
+    y = 210
+    f.text(40, y + 16, "QSA", 24, "start", 700)
+    f.text(40, y + 42, "4토큰 블록으로 고른다", 16, "start", color=MUTED)
+    f.cells(x0, y, [TOK if i // 4 in blocks else OFF for i in range(n)], cw, 30, gap, 3)
+    for b in range(n // 4):
+        on = b in blocks
+        f.rect(x0 + b * 4 * pitch - 2, y - 4, 4 * pitch - gap + 4, 38, "none", TOK if on else "#d3d6e2", 6,
+               1.8 if on else 1)
+    f.text(x0, y + 62, "읽는 토큰 2,048개  ·  읽는 곳 512군데", 17, "start", 600)
+    f.text(x0 + 420, y + 62, "— 블록 안은 메모리에서 이어져 있다", 16, "start", color=MUTED)
+
+    f.rect(40, 330, 1480, 108, "#fafbfd", "#d3d6e2", 10, 1.5)
+    f.text(64, 368, "얻는 것", 17, "start", 700, GRN)
+    f.text(160, 368, "읽는 곳이 1/4이다. 이어진 4토큰을 한 번에 가져온다", 17, "start")
+    f.text(64, 406, "내는 것", 17, "start", 700, RED)
+    f.text(160, 406, "필요한 토큰이 하나뿐이어도 블록 4개를 다 읽는다 — 블록이 클수록 읽기는 쉬워지고 선택은 거칠어진다", 17, "start")
+    return f
+
+
+# ---------------------------------------------------------------- 30. QSA 텐서 연산
+def fig_qsa_tensor():
+    f = Fig("30-qsa-tensor", 1560, 420)
+    f.title(40, 44, "텐서 연산으로 보면 — QSA")
+    GRN, RED, TOK = "#4d9a56", "#c2479c", "#6b4fc8"
+    card, none, arrows, g_comp, g_idx, g_topk, g_gather, g_att, (cw_, ch_, x0, px) = _cards(f)
+
+    def g_blocks(gx, gy):
+        sel = (1, 3)
+        for i in range(16):
+            on = i // 4 in sel
+            f.rect(gx + i * 14, gy, 11, 16, TOK if on else "#e6e8f1", "none", 2)
+        for n_, b in enumerate(sel):
+            f.line(gx + b * 56 + 26, gy + 18, gx + 78 + n_ * 64, gy + 32, "#9a9fb3", 1.3)
+            for i in range(4):
+                f.rect(gx + 52 + n_ * 64 + i * 13, gy + 34, 11, 16, TOK, "none", 2)
+
+    def g_gqa(gx, gy):
+        f.rect(gx, gy + 8, 34, 34, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
+        f.text(gx + 17, gy + 31, "q", 16, mono=True)
+        f.text(gx + 47, gy + 33, "·", 26)
+        f.rect(gx + 66, gy + 2, 70, 34, TOK, "none", 5)
+        f.rect(gx + 60, gy + 10, 70, 34, TOK, "#ffffff", 5, 1.5)
+
+    y = 78
+    f.text(40, y + 96, "QSA", 26, "start", 700)
+    f.text(40, y + 122, "4개씩", 15, "start", color=MUTED)
+    card(0, y, "① 블록 키", lambda gx, gy: g_comp(gx, gy, 57, "i"), "(S × 128)", "→ (S/4 × 128)", "n", "4토큰마다 평균")
+    card(1, y, "② indexer 점수", g_idx, "(4 × 128) × (128 × S/4)", "→ (1 × S/4)", "g", "행렬 × 행렬")
+    card(2, y, "③ top-k", g_topk, "(1 × S/4)", "→ 블록 512개", "r", "비교 · 선택")
+    card(3, y, "④ gather", g_blocks, "블록 512개", "→ 토큰 2,048개", "r", "블록째 읽기")
+    card(4, y, "⑤ attention (GQA)", g_gqa, "(12 × 256) × (256 × 2,048)", "→ (12 × 2,048)  × 2그룹", "g", "행렬 × 행렬")
+    arrows(y)
+
+    f.rect(40, 310, 1480, 78, "#fafbfd", "#d3d6e2", 10, 1.5)
+    f.rect(64, 324, 16, 16, GRN, "none", 4)
+    f.text(90, 338, "행렬곱", 16, "start", 700)
+    f.rect(170, 324, 16, 16, RED, "none", 4)
+    f.text(196, 338, "행렬곱이 아닌 일", 16, "start", 700)
+    f.text(64, 372, "DSA와 같은 다섯 단계다.  달라진 것은 ②③의 길이(S → S/4)와 ④의 단위(토큰 → 블록)다.", 18, "start", 600)
+    return f
+
+
+# ---------------------------------------------------------------- 31. QSA 층 배치
+def fig_qsa_layers():
+    f = Fig("31-qsa-layers", 1560, 300)
+    f.title(40, 44, "Qwen3.8-Flash-Next의 층 배치 — 48층")
+    TOK = "#6b4fc8"
+    x0 = 60
+    for i in range(48):
+        q = i % 4 == 3
+        f.rect(x0 + i * 30, 84, 25, 44, TOK if q else "#cfd3e0", "none", 4)
+    f.text(x0, 154, "1", 14, "start", color=MUTED, mono=True)
+    f.text(x0 + 47 * 30 + 25, 154, "48", 14, "end", color=MUTED, mono=True)
+
+    f.rect(60, 186, 700, 84, "#f7f8fb", "#d3d6e2", 10, 1.5)
+    f.rect(84, 204, 22, 22, "#cfd3e0", "none", 4)
+    f.text(118, 222, "Gated DeltaNet — 36층", 19, "start", 700)
+    f.text(84, 254, "과거를 고정 크기 상태 하나에 담는다  ·  KV cache 없음", 16, "start", color=MUTED)
+    f.rect(800, 186, 700, 84, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.rect(824, 204, 22, 22, TOK, "none", 4)
+    f.text(858, 222, "QSA — 12층", 19, "start", 700, PURPLE)
+    f.text(824, 254, "원본 토큰을 직접 찾아 읽는다  ·  KV cache 있음", 16, "start", color=MUTED)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
         fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor,
-        fig_axes, fig_compress, fig_v4_tensor]
+        fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
