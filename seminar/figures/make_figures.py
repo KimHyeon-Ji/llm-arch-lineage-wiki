@@ -384,11 +384,11 @@ def fig_v4():
 
     # 행 이름
     f.text(48, 138, "원본 토큰", 19, "start", 700)
-    f.text(160, 138, "S줄", 15, "start", color=MUTED, mono=True)
+    f.text(160, 138, "S개", 15, "start", color=MUTED, mono=True)
     f.rect(48, 180, 92, 24, PURPLE, "none", 12)
     f.text(94, 197, "추가된 단계", 13, weight=700, color="#ffffff")
     f.text(48, 236, "① 압축", 21, "start", 700, PURPLE)
-    f.text(48, 262, "줄 수를 줄인다", 15, "start", color=MUTED)
+    f.text(48, 262, "여러 토큰 → 엔트리 1개", 15, "start", color=MUTED)
     f.text(48, 336, "② indexer · top-k", 21, "start", 700, BLUE)
     f.text(48, 362, "DSA와 같다", 15, "start", color=MUTED)
     f.text(48, 432, "③ attention", 21, "start", 700, AMB)
@@ -1143,7 +1143,7 @@ def fig_mla_tensor():
 # ---------------------------------------------------------------- 26. 줄이는 축
 def fig_axes():
     f = Fig("26-axes", 1560, 600)
-    f.title(40, 44, "KV cache를 표로 보면 — 가로와 세로")
+    f.title(40, 44, "KV cache를 표로 보면 — 토큰 수 × 토큰당 차원")
     top, RH, NR = 200, 20, 13
     H = RH * NR
     RED = "#c2479c"
@@ -1164,10 +1164,10 @@ def fig_axes():
         f.text(cx, 162, cap, 17, weight=600)
 
     def foot(cx, a_, b_):
-        f.text(cx - 96, top + H + 40, "가로", 15, "start", 700, MUTED)
-        f.text(cx - 50, top + H + 40, a_, 17, "start")
-        f.text(cx - 96, top + H + 68, "세로", 15, "start", 700, MUTED)
-        f.text(cx - 50, top + H + 68, b_, 17, "start")
+        f.text(cx - 120, top + H + 40, "토큰당 차원", 15, "start", 700, MUTED)
+        f.text(cx - 22, top + H + 40, a_, 17, "start")
+        f.text(cx - 120, top + H + 68, "토큰 수", 15, "start", 700, MUTED)
+        f.text(cx - 22, top + H + 68, b_, 17, "start")
 
     # ---- 기준 : 축의 뜻
     x0, w0 = 230, 250
@@ -1178,22 +1178,22 @@ def fig_axes():
     f.line(x0, top - 14, x0 + w0, top - 14, RED, 2)
     f.line(x0, top - 20, x0, top - 8, RED, 2)
     f.line(x0 + w0, top - 20, x0 + w0, top - 8, RED, 2)
-    f.text(x0 + w0 / 2, 132, "가로 = 한 줄의 크기", 19, weight=700, color=RED)
+    f.text(x0 + w0 / 2, 132, "토큰 하나당 차원", 19, weight=700, color=RED)
     f.text(x0 + w0 / 2, 158, "토큰 하나가 남기는 값의 개수", 15, color=MUTED)
     f.text(x0 + w0 / 2, 178, "(K·V 2 × 헤드 수 × 헤드 차원)", 14, color=MUTED)
     # 세로
     f.line(x0 - 16, top, x0 - 16, top + H, RED, 2)
     f.line(x0 - 22, top, x0 - 10, top, RED, 2)
     f.line(x0 - 22, top + H, x0 - 10, top + H, RED, 2)
-    f.text(x0 - 30, top + H / 2 - 22, "세로 = 줄 수", 19, "end", 700, RED)
-    f.text(x0 - 30, top + H / 2 + 4, "S = 컨텍스트의 토큰 수", 15, "end", color=MUTED)
-    f.text(x0 - 30, top + H / 2 + 26, "(sequence length)", 14, "end", color=MUTED)
+    f.text(x0 - 30, top + H / 2 - 22, "컨텍스트의 토큰 수", 19, "end", 700, RED)
+    f.text(x0 - 30, top + H / 2 + 4, "S (sequence length)", 15, "end", color=MUTED)
+    f.text(x0 - 30, top + H / 2 + 26, "토큰마다 한 줄", 14, "end", color=MUTED)
     foot(x0 + w0 / 2, "32,768  (MHA라면)", "S")
     f.line(540, 96, 540, 560, "#e3e5ee", 2, "6 6")
 
     # ---- MLA
     cx = 700
-    head(cx, "MLA", "가로를 줄인다", "#b87410")
+    head(cx, "MLA", "토큰당 차원을 줄인다", "#b87410")
     ghost(cx - 100, 200)
     table(cx - 100, top, 40, NR, "c")
     f.arrow(cx + 92, top + H / 2, cx - 50, top + H / 2, color=RED)
@@ -1201,7 +1201,7 @@ def fig_axes():
 
     # ---- DSA
     cx = 1000
-    head(cx, "DSA", "읽는 줄만 고른다", "#3b7dd8")
+    head(cx, "DSA", "읽는 토큰만 고른다", "#3b7dd8")
     table(cx - 50, top, 40, NR, "c")
     for r in (1, 4, 5, 8, 11):
         f.rect(cx - 50, top + r * RH, 40, RH, SOLID["c"], KINDS["c"][1], 2, 1)
@@ -1211,7 +1211,7 @@ def fig_axes():
 
     # ---- CSA · HCA
     cx = 1320
-    head(cx, "CSA · HCA", "세로를 줄인다", PURPLE)
+    head(cx, "CSA · HCA", "토큰 수 쪽을 줄인다", PURPLE)
     for dx, rows, nm, cap in ((-110, 3, "CSA", "S / 4"), (50, 0, "HCA", "S / 128")):
         ghost(cx + dx, 40)
         if rows:
@@ -1223,14 +1223,14 @@ def fig_axes():
         f.text(cx + dx + 52, top + 46, cap, 15, "start", color=MUTED, mono=True)
     foot(cx, "512", "S → S/4 · S/128")
 
-    f.text(1520, 584, "가로 · 세로의 비율은 실제와 다르다", 13, "end", color=MUTED)
+    f.text(1520, 584, "그림의 비율은 실제와 다르다", 13, "end", color=MUTED)
     return f
 
 
 # ---------------------------------------------------------------- 27. 묶는 방법
 def fig_compress():
     f = Fig("27-v4-compress", 1560, 600)
-    f.title(40, 44, "토큰 4개를 엔트리 하나로 — 평균이 아니라 학습된 가중합")
+    f.title(40, 44, "여러 토큰을 엔트리 하나로 — 평균이 아니라 학습된 가중합")
     x0, pitch, bw = 250, 82, 60
     w = [0.04, 0.06, 0.05, 0.14, 0.18, 0.08, 0.34, 0.11]
     SC, base_y = 300, 318
