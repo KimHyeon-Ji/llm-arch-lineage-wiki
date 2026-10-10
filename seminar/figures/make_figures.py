@@ -365,62 +365,83 @@ def _tokens(f, x, y, n, r=9, gap=6, color="#b7bccd"):
 
 
 def fig_v4():
-    f = Fig("07-v4-csa-hca", 1560, 660)
-    # CSA
-    f.title(40, 44, "CSA — 4개씩 묶고, 그 위에서 고른다")
-    step, pitch = 24, 112
-    for j in range(5):
-        _tokens(f, 60 + j * pitch, 110, 4)
-    f.text(60 + 5 * pitch + 8, 116, "원본 토큰  S", 16, "start", color=MUTED)
-    ex = []
-    for j in range(5):
-        gx = 60 + j * pitch
-        cx = gx + 45
-        f.rect(gx - 6, 95, 102, 30, "none", "#c9cddb", 8, 1.5)
-        bx = cx - 34
-        ex.append(bx)
-        for i in range(4):  # 자기 블록 (C^a)
-            f.line(gx + i * step + 9, 126, cx, 196, "#8b90a3", 1.6)
-        if j > 0:  # 앞 블록과 겹침 (C^b)
-            for i in range(4):
-                f.line(gx - pitch + i * step + 9, 126, cx, 196, "#c9cddb", 1.4, "4 4")
-    picked = {1, 3}
-    for j, bx in enumerate(ex):
-        f.rect(bx, 200, 68, 34, SOLID["c"] if j in picked else KINDS["c"][0], KINDS["c"][1], 5)
-    f.text(60 + 5 * pitch + 8, 222, "압축 엔트리  S / 4", 16, "start", color=MUTED)
-    f.text(60, 270, "엔트리 하나에 토큰 8개가 반영된다 (자기 4개 + 앞의 4개, 점선).  가중치는 학습된다.", 15, "start",
-           color=MUTED)
-    f.text(60, 304, "→  indexer(FP4)가 엔트리마다 점수를 매겨 상위 k개만 고른다  (V4-Pro 1,024 · V4-Flash 512)", 17,
-           "start", 600)
+    f = Fig("07-v4-csa-hca", 1560, 620)
+    f.title(40, 44, "DSA 앞에 압축 단계를 둔다 — CSA와 HCA (DeepSeek-V4)")
+    BLUE, AMB = "#3b7dd8", "#b87410"
+    n, cw, gap, GG = 24, 18, 4, 12
+    pitch = cw + gap
+    CX, HX = 270, 930
 
-    # HCA
-    y0 = 360
-    f.title(40, y0, "HCA — 128개씩 묶고, 전부 본다")
-    for j in range(2):
-        gx = 60 + j * 300
-        f.rect(gx, y0 + 34, 270, 28, "#dfe2ec", "#c9cddb", 8, 1.5)
-        f.text(gx + 135, y0 + 54, "토큰 128개", 15, color=INK)
-        f.arrow(gx + 135, y0 + 66, gx + 135, y0 + 106)
-        f.rect(gx + 101, y0 + 110, 68, 34, SOLID["c"], KINDS["c"][1], 5)
-    f.text(640, y0 + 54, "원본 토큰  S", 16, "start", color=MUTED)
-    f.text(640, y0 + 132, "압축 엔트리  S / 128  — 고르지 않는다. 겹침도 없다.", 16, "start", color=MUTED)
+    # 열 제목
+    f.text(CX, 96, "CSA", 26, "start", 700)
+    f.text(CX + 70, 96, "4개씩 묶고 → 고른다", 18, "start", color=MUTED)
+    f.text(HX, 96, "HCA", 26, "start", 700)
+    f.text(HX + 70, 96, "128개씩 묶고 → 전부 읽는다", 18, "start", color=MUTED)
+    f.line(HX - 44, 76, HX - 44, 590, "#e3e5ee", 2, "6 6")
 
-    # 공통 : sliding window
-    f.rect(840, 70, 680, 190, "#f6f5fd", "#d9d2f3", 10, 1.5)
-    f.text(864, 104, "두 층 모두에 있는 것", 19, "start", 700, PURPLE)
-    f.text(864, 138, "• 압축하지 않은 최근 128토큰 (sliding window 가지)", 17, "start")
-    f.text(864, 168, "   — 자기 블록 안의 토큰은 압축 엔트리로 볼 수 없어서", 15, "start", color=MUTED)
-    f.text(864, 200, "• 엔트리 하나가 K이자 V  (512차원 · KV 헤드 1개 · MQA)", 17, "start")
-    f.text(864, 232, "• RoPE는 마지막 64차원에만", 17, "start")
+    # 추가된 단계 띠
+    f.rect(30, 168, 1500, 112, "#f6f5fd", "#d9d2f3", 10, 1.5)
 
-    # 1M 숫자
-    ny = 560
-    f.rect(40, ny - 30, 1480, 110, "#fafbfd", "#d3d6e2", 10, 1.5)
-    f.text(64, ny + 4, "1M 토큰이면", 18, "start", 700)
-    for dy, cells in ((4, ("CSA", "1,000,000", "→  250,000 엔트리", "→  상위 1,024개 + 최근 128토큰", "좁고 정밀")),
-                      (44, ("HCA", "1,000,000", "→  7,812 엔트리", "→  전부 + 최근 128토큰", "넓고 거침"))):
-        for cx_, c_ in zip((240, 320, 470, 720, 1130), cells):
-            f.text(cx_, ny + dy, c_, 18, "start", 700 if c_ in ("CSA", "HCA") else 400)
+    # 행 이름
+    f.text(48, 138, "원본 토큰", 19, "start", 700)
+    f.text(160, 138, "S줄", 15, "start", color=MUTED, mono=True)
+    f.rect(48, 180, 92, 24, PURPLE, "none", 12)
+    f.text(94, 197, "추가된 단계", 13, weight=700, color="#ffffff")
+    f.text(48, 236, "① 압축", 21, "start", 700, PURPLE)
+    f.text(48, 262, "줄 수를 줄인다", 15, "start", color=MUTED)
+    f.text(48, 336, "② indexer · top-k", 21, "start", 700, BLUE)
+    f.text(48, 362, "DSA와 같다", 15, "start", color=MUTED)
+    f.text(48, 432, "③ attention", 21, "start", 700, AMB)
+    f.text(48, 458, "+ 최근 128토큰 (압축 안 함)", 15, "start", color=MUTED)
+    f.text(48, 546, "1M 토큰이면", 19, "start", 700)
+
+    def column(x0, m, sel, all_read):
+        k = n // m
+        ew = min(m * pitch - gap - 16, 120)
+        cs = []
+        for j in range(k):
+            bx = x0 + j * (m * pitch + GG)
+            bw = m * pitch - gap
+            f.cells(bx, 120, ["#c9cddb"] * m, cw, 24, gap, 4)
+            c = bx + bw / 2
+            cs.append(c)
+            f.rect(bx - 3, 116, bw + 6, 32, "none", "#b0a3e6", 7, 1.5)
+            for i in range(m):
+                f.line(bx + i * pitch + cw / 2, 150, c, 222, "#9a9fb3", 1.3)
+            f.rect(c - ew / 2, 226, ew, 34, KINDS["c"][0], KINDS["c"][1], 6)
+            on = all_read or j in sel
+            f.rect(c - ew / 2, 410, ew, 34, SOLID["c"] if on else OFF, KINDS["c"][1] if on else "none", 6)
+        return cs, k * (m * pitch + GG) - GG - gap
+
+    # ---- CSA
+    cs, W = column(CX, 4, {1, 4}, False)
+    hs = [9, 34, 7, 12, 30, 8]
+    for j, c in enumerate(cs):
+        on = j in (1, 4)
+        f.rect(c - 11, 358 - hs[j], 22, hs[j], BLUE if on else "#b9d3f5", "none", 3)
+        if on:
+            f.arrow(c, 366, c, 404)
+    f.text(cs[4] + 14, 390, "위치만 넘긴다", 14, "start", color=MUTED)
+    f.text(CX, 474, "고른 엔트리만 읽는다 — 흩어진 읽기", 16, "start", 600)
+
+    # ---- HCA
+    cs, W = column(HX, 12, set(), True)
+    f.text(HX + W, 170 + 126, "그림은 12개씩 그렸다 — 실제로는 128개", 13, "end", color=MUTED)
+    f.rect(HX, 306, W, 60, "#ffffff", "#c9cddb", 10, 1.6, "6 5")
+    f.text(HX + W / 2, 332, "고르지 않는다", 18, weight=700, color="#8b90a3")
+    f.text(HX + W / 2, 355, "indexer · top-k · gather 없음", 15, color="#8b90a3")
+    for c in cs:
+        f.arrow(c, 370, c, 404)
+    f.text(HX, 474, "전부 읽는다 — 이어 읽기", 16, "start", 600)
+
+    # ---- 숫자
+    for x0, a_, b_ in ((CX, "250,000 엔트리", "1,024개 읽는다"), (HX, "7,812 엔트리", "전부 읽는다")):
+        f.rect(x0, 512, 580, 56, "#fafbfd", "#d3d6e2", 10, 1.5)
+        f.text(x0 + 24, 547, "1,000,000 토큰", 18, "start")
+        f.text(x0 + 180, 547, "→", 18)
+        f.text(x0 + 206, 547, a_, 18, "start", 700)
+        f.text(x0 + 390, 547, "→", 18)
+        f.text(x0 + 416, 547, b_, 18, "start", 700)
     return f
 
 
@@ -1119,9 +1140,275 @@ def fig_mla_tensor():
     return f
 
 
+# ---------------------------------------------------------------- 26. 줄이는 축
+def fig_axes():
+    f = Fig("26-axes", 1560, 600)
+    f.title(40, 44, "KV cache를 표로 보면 — 가로와 세로")
+    top, RH, NR = 200, 20, 13
+    H = RH * NR
+    RED = "#c2479c"
+
+    def table(x, y, w, rows, kind, solid=False):
+        fill, stroke = KINDS[kind]
+        if kind == "n":
+            fill, stroke = "#eef0f5", "#aeb3c4"
+        f.rect(x, y, w, rows * RH, SOLID[kind] if solid else fill, stroke, 5, 1.8)
+        for r in range(1, rows):
+            f.line(x + 1, y + r * RH, x + w - 1, y + r * RH, stroke, 0.8)
+
+    def ghost(x, w):
+        f.rect(x, top, w, H, "none", "#c9cddb", 5, 1.4, "5 5")
+
+    def head(cx, name, cap, color):
+        f.text(cx, 132, name, 24, weight=700, color=color)
+        f.text(cx, 162, cap, 17, weight=600)
+
+    def foot(cx, a_, b_):
+        f.text(cx - 96, top + H + 40, "가로", 15, "start", 700, MUTED)
+        f.text(cx - 50, top + H + 40, a_, 17, "start")
+        f.text(cx - 96, top + H + 68, "세로", 15, "start", 700, MUTED)
+        f.text(cx - 50, top + H + 68, b_, 17, "start")
+
+    # ---- 기준 : 축의 뜻
+    x0, w0 = 230, 250
+    table(x0, top, w0, NR, "n")
+    f.rect(x0 + 1, top + 5 * RH, w0 - 2, RH, "#c9cddb", "none", 0)
+    f.text(x0 + w0 / 2, top + 5 * RH + 15, "한 줄 = 토큰 하나", 14, weight=700)
+    # 가로
+    f.line(x0, top - 14, x0 + w0, top - 14, RED, 2)
+    f.line(x0, top - 20, x0, top - 8, RED, 2)
+    f.line(x0 + w0, top - 20, x0 + w0, top - 8, RED, 2)
+    f.text(x0 + w0 / 2, 132, "가로 = 한 줄의 크기", 19, weight=700, color=RED)
+    f.text(x0 + w0 / 2, 158, "토큰 하나가 남기는 값의 개수", 15, color=MUTED)
+    f.text(x0 + w0 / 2, 178, "(K·V 2 × 헤드 수 × 헤드 차원)", 14, color=MUTED)
+    # 세로
+    f.line(x0 - 16, top, x0 - 16, top + H, RED, 2)
+    f.line(x0 - 22, top, x0 - 10, top, RED, 2)
+    f.line(x0 - 22, top + H, x0 - 10, top + H, RED, 2)
+    f.text(x0 - 30, top + H / 2 - 22, "세로 = 줄 수", 19, "end", 700, RED)
+    f.text(x0 - 30, top + H / 2 + 4, "S = 컨텍스트의 토큰 수", 15, "end", color=MUTED)
+    f.text(x0 - 30, top + H / 2 + 26, "(sequence length)", 14, "end", color=MUTED)
+    foot(x0 + w0 / 2, "32,768  (MHA라면)", "S")
+    f.line(540, 96, 540, 560, "#e3e5ee", 2, "6 6")
+
+    # ---- MLA
+    cx = 700
+    head(cx, "MLA", "가로를 줄인다", "#b87410")
+    ghost(cx - 100, 200)
+    table(cx - 100, top, 40, NR, "c")
+    f.arrow(cx + 92, top + H / 2, cx - 50, top + H / 2, color=RED)
+    foot(cx, "32,768 → 576", "S 그대로")
+
+    # ---- DSA
+    cx = 1000
+    head(cx, "DSA", "읽는 줄만 고른다", "#3b7dd8")
+    table(cx - 50, top, 40, NR, "c")
+    for r in (1, 4, 5, 8, 11):
+        f.rect(cx - 50, top + r * RH, 40, RH, SOLID["c"], KINDS["c"][1], 2, 1)
+    table(cx, top, 14, NR, "i")
+    f.text(cx + 22, top + 16, "색인 키", 14, "start", color=MUTED)
+    foot(cx, "576 + 색인 128", "S 그대로 · 읽기 2,048")
+
+    # ---- CSA · HCA
+    cx = 1320
+    head(cx, "CSA · HCA", "세로를 줄인다", PURPLE)
+    for dx, rows, nm, cap in ((-110, 3, "CSA", "S / 4"), (50, 0, "HCA", "S / 128")):
+        ghost(cx + dx, 40)
+        if rows:
+            table(cx + dx, top, 40, rows, "c", True)
+        else:
+            f.rect(cx + dx, top, 40, 7, SOLID["c"], KINDS["c"][1], 3, 1.8)
+        f.arrow(cx + dx + 20, top + H - 8, cx + dx + 20, top + rows * RH + 22, color=RED)
+        f.text(cx + dx + 52, top + 22, nm, 18, "start", 700)
+        f.text(cx + dx + 52, top + 46, cap, 15, "start", color=MUTED, mono=True)
+    foot(cx, "512", "S → S/4 · S/128")
+
+    f.text(1520, 584, "가로 · 세로의 비율은 실제와 다르다", 13, "end", color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 27. 묶는 방법
+def fig_compress():
+    f = Fig("27-v4-compress", 1560, 600)
+    f.title(40, 44, "토큰 4개를 엔트리 하나로 — 평균이 아니라 학습된 가중합")
+    x0, pitch, bw = 250, 82, 60
+    w = [0.04, 0.06, 0.05, 0.14, 0.18, 0.08, 0.34, 0.11]
+    SC, base_y = 300, 318
+    RED = "#c2479c"
+
+    def cx(i):
+        return x0 + i * pitch + bw / 2
+
+    # 블록
+    f.rect(x0 - 10, 92, 4 * pitch - 2, 62, "none", "#c9cddb", 8, 1.6, "5 5")
+    f.rect(x0 + 4 * pitch - 10, 92, 4 * pitch - 2, 62, "none", "#b0a3e6", 8, 2)
+    f.text(x0 + 2 * pitch - 11, 84, "앞 블록 4개", 15, color=MUTED)
+    f.text(x0 + 6 * pitch - 11, 84, "자기 블록 4개", 15, weight=700, color=PURPLE)
+
+    # 행 이름
+    f.text(40, 122, "① 값", 21, "start", 700)
+    f.text(40, 148, "토큰마다 512차원으로 투영", 15, "start", color=MUTED)
+    f.text(40, 244, "② 가중치", 21, "start", 700)
+    f.text(40, 270, "토큰마다 반영할 비율", 15, "start", color=MUTED)
+    f.text(40, 294, "8개의 합 = 1", 15, "start", color=MUTED)
+    f.text(40, 412, "③ 합", 21, "start", 700)
+    f.text(40, 438, "가중치를 곱해 더한다", 15, "start", color=MUTED)
+
+    mid = x0 + 4 * pitch - 11
+    for i in range(8):
+        f.rect(x0 + i * pitch, 106, bw, 34, KINDS["c"][0], KINDS["c"][1], 6, 1.8, None if i >= 4 else "4 3")
+        f.text(cx(i), 129, "C", 16, mono=True)
+        h = w[i] * SC
+        f.rect(cx(i) - 15, base_y - h, 30, h, SOLID["q"], "none", 3)
+        f.text(cx(i), base_y + 20, f"{w[i]:.2f}", 14, color=INK, mono=True)
+        f.line(cx(i), base_y + 28, mid, 384, "#9a9fb3", 1.3)
+    f.line(x0 - 10, base_y, x0 + 8 * pitch - 12, base_y, "#aeb3c4", 1.6)
+    ya = base_y - 0.125 * SC
+    f.line(x0 - 10, ya, x0 + 8 * pitch - 12, ya, RED, 1.8, "7 5")
+    f.text(x0 + 8 * pitch - 2, ya - 4, "평균이면", 14, "start", 700, RED)
+    f.text(x0 + 8 * pitch - 2, ya + 16, "전부 1/8", 14, "start", 700, RED)
+
+    f.rect(mid - 85, 388, 170, 46, SOLID["c"], KINDS["c"][1], 7)
+    f.text(mid, 418, "엔트리 하나", 18, weight=700, color="#ffffff")
+    f.text(mid + 100, 418, "512차원 · K이자 V", 15, "start", color=MUTED)
+
+    f.rect(40, 478, 930, 90, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 514, "비율이 입력에 따라, 차원마다 달라진다 — 그 비율을 내는 행렬을 학습한다", 18, "start", 700)
+    f.text(64, 546, "값 C = h · W_KV", 15, "start", color=MUTED, mono=True)
+    f.text(250, 546, "가중치 = softmax( h · W_Z + B )", 15, "start", color=MUTED, mono=True)
+    f.text(590, 546, "엔트리 = Σ 가중치 ⊙ 값", 15, "start", color=MUTED, mono=True)
+
+    # ---- 겹쳐서 묶는다
+    f.line(1000, 76, 1000, 572, "#e3e5ee", 2, "6 6")
+    f.text(1030, 100, "겹쳐서 묶는다", 22, "start", 700, PURPLE)
+    f.text(1178, 100, "overlapped compression", 15, "start", color=MUTED)
+    bx0, bp, hi = 1040, 170, 1
+    for j in range(3):
+        gx = bx0 + j * bp
+        ecx = gx + 45
+        _tokens(f, gx, 174, 4, color="#8f95ab" if j <= hi else "#c9cddb")
+        f.rect(gx - 6, 159, 102, 30, "none", "#b0a3e6" if j == hi else "#c9cddb", 8, 2 if j == hi else 1.5,
+               None if j == hi else "5 4")
+        on = j == hi
+        for i in range(4):
+            f.line(gx + i * 24 + 9, 191, ecx, 262, PURPLE if on else "#d3d6e2", 2 if on else 1.3)
+        if j > 0:
+            for i in range(4):
+                f.line(gx - bp + i * 24 + 9, 191, ecx, 262, PURPLE if on else "#d3d6e2", 1.6 if on else 1.2, "5 4")
+        f.rect(ecx - 40, 266, 80, 34, SOLID["c"] if on else KINDS["c"][0], KINDS["c"][1], 6)
+    f.text(bx0 + 45, 148, "앞 블록", 15, color=MUTED)
+    f.text(bx0 + bp + 45, 148, "자기 블록", 15, weight=700, color=PURPLE)
+    f.text(bx0 + bp + 45, 324, "이 엔트리", 15, weight=700)
+    f.text(1030, 372, "엔트리 하나  =  자기 블록 4개 + 앞 블록 4개", 17, "start", 600)
+    f.text(1030, 402, "엔트리는 4토큰마다 하나  →  길이는 S/4", 17, "start", 600)
+    f.line(1030, 440, 1520, 440, "#e3e5ee", 1.5)
+    f.text(1030, 484, "HCA", 22, "start", 700, PURPLE)
+    f.text(1030, 518, "128개를 하나로  →  길이는 S/128", 17, "start", 600)
+    f.text(1030, 548, "겹치지 않는다", 17, "start", 600)
+    return f
+
+
+# ---------------------------------------------------------------- 28. CSA · HCA 텐서 연산
+def fig_v4_tensor():
+    f = Fig("28-v4-tensor", 1560, 680)
+    f.title(40, 44, "텐서 연산으로 보면 — CSA와 HCA")
+    GRN, RED = "#4d9a56", "#c2479c"
+    cw_, ch_, x0, px = 262, 200, 130, 280
+    BG = {"g": ("#f3faf4", "#bfe0c4", GRN), "r": ("#fdf3f9", "#efc3de", RED), "n": ("#f7f8fb", "#d3d6e2", "#7b8196")}
+
+    def g_comp(gx, gy, l2):
+        f.rect(gx, gy, 228, 16, KINDS["c"][0], KINDS["c"][1], 4, 1.6)
+        f.arrow(gx + 12, gy + 19, gx + 12, gy + 31)
+        f.rect(gx, gy + 34, l2, 16, SOLID["c"], KINDS["c"][1], 4, 1.6)
+
+    def g_idx(gx, gy):
+        f.rect(gx, gy + 8, 34, 34, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
+        f.text(gx + 17, gy + 31, "q", 16, mono=True)
+        f.text(gx + 47, gy + 33, "·", 26)
+        f.rect(gx + 60, gy + 15, 168, 20, KINDS["i"][0], KINDS["i"][1], 4, 1.8)
+
+    def g_topk(gx, gy):
+        hs = [8, 12, 34, 9, 14, 7, 11, 38, 10, 8, 13, 30, 9, 12, 7, 10, 9]
+        for i, h in enumerate(hs):
+            f.rect(gx + i * 13.5, gy + 48 - h, 9, h, "#3b7dd8" if h > 25 else "#b9d3f5", "none", 2)
+
+    def g_gather(gx, gy):
+        sel = (2, 7, 11)
+        for i in range(17):
+            f.rect(gx + i * 13.5, gy, 10, 16, SOLID["c"] if i in sel else KINDS["c"][0], "none", 2)
+        for n_, i in enumerate(sel):
+            f.line(gx + i * 13.5 + 5, gy + 18, gx + 95 + n_ * 14, gy + 32, "#9a9fb3", 1.3)
+            f.rect(gx + 90 + n_ * 14, gy + 34, 11, 16, SOLID["c"], "none", 2)
+
+    def g_att(gx, gy, l2):
+        f.rect(gx, gy + 8, 34, 34, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
+        f.text(gx + 17, gy + 31, "q", 16, mono=True)
+        f.text(gx + 47, gy + 33, "·", 26)
+        f.rect(gx + 60, gy + 8, l2, 34, SOLID["c"], KINDS["c"][1], 5, 1.8)
+
+    def card(i, y, title, glyph, l1, l2, kind, tag):
+        x = x0 + i * px
+        bg, bd, col = BG[kind]
+        f.rect(x, y, cw_, ch_, bg, bd, 10, 1.6)
+        f.text(x + 16, y + 32, title, 19, "start", 700)
+        glyph(x + 16, y + 46)
+        f.text(x + 16, y + 126, l1, 15, "start", mono=True)
+        f.text(x + 16, y + 148, l2, 15, "start", 700, mono=True)
+        tw = len(tag) * 15 + 22
+        f.rect(x + 16, y + 162, tw, 26, col, "none", 13)
+        f.text(x + 16 + tw / 2, y + 180, tag, 14, weight=700, color="#ffffff")
+
+    def none(i, y, name):
+        x = x0 + i * px
+        f.rect(x, y, cw_, ch_, "#ffffff", "#d3d6e2", 10, 1.5, "6 5")
+        f.text(x + cw_ / 2, y + ch_ / 2 - 2, name, 20, weight=700, color="#a9aec0")
+        f.text(x + cw_ / 2, y + ch_ / 2 + 26, "없다", 17, color="#a9aec0")
+
+    def arrows(y, color="#5d6377"):
+        for i in range(4):
+            f.arrow(x0 + i * px + cw_ + 1, y + ch_ / 2, x0 + (i + 1) * px - 2, y + ch_ / 2, color=color)
+
+    # ---- CSA
+    y = 78
+    f.text(40, y + 96, "CSA", 26, "start", 700)
+    f.text(40, y + 122, "4개씩", 15, "start", color=MUTED)
+    card(0, y, "① 압축", lambda gx, gy: g_comp(gx, gy, 57), "(S × 512)", "→ (S/4 × 512)", "n", "4토큰마다 한 번")
+    card(1, y, "② indexer 점수", g_idx, "(64 × 128) × (128 × S/4)", "→ (1 × S/4)", "g", "행렬 × 행렬")
+    card(2, y, "③ top-k", g_topk, "(1 × S/4)", "→ 위치 1,024개", "r", "비교 · 선택")
+    card(3, y, "④ gather", g_gather, "위치 1,024개", "→ (1,024 × 512)", "r", "흩어진 읽기")
+    card(4, y, "⑤ attention", lambda gx, gy: g_att(gx, gy, 44), "(128 × 512) × (512 × k)", "→ (128 × k)", "g",
+         "행렬 × 행렬")
+    arrows(y)
+    f.line(40, 302, 1520, 302, "#e3e5ee", 2, "6 6")
+
+    # ---- HCA
+    y = 326
+    f.text(40, y + 96, "HCA", 26, "start", 700)
+    f.text(40, y + 122, "128개씩", 15, "start", color=MUTED)
+    card(0, y, "① 압축", lambda gx, gy: g_comp(gx, gy, 9), "(S × 512)", "→ (S/128 × 512)", "n", "128토큰마다 한 번")
+    none(1, y, "indexer")
+    none(2, y, "top-k")
+    none(3, y, "gather")
+    card(4, y, "② attention", lambda gx, gy: g_att(gx, gy, 110), "(128 × 512) × (512 × n)", "→ (128 × n)", "g",
+         "행렬 × 행렬")
+    arrows(y)
+
+    f.rect(40, 552, 1480, 96, "#fafbfd", "#d3d6e2", 10, 1.5)
+    f.rect(64, 572, 16, 16, GRN, "none", 4)
+    f.text(90, 586, "행렬곱", 16, "start", 700)
+    f.rect(170, 572, 16, 16, RED, "none", 4)
+    f.text(196, 586, "행렬곱이 아닌 일", 16, "start", 700)
+    f.text(420, 586, "k = 1,024 + 최근 128", 15, "start", color=MUTED, mono=True)
+    f.text(680, 586, "n = S/128 + 최근 128", 15, "start", color=MUTED, mono=True)
+    f.text(64, 626, "CSA는 top-k와 gather가 토큰마다 · 층마다 돈다.", 18, "start", 600)
+    f.text(560, 626, "HCA는 처음부터 끝까지 이어 읽는 행렬곱 하나다.", 18, "start", 600)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
-        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor]
+        fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor,
+        fig_axes, fig_compress, fig_v4_tensor]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
