@@ -605,8 +605,9 @@ def fig_cache_size():
 
 
 # ---------------------------------------------------------------- 11. 줄일 수 있는 곳 셋
-def fig_knobs():
-    f = Fig("11-three-knobs", 1560, 500)
+def fig_knobs(name="11-three-knobs", read_what="읽는 위치를 줄인다", read_fam="Sparse Attention",
+              read_axis="② 길이 S 중 읽는 줄"):
+    f = Fig(name, 1560, 500)
     f.title(40, 44, "KV cache를 줄이는 세 방향")
     # 층이 겹친 캐시 블록
     for d in (40, 20, 0):
@@ -622,12 +623,12 @@ def fig_knobs():
     f.line(76, 160, 92, 160, "#3b7dd8", 2)
     f.line(76, 400, 92, 400, "#3b7dd8", 2)
     f.raw(f'<text transform="translate(64,280) rotate(-90)" font-family="{FONT}" font-size="18" text-anchor="middle" '
-          f'font-weight="700" fill="#3b7dd8">② 길이 S 중 읽는 줄</text>')
+          f'font-weight="700" fill="#3b7dd8">{read_axis}</text>')
     f.line(376, 154, 412, 118, "#4d9a56", 2)
     f.text(424, 112, "③ 층 수", 18, "start", 700, "#4d9a56")
 
     rows = [("①", "토큰당 저장량을 줄인다", "Compressed Attention", "MQA · GQA · MLA", "쓰기에서 무엇을 남길지 바꾼다", PURPLE, "q"),
-            ("②", "읽는 위치를 줄인다", "Sparse Attention", "SWA · DSA · CSA · HCA · QSA", "읽기에서 얼마나 훑을지 바꾼다",
+            ("②", read_what, read_fam, "SWA · DSA · CSA · HCA · QSA", "읽기에서 얼마나 훑을지 바꾼다",
              "#3b7dd8", "i"),
             ("③", "층 사이 중복을 줄인다", "Layer Sharing", "CLA · YOCO · IndexShare", "①②와 겹쳐 쓸 수 있다",
              "#4d9a56", "v")]
@@ -639,6 +640,11 @@ def fig_knobs():
         f.text(590, y + 74, who, 17, "start", mono=True)
         f.text(1476, y + 74, note, 16, "end", color=MUTED)
     return f
+
+
+def fig_knobs_read():
+    """요약판용. ②를 '읽는 양'으로 적는다 — HCA는 고르지 않고 묶은 것을 전부 읽는다."""
+    return fig_knobs("11b-three-knobs", "읽는 양을 줄인다", "Sparse Attention · 길이 압축", "② 길이 S 중 읽는 양")
 
 
 # ---------------------------------------------------------------- 12. 오늘 따라갈 길
@@ -1577,7 +1583,7 @@ def fig_qsa_layers():
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
         fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor,
-        fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers]
+        fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers, fig_knobs_read]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
