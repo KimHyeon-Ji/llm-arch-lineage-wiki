@@ -606,9 +606,9 @@ def fig_cache_size():
 
 # ---------------------------------------------------------------- 11. 줄일 수 있는 곳 셋
 def fig_knobs(name="11-three-knobs", read_what="읽는 위치를 줄인다", read_fam="Sparse Attention",
-              read_axis="② 길이 S 중 읽는 줄"):
+              read_axis="② 길이 S 중 읽는 줄", title="KV cache를 줄이는 세 방향"):
     f = Fig(name, 1560, 500)
-    f.title(40, 44, "KV cache를 줄이는 세 방향")
+    f.title(40, 44, title)
     # 층이 겹친 캐시 블록
     for d in (40, 20, 0):
         f.rect(110 + d, 160 - d, 260, 240, "#f4f2fc" if d else "#eceafa", "#6b4fc8", 6, 1.8)
@@ -644,7 +644,8 @@ def fig_knobs(name="11-three-knobs", read_what="읽는 위치를 줄인다", rea
 
 def fig_knobs_read():
     """요약판용. ②를 '읽는 양'으로 적는다 — HCA는 고르지 않고 묶은 것을 전부 읽는다."""
-    return fig_knobs("11b-three-knobs", "읽는 양을 줄인다", "Sparse Attention · 길이 압축", "② 길이 S 중 읽는 양")
+    return fig_knobs("11b-three-knobs", "읽는 양을 줄인다", "Sparse Attention · 길이 압축", "② 길이 S 중 읽는 양",
+                     "KV cache의 저장 · 읽기 비용을 줄이는 세 방향")
 
 
 # ---------------------------------------------------------------- 12. 오늘 따라갈 길
