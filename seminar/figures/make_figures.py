@@ -1100,6 +1100,9 @@ def fig_kv_bars():
 def fig_mla_tensor():
     f = Fig("25-mha-vs-mla-tensor", 1560, 700)
     f.title(40, 44, "점수 계산을 텐서로 놓고 보면 — MHA와 MLA")
+    f.rect(1250, 26, 30, 12, KINDS["q"][0], KINDS["q"][1], 3, 1.5)
+    f.rect(1244, 32, 30, 12, KINDS["q"][0], KINDS["q"][1], 3, 1.5)
+    f.text(1292, 42, "겹친 장 = 헤드 (128개)", 15, "start", color=MUTED)
     U = 0.31          # 차원 1 = 0.31px  (128 → 40px, 512 → 159px)
     SW = 330          # 길이 S를 나타내는 가로
     RED, GRN = "#c2479c", "#4d9a56"
@@ -1123,7 +1126,8 @@ def fig_mla_tensor():
     f.text(370 + SW / 2 + 7, y + 84, "× 128장 — 헤드마다 한 장", 14, weight=700, color=RED)
     f.text(750, y + 26, "=", 24)
     sheets(790, y + 8, SW, 16, "q")
-    f.text(790 + SW / 2 + 7, y + 62, "점수  128 × S", 15, color=MUTED, mono=True)
+    f.text(790 + SW / 2 + 7, y + 62, "점수  1 × S", 15, color=MUTED, mono=True)
+    f.text(790 + SW / 2 + 7, y + 84, "× 128 헤드", 14, color=MUTED)
     f.text(1160, y + 20, "행렬 × 벡터를 128번", 17, "start", 600)
     f.text(1160, y + 46, "읽은 값을 한 번씩만 쓴다", 15, "start", color=MUTED)
 
@@ -1133,34 +1137,35 @@ def fig_mla_tensor():
     y = 340
     f.text(40, y + 80, "MLA", 22, "start", 700)
     f.text(40, y + 106, "캐시는 하나", 15, "start", color=MUTED)
-    qh, qw2, ch = 42, 512 * U, 512 * U
-    f.rect(130, y + 58, 60, 36, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
-    f.text(160, y + 82, "q_C", 15, mono=True)
-    f.arrow(194, y + 76, 226, y + 76)
-    f.text(210, y + 50, "① 새로 생긴 변환", 14, weight=700, color=RED)
-    f.text(210, y + 122, "× W_UKᵀ", 13, color=MUTED, mono=True)
-    f.text(210, y + 142, "토큰당 한 번", 13, color=MUTED)
-    f.rect(230, y + 55, qw2 - 30, qh, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
-    f.text(230 + (qw2 - 30) / 2, y + 82, "q̃", 18, mono=True)
-    f.text(230 + (qw2 - 30) / 2, y + 122, "128 × 512", 15, color=MUTED, mono=True)
-    f.text(372, y + 82, "·", 30)
-    f.rect(400, y, SW, ch, KINDS["c"][0], KINDS["c"][1], 5, 1.8)
-    f.text(400 + SW / 2, y + ch / 2 + 6, "c_KVᵀ", 18, mono=True)
-    f.text(400 + SW / 2, y + ch + 26, "512 × S", 15, color=MUTED, mono=True)
-    f.text(400 + SW / 2, y + ch + 48, "한 장 — 전 헤드가 같이 읽는다", 14, weight=700, color=GRN)
-    # 내적 길이 표시
-    bx = 400 + SW + 14
+    qw2, ch = 512 * U, 512 * U
+    f.text(150, y + 14, "① 새로 생긴 변환  × W_UKᵀ", 14, "start", 700, RED)
+    f.text(150, y + 36, "헤드마다 다른 행렬 (128 × 512) · 토큰당 한 번", 13, "start", color=MUTED)
+    sheets(150, y + 72, qw, 16, "q")
+    f.text(150 + qw / 2 + 7, y + 122, "q_C  1 × 128", 15, color=MUTED, mono=True)
+    f.text(150 + qw / 2 + 7, y + 144, "× 128 헤드", 14, color=MUTED)
+    f.arrow(216, y + 76, 250, y + 76)
+    sheets(258, y + 72, qw2, 16, "q")
+    f.text(258 + qw2 / 2 + 7, y + 122, "q̃  1 × 512", 15, color=MUTED, mono=True)
+    f.text(258 + qw2 / 2 + 7, y + 144, "× 128 헤드", 14, color=MUTED)
+    f.text(450, y + 84, "·", 30)
+    cx0 = 474
+    f.rect(cx0, y, SW, ch, KINDS["c"][0], KINDS["c"][1], 5, 1.8)
+    f.text(cx0 + SW / 2, y + ch / 2 + 6, "c_KVᵀ", 18, mono=True)
+    f.text(cx0 + SW / 2, y + ch + 26, "512 × S", 15, color=MUTED, mono=True)
+    f.text(cx0 + SW / 2, y + ch + 48, "한 장 — 전 헤드가 같이 읽는다", 14, weight=700, color=GRN)
+    bx = cx0 + SW + 14
     f.line(bx, y, bx, y + ch, RED, 2.2)
     f.line(bx - 6, y, bx + 6, y, RED, 2.2)
     f.line(bx - 6, y + ch, bx + 6, y + ch, RED, 2.2)
     f.text(bx + 14, y + ch / 2 - 6, "② 내적이 길어진다", 14, "start", 700, RED)
     f.text(bx + 14, y + ch / 2 + 16, "128 → 512 (+ 위치 64)", 14, "start", color=MUTED)
     f.text(bx + 14, y + ch / 2 + 36, "캐시 한 줄마다 치른다", 14, "start", color=MUTED)
-    f.text(960, y + 82, "=", 24)
-    f.rect(1000, y + 55, SW, qh, KINDS["q"][0], KINDS["q"][1], 5, 1.8)
-    f.text(1000 + SW / 2, y + 122, "점수  128 × S", 15, color=MUTED, mono=True)
-    f.text(1000, y + 20, "행렬 × 행렬 한 번", 17, "start", 600)
-    f.text(1000, y + 42, "읽은 값을 128번 쓴다", 15, "start", color=MUTED)
+    f.text(1030, y + 84, "=", 24)
+    sheets(1064, y + 72, SW, 16, "q")
+    f.text(1064 + SW / 2 + 7, y + 122, "점수  1 × S", 15, color=MUTED, mono=True)
+    f.text(1064 + SW / 2 + 7, y + 144, "× 128 헤드", 14, color=MUTED)
+    f.text(1064, y + 14, "행렬 × 행렬 한 번", 17, "start", 600)
+    f.text(1064, y + 36, "쿼리 128장을 쌓아 한 번에 — 읽은 값을 128번 쓴다", 14, "start", color=MUTED)
 
     # ---------------- 요약
     f.rect(40, 600, 1480, 76, "#f6f5fd", "#d9d2f3", 10, 1.5)
