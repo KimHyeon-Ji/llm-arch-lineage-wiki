@@ -760,9 +760,9 @@ def fig_swa():
                 f.rect(x0 + j * 36, 96 + t * 36, 33, 33, c, "none", 4)
         f.text(x0 + 144, 414, cap, 16, color=MUTED)
 
-    panel(110, "전부 읽기", "캐시  S줄", lambda t, j: True)
-    panel(620, "최근 W개만 (W = 3)", "캐시  min(S, W)줄", lambda t, j: t - j < 3)
-    panel(1130, "+ 맨 앞 토큰은 남긴다", "캐시  W줄 + 앞 몇 줄", lambda t, j: t - j < 3 or j == 0)
+    panel(110, "전부 읽기", "캐시  토큰 S개", lambda t, j: True)
+    panel(620, "최근 W개만 (W = 3)", "캐시  토큰 min(S, W)개", lambda t, j: t - j < 3)
+    panel(1130, "+ 맨 앞 토큰은 남긴다", "캐시  토큰 W개 + 앞 몇 개", lambda t, j: t - j < 3 or j == 0)
     lx = 110
     for c, label, adv in ((on, "읽는다", 150), (skip, "지나간 토큰 — 읽지 않는다", 300), (fut, "아직 오지 않은 토큰", 0)):
         f.rect(lx, 456, 24, 24, c, "none", 4)
