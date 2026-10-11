@@ -337,7 +337,7 @@ def fig_dsa():
     # ---- 지금까지 : MLA만
     y = 92
     f.text(40, y + 22, "지금까지 — MLA만", 20, "start", 700)
-    f.text(40, y + 48, "100만 줄을 전부, 비싸게 읽는다", 16, "start", color=MUTED)
+    f.text(40, y + 48, "100만 토큰을 전부, 비싸게 읽는다", 16, "start", color=MUTED)
     f.cells(x0, y, [SOLID["c"]] * n, cw, 34, 4, 4)
     f.line(40, 176, 1520, 176, "#e3e5ee", 2, "6 6")
 
@@ -361,7 +361,7 @@ def fig_dsa():
     # ---- ② MLA attention
     y2 = y1 + 158
     f.text(52, y2 + 22, "② MLA attention", 20, "start", 700, AMB)
-    f.text(52, y2 + 48, "고른 줄만 읽는다 — 원래 하던 계산", 16, "start", color=MUTED)
+    f.text(52, y2 + 48, "고른 토큰만 읽는다 — 원래 하던 계산", 16, "start", color=MUTED)
     f.cells(x0, y2, [SOLID["c"] if i in sel else OFF for i in range(n)], cw, 34, 4, 4)
     f.text(x0, y2 + 60, "0", 14, color=MUTED, mono=True)
     f.text(cx(n - 1), y2 + 60, "S (지금)", 14, color=MUTED, mono=True)
@@ -370,12 +370,12 @@ def fig_dsa():
     ty = 496
     f.rect(40, ty, 720, 124, "#f1f6fe", "#b9d3f5", 10, 1.5)
     f.text(64, ty + 34, "① indexer — 넓고 얕게", 19, "start", 700, BLUE)
-    f.text(64, ty + 66, "읽는 범위   S줄 전부", 17, "start")
-    f.text(64, ty + 96, "한 줄        128바이트  ·  점수만 낸다", 17, "start")
+    f.text(64, ty + 66, "읽는 범위   토큰 S개 전부", 17, "start")
+    f.text(64, ty + 96, "토큰당      128바이트  ·  점수만 낸다", 17, "start")
     f.rect(800, ty, 720, 124, "#fef7ea", "#f0cf93", 10, 1.5)
     f.text(824, ty + 34, "② MLA attention — 좁고 깊게", 19, "start", 700, AMB)
-    f.text(824, ty + 66, "읽는 범위   고른 2,048줄", 17, "start")
-    f.text(824, ty + 96, "한 줄        1,152바이트  ·  출력을 만든다", 17, "start")
+    f.text(824, ty + 66, "읽는 범위   고른 2,048토큰", 17, "start")
+    f.text(824, ty + 96, "토큰당      1,152바이트  ·  출력을 만든다", 17, "start")
     f.text(780, 672, "MLA만   S × 비싼 단가          →          DSA   S × 싼 단가  +  k × 비싼 단가", 18, weight=700,
            mono=False)
     return f
@@ -742,7 +742,7 @@ def fig_dsa_shape():
     f.title(40, 44, "MLA → DSA — 읽기에서 바뀐 것은 글자 하나")
     _read_row(f, 100, "MLA", 420, "512 × S", False)
     _read_row(f, 240, "DSA", 70, "512 × k", True)
-    f.text(800, 282, "k = 2,048.  컨텍스트가 100만이어도 비싼 계산은 2,048줄만 본다.", 18, "start")
+    f.text(800, 282, "k = 2,048.  컨텍스트가 100만이어도 비싼 계산은 2,048토큰만 본다.", 18, "start")
     return f
 
 
@@ -775,7 +775,7 @@ def fig_swa():
 # ---------------------------------------------------------------- 16. 저장 × 읽기
 def fig_store_read():
     f = Fig("16-store-read", 1560, 500)
-    f.title(40, 44, "지금까지 — 토큰당 저장량과 읽는 줄 수")
+    f.title(40, 44, "지금까지 — 토큰당 차원과 읽는 토큰 수")
     rows = 14
 
     def panel(x, w, kind, name, cap, picked=None):
@@ -790,13 +790,13 @@ def fig_store_read():
     panel(1130, 10, "c", "원하는 것", "작게 저장  ×  일부만 읽음", {2, 7, 8, 12})
     f.line(40, 106, 40, 386, "#8b90a3", 2)
     f.raw(f'<text transform="translate(28,246) rotate(-90)" font-family="{FONT}" font-size="15" text-anchor="middle" '
-          f'fill="{MUTED}">길이 S</text>')
-    f.text(60, 96, "토큰당 32,768개 값", 15, "start", color=MUTED)
-    f.text(790, 96, "576개 값", 15, "start", color=MUTED)
-    f.text(1130, 96, "576개 값", 15, "start", color=MUTED)
+          f'fill="{MUTED}">토큰 수 S</text>')
+    f.text(60, 96, "토큰당 32,768차원", 15, "start", color=MUTED)
+    f.text(790, 96, "576차원", 15, "start", color=MUTED)
+    f.text(1130, 96, "576차원", 15, "start", color=MUTED)
     f.text(830, 240, "토큰 하나는 얇아졌다.", 17, "start")
-    f.text(830, 268, "줄 수는 그대로다.", 17, "start", 700)
-    f.text(1170, 254, "관련 있는 줄만.", 17, "start", 700, "#b87410")
+    f.text(830, 268, "읽는 토큰 수는 그대로다.", 17, "start", 700)
+    f.text(1170, 254, "관련 있는 토큰만.", 17, "start", 700, "#b87410")
     f.text(60, 486, "막대의 가로 길이는 실제 비율이다 (32,768 : 576).", 15, "start", color=MUTED)
     return f
 
@@ -827,17 +827,17 @@ def fig_dsa_structure():
     f.box(210, 376, 190, 52, "q", "쿼리 q̃", "128 헤드 × ( 512 + 64 )", mono=False, fs=18)
     f.box(456, 366, 330, 72, "c", "MLA 캐시", "S × ( 512 + 64 )", mono=False, fs=18)
     f.arrow(790, 402, 846, 402)
-    f.box(850, 376, 250, 52, "c", "고른 k줄만", "k × ( 512 + 64 )", mono=False, fs=18)
+    f.box(850, 376, 250, 52, "c", "고른 k개만", "k × ( 512 + 64 )", mono=False, fs=18)
     f.arrow(1104, 402, 1166, 402)
     f.box(1170, 376, 150, 52, "n", "attention", mono=False, fs=18)
     f.arrow(1324, 402, 1376, 402)
     f.box(1380, 376, 80, 52, "q", "o")
     f.raw('<path d="M404,402 C440,402 424,522 560,522 L1150,522 C1230,522 1245,500 1245,436" fill="none" '
           'stroke="#5d6377" stroke-width="2.2" marker-end="url(#ah)"/>')
-    f.text(855, 510, "쿼리는 고른 k줄하고만 곱한다", 16, color=MUTED)
+    f.text(855, 510, "쿼리는 고른 k개하고만 곱한다", 16, color=MUTED)
     f.curve(tx, 212, tx, 300, 975, 290, 975, 370, dash="7 6")
     f.text(tx + 14, 268, "위치만 넘겨준다", 16, "start", color=MUTED)
-    f.text(40, 566, "새 토큰이 오면 두 캐시에 각각 한 줄씩 쓴다.  출력을 만드는 것은 아래 길뿐이고, 위 길은 어디를 볼지만 정한다.", 17,
+    f.text(40, 566, "새 토큰이 오면 두 캐시에 각각 하나씩 쓴다.  출력을 만드는 것은 아래 길뿐이고, 위 길은 어디를 볼지만 정한다.", 17,
            "start")
     f.text(40, 596, "점수  I(t,s) = Σ_h w_h · ReLU( q_h · k_s )   —  w_h는 지금 토큰에서 나오는 헤드별 가중치", 15, "start",
            color=MUTED, mono=True)
