@@ -228,35 +228,59 @@ def fig_mla_cache():
 # ---------------------------------------------------------------- 4. MLA 흡수
 def fig_mla_absorb():
     f = Fig("04-mla-absorb", 1560, 740)
-    # 왼쪽 : 펴서 비교
+    PINK, GRN = "#c2479c", "#4d9a56"
+    WS, H512, H128, W128, W512 = 220, 120, 30, 44, 150      # S, 512, 128을 나타내는 길이
+
+    def sheets(x, y, w, h, kind, n=3, off=7):
+        for i in range(n - 1, -1, -1):
+            f.rect(x + i * off, y - i * off, w, h, KINDS[kind][0], KINDS[kind][1], 5, 1.8)
+
+    # ---- 왼쪽 : 펴서 비교
     f.title(40, 44, "펴서 비교 — 정의식을 그대로 실행 (naive)")
-    f.stack(60, 110, 110, 7, "c", hi_last=False)
-    f.text(115, 290, "캐시 c", 17, weight=600)
-    f.text(115, 312, "S × 512", 16, color=MUTED, mono=True)
-    f.arrow(176, 180, 286, 180)
-    f.text(231, 166, "× W_UK", 15, color=MUTED, mono=True)
-    for i, dx in enumerate((16, 8, 0)):
-        f.stack(290 + dx, 94 + dx * 2, 250, 7, "k", hi_last=False)
-    f.text(415 + 0, 306, "K  ( S × 128 )  × 128 헤드", 16, color=MUTED, mono=True)
-    f.text(415, 340, "매 스텝, S개 전부를 편다", 18, weight=700, color="#c2479c")
-    f.text(596, 190, "·", 30)
-    f.box(622, 162, 110, 36, "q", "q_C", "1 × 128")
+    cx = 330
+    f.rect(cx, 80, WS, H512, KINDS["c"][0], KINDS["c"][1], 5, 1.8)
+    f.text(cx + WS / 2, 146, "c_KVᵀ", 18, mono=True)
+    f.text(cx + WS + 16, 132, "캐시  512 × S", 15, "start", color=MUTED, mono=True)
+    f.text(cx + WS + 16, 154, "한 장", 15, "start", color=MUTED)
+    f.arrow(cx + WS / 2, 206, cx + WS / 2, 256, color=PINK)
+    f.text(cx + WS / 2 + 16, 236, "× W_UK   헤드마다 · S줄 전부", 15, "start", 700, PINK)
+    sheets(cx, 284, WS, H128, "k")
+    f.text(cx + WS / 2, 305, "Kᵀ", 17, mono=True)
+    f.text(cx + WS / 2 + 7, 342, "128 × S", 15, color=MUTED, mono=True)
+    f.text(cx + WS / 2 + 7, 364, "× 128장", 14, weight=700, color=PINK)
+    sheets(214, 292, W128, 14, "q")
+    f.text(214 + W128 / 2 + 7, 342, "q  1 × 128", 15, color=MUTED, mono=True)
+    f.text(214 + W128 / 2 + 7, 364, "× 128 헤드", 14, color=MUTED)
+    f.text(300, 306, "·", 30)
+    f.text(60, 404, "매 스텝, 캐시 S줄을 헤드 128개의 K로 편다", 18, "start", 700, PINK)
 
     f.line(780, 30, 780, 430, "#d3d6e2", 2, "6 6")
 
-    # 오른쪽 : 쿼리를 옮겨서
+    # ---- 오른쪽 : 쿼리를 옮겨서
     x0 = 830
     f.title(x0, 44, "쿼리를 옮겨서 비교 — 실제 추론 (absorb)")
-    f.box(x0, 150, 110, 36, "q", "q_C", "1 × 128")
-    f.arrow(x0 + 114, 168, x0 + 226, 168)
-    f.text(x0 + 170, 154, "× W_UKᵀ", 15, color=MUTED, mono=True)
-    f.box(x0 + 230, 150, 230, 36, "q", "q̃", "1 × 512  ·  헤드마다 다르다")
-    f.text(x0 + 345, 250, "쿼리만 옮긴다 — 헤드마다 한 번", 18, weight=700, color=PURPLE)
-    f.text(x0 + 492, 176, "·", 30)
-    f.stack(x0 + 530, 96, 150, 7, "c", hi_last=False)
-    f.text(x0 + 605, 276, "캐시 c", 17, weight=600)
-    f.text(x0 + 605, 298, "S × 512  ·  그대로", 16, color=MUTED, mono=True)
-    f.text(x0 + 345, 330, "K를 만들지 않는다", 17, color=MUTED)
+    y = 170
+    sheets(x0 + 10, y, W128, 14, "q")
+    f.text(x0 + 10 + W128 / 2 + 7, y + 50, "q_C  1 × 128", 15, color=MUTED, mono=True)
+    f.text(x0 + 10 + W128 / 2 + 7, y + 72, "× 128 헤드", 14, color=MUTED)
+    f.arrow(x0 + 82, y + 4, x0 + 168, y + 4, color=PURPLE)
+    f.text(x0 + 125, y - 16, "× W_UKᵀ", 15, weight=700, color=PURPLE, mono=True)
+    sheets(x0 + 178, y, W512, 14, "q")
+    f.text(x0 + 178 + W512 / 2 + 7, y + 50, "q̃  1 × 512", 15, color=MUTED, mono=True)
+    f.text(x0 + 178 + W512 / 2 + 7, y + 72, "× 128 헤드", 14, color=MUTED)
+    f.text(x0 + 366, y + 14, "·", 30)
+    cx = x0 + 400
+    f.rect(cx, 104, WS, H512, KINDS["c"][0], KINDS["c"][1], 5, 1.8)
+    f.text(cx + WS / 2, 170, "c_KVᵀ", 18, mono=True)
+    f.text(cx + WS / 2, 250, "캐시  512 × S", 15, color=MUTED, mono=True)
+    f.text(cx + WS / 2, 274, "한 장 — 그대로 읽는다", 14, weight=700, color=GRN)
+    f.text(x0, 364, "쿼리만 옮긴다 — 토큰당 한 번", 18, "start", 700, PURPLE)
+    f.text(x0, 404, "K를 만들지 않는다", 18, "start", 700, GRN)
+
+    # 범례
+    f.rect(1296, 398, 30, 12, KINDS["q"][0], KINDS["q"][1], 3, 1.5)
+    f.rect(1290, 404, 30, 12, KINDS["q"][0], KINDS["q"][1], 3, 1.5)
+    f.text(1338, 414, "겹친 장 = 헤드 (128개)", 15, "start", color=MUTED)
 
     f.rect(40, 450, 1480, 270, "#f6f5fd", "#d9d2f3", 10, 1.5)
     ex, nx = 150, 800
