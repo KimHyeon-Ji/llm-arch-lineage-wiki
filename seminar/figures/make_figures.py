@@ -663,7 +663,7 @@ def fig_lineage():
     node(lx, 416, "MLA", "2024", "DeepSeek-V2/V3 · Kimi K2 · GLM-5", "q")
     for y in (278, 378):
         f.arrow(lx + 125, y + 2, lx + 125, y + 34)
-    node(rx, 216, "SWA", "2023", "Mistral 7B · Gemma 2/3", "i")
+    node(rx, 216, "SWA", "2020", "Mistral 7B · Gemma 2/3", "i")
     node(rx, 416, "DSA", "2025", "DeepSeek-V3.2 · GLM-5", "i")
     node(rx, 516, "CSA · HCA", "2026", "DeepSeek-V4", "i")
     node(rx + 300, 516, "QSA", "2026", "Qwen3.8-Flash-Next", "i", 210, "6 5")
@@ -705,7 +705,7 @@ def fig_mha():
     f.box(1000, 190, 70, 44, "n", "y", "d")
     f.text(1275, 60, "캐시 — 헤드마다 K, V 한 장씩", 17, weight=700)
     f.text(1275, 410, "( S × n_h × d_h ) × 2", 16, color=MUTED, mono=True)
-    f.text(40, 450, "d = n_h × d_h 이므로 헤드를 늘려도 전체 계산량은 그대로다.  늘어나는 것은 캐시의 장수다.", 18, "start")
+    f.text(40, 450, "d = n_h × d_h 이므로 헤드를 늘려도 계산량과 캐시 총량은 그대로다.  캐시가 헤드마다 한 장으로 나뉠 뿐이다.", 18, "start")
     f.text(40, 480, "예: GPT-2 small  768 = 12 헤드 × 64", 16, "start", color=MUTED)
     return f
 
