@@ -106,6 +106,312 @@ class Fig:
                 f'height="{self.h}">{defs}<rect width="100%" height="100%" fill="#ffffff"/>' + "".join(self.o) + "</svg>")
 
 
+# ---------------------------------------------------------------- 공통 예시 · 도우미
+# 모든 그림이 같은 예시를 쓴다: 프롬프트 "The cat sat", 직전에 생성된 "on"(아직 KV 없음),
+# 초안 "the mat and slept", target은 세 번째 자리에서 "."을 고른다 → 채택 2개 + "." = 3개 확정.
+PROMPT = ["The", "cat", "sat"]
+DRAFT = ["the", "mat", "and", "slept"]
+TOUT = ["the", "mat", ".", "…", "…"]
+
+
+def pend(f, x, y, w, h, label, fs=18):
+    """확정됐지만 아직 KV가 없는 토큰 — 점선 상자."""
+    f.rect(x, y, w, h, "#ffffff", "#7b8196", 6, 2, "6 4")
+    f.text(x + w / 2, y + h / 2 + fs * 0.35, label, fs, mono=True)
+
+
+def legend(f, x, y, items=("c", "p", "d", "t", "ok", "no")):
+    names = {"c": "KV가 있는 확정 토큰", "p": "확정됐지만 KV가 아직 없는 토큰", "d": "초안", "t": "target이 고른 토큰",
+             "ok": "채택된 초안", "no": "버린 초안"}
+    for k in items:
+        if k == "p":
+            f.rect(x, y - 13, 26, 18, "#ffffff", "#7b8196", 4, 1.8, "4 3")
+        else:
+            f.rect(x, y - 13, 26, 18, KINDS[k][0], KINDS[k][1], 4, 1.8)
+        f.text(x + 34, y + 1, names[k], 14, "start", color=MUTED)
+        x += 48 + len(names[k]) * 13
+
+
+def summary(f, x, y, w, bold, muted=None):
+    h = 80 if muted else 52
+    f.rect(x, y, w, h, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(x + 24, y + 33, bold, 17, "start", 700)
+    if muted:
+        f.text(x + 24, y + 62, muted, 15, "start", color=MUTED)
+
+
+# ---------------------------------------------------------------- 16. 시간 흐름
+def fig_time_flow():
+    f = Fig("16-time-flow", 1560, 600)
+    f.title(40, 44, "같은 세 토큰을 만드는 시간 — 일반 생성 vs speculative decoding")
+    y0 = 84
+    f.text(40, y0 + 28, "지금 상태", 17, "start", 700)
+    for i, t in enumerate(PROMPT):
+        f.box(200 + i * 92, y0, 82, 42, "c", t, fs=16, mono=True)
+    f.text(200 + 133, y0 + 64, "프롬프트 · KV 있음", 14, color=MUTED)
+    pend(f, 486, y0, 82, 42, "on", 16)
+    f.text(527, y0 + 64, "방금 생성 · KV 없음", 14, color=MUTED)
+    legend(f, 760, y0 + 26, ("c", "p", "d", "t"))
+
+    x0, u = 230, 290
+    y1 = 220
+    f.text(40, y1 + 30, "일반 생성", 18, "start", 700)
+    f.text(40, y1 + 54, "토큰 하나에 forward 한 번", 14, "start", color=MUTED)
+    for i, (a, b) in enumerate([("on", "the"), ("the", "mat"), ("mat", ".")]):
+        x = x0 + i * (u + 10)
+        f.box(x, y1, u, 50, "t", "target forward", fs=16)
+        f.text(x + u / 2, y1 + 76, f"입력 {a}  →  출력 {b}", 15, color=MUTED)
+    xe = x0 + 3 * (u + 10) - 10
+
+    y2 = 360
+    f.text(40, y2 + 30, "speculative", 18, "start", 700)
+    f.text(40, y2 + 54, "초안 4개 + forward 한 번", 14, "start", color=MUTED)
+    for i, t in enumerate(DRAFT):
+        f.box(x0 + i * 44, y2, 38, 50, "d")
+    f.text(x0 + 85, y2 + 76, "초안 the mat and slept", 15, color=MUTED)
+    xv = x0 + 4 * 44 + 6
+    f.box(xv, y2, u + 40, 50, "t", "target forward — 5자리를 한 번에", fs=16)
+    f.text(xv + (u + 40) / 2, y2 + 76, "확정  the  mat  .", 15, weight=700)
+    f.line(xv + u + 54, y2 + 25, xe, y2 + 25, "#4d9a56", 2, "6 6")
+    f.text((xv + u + 54 + xe) / 2, y2 + 16, "아낀 시간", 16, weight=700, color="#3d7c45")
+    f.arrow(x0, 470, xe + 20, 470)
+    f.text(xe + 20, 494, "시간", 14, "end", color=MUTED)
+    summary(f, 40, 504, 1480, "같은 세 토큰(the mat .)을 만드는 데 target forward가 3번에서 1번으로 줄었다.",
+            "대신 초안을 만드는 시간이 들고, 5자리를 한 번에 처리하는 forward는 한 자리일 때보다 조금 길다.")
+    return f
+
+
+# ---------------------------------------------------------------- 17. 입력과 출력의 한 칸 차이
+def fig_shift():
+    f = Fig("17-shift-by-one", 1560, 600)
+    f.title(40, 44, "verify의 입력과 출력은 한 칸씩 어긋나 있다")
+    cw, step, x0 = 150, 200, 360
+    yi, yb, yo = 120, 214, 330
+    f.text(40, yi + 30, "target에 넣는 5개", 17, "start", 700)
+    f.text(40, yo + 30, "자리마다 고른", 17, "start", 700)
+    f.text(40, yo + 54, "다음 토큰", 17, "start", 700)
+    for i, t in enumerate(["on"] + DRAFT):
+        x = x0 + i * step
+        if i == 0:
+            pend(f, x, yi, cw, 46, t)
+        else:
+            f.box(x, yi, cw, 46, "d", t, fs=18, mono=True)
+        f.text(x + cw / 2, yi - 12, f"자리 {i}", 14, color=MUTED)
+    marks = [("#4d9a56", "✓ d1과 같다"), ("#4d9a56", "✓ d2와 같다"), ("#c2479c", "✗ d3과 다르다"), ("#b9bdcc", "보지 않는다"),
+             ("#b9bdcc", "")]
+    for i, t in enumerate(TOUT):
+        x = x0 + i * step
+        f.box(x, yo, cw, 46, "t", t, fs=18, mono=True)
+        col, s = marks[i]
+        if i < 4:
+            f.line(x + cw / 2 + 10, yo - 2, x + step + cw / 2 - 10, yi + 50, col, 2.5, None if i < 3 else "6 5", True)
+        if s:
+            f.text(x + cw / 2, yo + 74, s, 15, weight=700 if i < 3 else 400, color=col if i < 3 else MUTED)
+    f.rect(x0 - 10, yb, 4 * step + cw + 20, 56, KINDS["t"][0], KINDS["t"][1], 8, 2)
+    f.text(x0 + 2 * step + cw / 2, yb + 35, "target forward 1번 — 다섯 자리 모두 '여기까지 보고 다음 토큰'을 고른다", 16, weight=700)
+    f.text(x0 + 4 * step + cw / 2, yo + 74, "비교할 초안이 없다", 15, color=MUTED)
+    f.text(x0 + 4 * step + cw / 2, yo + 96, "다 맞으면 보너스 토큰", 15, color=MUTED)
+    summary(f, 40, 492, 1480, "자리 i의 출력은 '자리 i까지 보고 고른 다음 토큰'이다. 그래서 바로 다음 칸(자리 i+1)의 초안과 비교한다.",
+            "화살표는 비교하는 짝이다. 자리 2에서 target은 '.'을 골랐고 초안은 'and'였다 — 여기서 멈춘다.")
+    return f
+
+
+# ---------------------------------------------------------------- 18. hidden과 토큰을 둘 다 받는 이유
+def fig_hidden_token():
+    f = Fig("18-hidden-and-token", 1560, 640)
+    f.title(40, 44, "drafter가 hidden과 토큰을 둘 다 받는 이유")
+    # target 쪽
+    f.text(40, 104, "target이 자리 'sat'을 처리했다 (prefill)", 18, "start", 700)
+    for i, t in enumerate(PROMPT):
+        f.box(60 + i * 128, 130, 118, 40, "c", t, fs=16, mono=True)
+    f.rect(60, 196, 374, 60, KINDS["t"][0], KINDS["t"][1], 8, 2)
+    f.text(247, 232, "target의 층들을 모두 지난다", 16, weight=700)
+    f.arrow(247, 259, 247, 293)
+    f.box(150, 296, 194, 44, "a", "hidden  h_sat", fs=17, mono=True)
+    f.text(247, 362, "'The cat sat까지 읽은 이해'", 15, color=MUTED)
+    f.text(247, 384, "벡터 한 줄 (8B 모델이면 숫자 4,096개)", 14, color=MUTED)
+    f.arrow(247, 396, 247, 428)
+    f.box(150, 431, 194, 40, "t", "출력 head", fs=16)
+    f.text(247, 494, "어휘 전체에 대한 확률 → 'on' 0.6 · 'down' 0.3 …", 14, color=MUTED)
+    f.text(247, 516, "여기서 'on'이 뽑혔다", 15, weight=700)
+    # 가운데 질문
+    f.line(520, 90, 520, 540, "#d3d6e2", 2, "6 6")
+    f.text(560, 104, "hidden만 주면 drafter가 모르는 것", 18, "start", 700)
+    f.lines(560, 144, ["h_sat은 'on'을 고르기 전의 상태다.",
+                       "다음 칸에 'on'이 뽑혔는지 'down'이 뽑혔는지",
+                       "hidden에는 들어 있지 않다.",
+                       "",
+                       "그다음 토큰은 그 선택에 따라 달라진다."], 16, 30)
+    f.box(560, 316, 150, 40, "n", "on  →  the", fs=16, mono=True)
+    f.box(730, 316, 150, 40, "n", "down  →  on", fs=16, mono=True)
+    f.text(720, 380, "같은 h_sat이어도 다음 칸의 토큰이 다르면", 15, color=MUTED)
+    f.text(720, 402, "맞혀야 할 답이 다르다", 15, color=MUTED)
+    # drafter 쪽
+    f.line(940, 90, 940, 540, "#d3d6e2", 2, "6 6")
+    f.text(980, 104, "그래서 drafter는 둘을 함께 받는다", 18, "start", 700)
+    f.box(990, 150, 220, 46, "a", "hidden  h_sat", fs=16, mono=True)
+    f.text(1100, 218, "여기까지의 이해", 14, color=MUTED)
+    f.box(1250, 150, 230, 46, "n", "임베딩  Emb(on)", fs=16, mono=True)
+    f.text(1365, 218, "그다음에 실제로 온 토큰", 14, color=MUTED)
+    f.arrow(1100, 232, 1200, 284)
+    f.arrow(1365, 232, 1265, 284)
+    f.box(1060, 288, 350, 56, "d", "drafter — 얇은 층 하나", fs=17, weight=700)
+    f.arrow(1235, 347, 1235, 383)
+    f.box(1160, 386, 150, 44, "d", "the", fs=18, mono=True)
+    f.text(1235, 456, "on 다음 토큰을 맞힌다 — 첫 초안 d1", 15, weight=700)
+    f.text(1235, 480, "임베딩: 토큰 ID를 벡터로 바꾼 것 (target의 표를 함께 쓴다)", 13, color=MUTED)
+    summary(f, 40, 548, 1480, "hidden은 '여기까지 읽은 이해', 임베딩은 '그다음에 실제로 온 토큰'이다. drafter는 둘로 그다음 토큰을 맞힌다.",
+            "문맥을 읽는 일은 target이 이미 했다. 그 결과를 받아 쓰니 drafter는 층 하나로도 꽤 잘 맞힌다.")
+    return f
+
+
+# ---------------------------------------------------------------- 19. 순차 초안과 병렬 초안
+def fig_serial_parallel():
+    f = Fig("19-serial-vs-parallel", 1560, 620)
+    f.title(40, 44, "순차 초안과 병렬 초안 — forward를 몇 번 도나")
+    f.text(40, 104, "순차 — 초안 하나에 forward 한 번", 18, "start", 700)
+    x, y = 60, 128
+    for i, t in enumerate(["on"] + DRAFT):
+        if i == 0:
+            pend(f, x, y, 80, 40, t, 16)
+        else:
+            f.box(x, y, 80, 40, "d", t, fs=16, mono=True)
+        if i < 4:
+            f.arrow(x + 83, y + 20, x + 99, y + 20)
+            f.box(x + 102, y + 2, 50, 36, "d", "1층", fs=14, weight=700)
+            f.arrow(x + 155, y + 20, x + 171, y + 20)
+        x += 174
+    f.text(60, 200, "앞에서 뽑은 토큰을 다음 스텝의 입력으로 넣는다. 그래서 차례로 돌 수밖에 없다", 15, "start", color=MUTED)
+
+    f.text(40, 262, "병렬 — 블록 전체에 forward 한 번", 18, "start", 700)
+    bx = 60
+    for i, t in enumerate(["on", "[M]", "[M]", "[M]", "[M]"]):
+        if i == 0:
+            pend(f, bx + i * 130, 286, 116, 38, t, 15)
+        else:
+            f.box(bx + i * 130, 286, 116, 38, "n", t, fs=15, mono=True)
+        f.arrow(bx + i * 130 + 58, 327, bx + i * 130 + 58, 343)
+    f.box(bx, 346, 636, 42, "d", "draft 층 여러 개 — 블록 안의 자리들은 서로를 다 본다", fs=15, weight=700)
+    for i, t in enumerate(DRAFT):
+        f.arrow(bx + (i + 1) * 130 + 58, 391, bx + (i + 1) * 130 + 58, 407)
+        f.box(bx + (i + 1) * 130, 410, 116, 38, "d", t, fs=15, mono=True)
+    f.text(60, 474, "[M]은 '여기를 채워라'는 빈칸 표시(마스크 토큰)다. 네 자리를 동시에 채운다", 15, "start", color=MUTED)
+
+    # 시간 비교
+    tx = 860
+    f.rect(tx - 20, 90, 680, 400, "#fafbfd", "#d3d6e2", 10, 1.5)
+    f.text(tx, 126, "초안 4개를 만드는 시간", 18, "start", 700)
+    f.text(tx, 176, "순차", 16, "start", 600)
+    for i in range(4):
+        f.rect(tx + 70 + i * 70, 158, 64, 28, SERIES[0], "none", 4)
+    f.text(tx + 70, 214, "1층 × 4번 — 초안이 늘면 그만큼 는다", 14, "start", color=MUTED)
+    f.text(tx, 276, "병렬", 16, "start", 600)
+    f.rect(tx + 70, 258, 130, 28, SERIES[0], "none", 4)
+    f.text(tx + 70, 314, "여러 층 × 1번 — 초안이 늘어도 거의 그대로", 14, "start", color=MUTED)
+    f.lines(tx, 370, ["• 병렬은 한 번이 길다 (층이 더 많다)",
+                      "• 그래도 초안을 길게 뽑을수록 순차보다 유리하다",
+                      "• 대신 뒤 자리는 앞 자리에 무엇이 뽑혔는지 모르고 고른다"], 15, 28)
+    summary(f, 40, 510, 1480, "순차는 초안 하나에 forward 한 번, 병렬은 블록 전체에 forward 한 번이다.",
+            "병렬의 약점은 자리끼리의 의존이다 — 'New York' / 'San Francisco'가 반반이면 'New Francisco'가 나올 수 있다.")
+    return f
+
+
+# ---------------------------------------------------------------- 20. 컨텍스트를 받는 경로
+def fig_context_paths():
+    f = Fig("20-context-paths", 1560, 760)
+    f.title(40, 44, "drafter는 컨텍스트를 어떻게 받나 — 받는 길이 캐시와 prefill을 정한다")
+    rows = [("별도 draft 모델", "토큰만 받는다", "tok"), ("EAGLE-3 · MTP", "hidden → 층 하나를 돌려 캐시를 만든다", "fwd"),
+            ("DFlash · DSpark", "hidden → 층마다 K · V로 바로 넣는다", "inj"), ("Gemma 4 MTP", "target의 KV를 직접 읽는다", "read")]
+    for r, (name, how, kind) in enumerate(rows):
+        y = 92 + r * 146
+        f.rect(40, y, 1480, 128, "#fafbfd", "#e3e5ee", 10, 1.2)
+        f.text(64, y + 40, name, 18, "start", 700)
+        f.text(64, y + 66, how, 14, "start", color=MUTED)
+        # target 탑과 KV
+        f.rect(530, y + 16, 120, 96, KINDS["t"][0], KINDS["t"][1], 8, 2)
+        f.text(590, y + 70, "target", 16, weight=700)
+        for i in range(5):
+            f.rect(440, y + 18 + i * 19, 70, 14, KINDS["c"][0], KINDS["c"][1], 3, 1.2)
+        f.text(475, y + 124, "target KV", 12, color=MUTED)
+        dx = 980
+        if kind == "tok":
+            f.box(700, y + 44, 120, 40, "n", "토큰 열", fs=15)
+            f.arrow(824, y + 64, dx - 6, y + 64)
+            f.text(900, y + 54, "토큰 ID", 13, color=MUTED)
+            f.box(dx, y + 34, 200, 60, "d", "작은 LLM (전 층)", fs=15, weight=700)
+            for i in range(5):
+                f.rect(1220, y + 18 + i * 19, 60, 14, KINDS["d"][0], KINDS["d"][1], 3, 1.2)
+            f.text(1250, y + 124, "자기 KV — 전 층", 12, color=MUTED)
+            f.text(1300, y + 58, "prefill: 프롬프트를", 14, "start", color=MUTED)
+            f.text(1300, y + 78, "자기 층으로 다시 읽는다", 14, "start", color=MUTED)
+        elif kind == "fwd":
+            f.arrow(654, y + 50, dx - 6, y + 62)
+            f.text(760, y + 40, "hidden (마지막 층 · 또는 세 층)", 13, color="#b87410", weight=700)
+            f.box(dx, y + 34, 200, 60, "d", "drafter 층 1개", fs=15, weight=700)
+            for i in range(5):
+                f.rect(1220, y + 18 + i * 19, 16, 14, KINDS["d"][0], KINDS["d"][1], 3, 1.2)
+            f.text(1228, y + 124, "1층 KV", 12, color=MUTED)
+            f.text(1300, y + 58, "prefill: hidden으로", 14, "start", color=MUTED)
+            f.text(1300, y + 78, "층 하나를 한 번 돌린다", 14, "start", color=MUTED)
+        elif kind == "inj":
+            for i in range(3):
+                f.arrow(654, y + 34 + i * 30, 700, y + 64)
+            f.box(704, y + 44, 150, 40, "a", "섞어서 투영", fs=14)
+            for i in range(5):
+                f.arrow(858, y + 64, dx + 196, y + 20 + i * 19)
+            for i in range(5):
+                f.rect(dx + 200, y + 14 + i * 19, 40, 14, KINDS["d"][0], KINDS["d"][1], 3, 1.2)
+            f.text(dx + 220, y + 124, "층마다 K · V", 12, color=MUTED)
+            f.text(1300, y + 58, "prefill: 투영만 한다", 14, "start", color=MUTED)
+            f.text(1300, y + 78, "(attention · FFN 없음)", 14, "start", color=MUTED)
+        else:
+            f.curve(475, y + 112, 475, y + 126, 820, y + 120, dx - 6, y + 70)
+            f.text(810, y + 96, "KV를 읽기만 한다", 13, color=PURPLE, weight=700)
+            f.box(dx, y + 34, 200, 60, "d", "drafter 4층", fs=15, weight=700)
+            f.text(1300, y + 58, "자기 캐시도,", 14, "start", color=MUTED)
+            f.text(1300, y + 78, "따로 하는 prefill도 없다", 14, "start", color=MUTED)
+    summary(f, 40, 684, 1480, "위에서 아래로 갈수록 drafter가 target의 결과를 더 직접 쓴다. 받는 길이 캐시 크기와 prefill 비용을 정한다.")
+    return f
+
+
+# ---------------------------------------------------------------- 21. 사이클 시간과 확정 토큰
+def fig_cycle_tokens():
+    f = Fig("21-cycle-tokens", 1560, 570)
+    f.title(40, 44, "사이클 하나의 시간은 거의 같고, 확정되는 토큰 수만 달라진다")
+    x0 = 420
+    rows = [("일반 생성 — forward 한 번", False, ["the"], "1개"),
+            ("speculative · 첫 초안부터 틀림 (a = 0)", True, ["the"], "1개"),
+            ("speculative · 앞의 2개 채택 (a = 2) — 우리 예", True, ["the", "mat", "."], "3개"),
+            ("speculative · 전부 채택 (a = 4, 가정)", True, ["d1", "d2", "d3", "d4", "+1"], "5개")]
+    for r, (name, spec, toks, n) in enumerate(rows):
+        y = 100 + r * 84
+        f.text(40, y + 30, name, 16, "start", 700 if r == 2 else 600)
+        x = x0
+        if spec:
+            for i in range(4):
+                f.rect(x + i * 30, y + 6, 26, 40, KINDS["d"][0], KINDS["d"][1], 4, 1.5)
+            x += 128
+            f.rect(x, y + 6, 300, 40, KINDS["t"][0], KINDS["t"][1], 6, 2)
+            f.text(x + 150, y + 32, "verify (5자리)", 15)
+            x += 300
+        else:
+            f.rect(x, y + 6, 280, 40, KINDS["t"][0], KINDS["t"][1], 6, 2)
+            f.text(x + 140, y + 32, "target forward (1자리)", 15)
+            x += 280
+        tx = 920
+        for i, t in enumerate(toks):
+            last = i == len(toks) - 1
+            kind = "t" if last else "ok"
+            f.box(tx + i * 92, y + 6, 84, 40, kind, t, fs=15, mono=True)
+        f.text(1400, y + 32, n, 18, weight=700)
+    f.text(x0 + 200, 92, "사이클 시간", 15, color=MUTED)
+    f.text(1100, 92, "확정되는 토큰", 15, color=MUTED)
+    f.lines(40, 448, ["• 마지막 칸(주황)은 언제나 target이 직접 고른 토큰이다 — 그래서 최소 1개는 확정된다",
+                      "• a = 4일 때 다섯째 토큰(+1)은 마지막 자리의 출력, 즉 보너스 토큰이다"], 15, 28)
+    summary(f, 40, 496, 1480, "속도는 '사이클 하나의 시간'과 '평균 몇 개가 확정되나'의 비다.")
+    return f
+
+
 # ---------------------------------------------------------------- 1. 가중치는 한 번 읽는다
 def fig_weights_once():
     f = Fig("01-weights-once", 1560, 520)
@@ -148,7 +454,7 @@ def fig_weights_once():
 
 # ---------------------------------------------------------------- 2. 한 사이클
 def fig_cycle():
-    f = Fig("02-cycle", 1560, 720)
+    f = Fig("02-cycle", 1560, 736)
     f.title(40, 44, "한 사이클 — draft → verify → accept  (γ = 4)")
     cw, ch, gap = 130, 46, 30
 
@@ -159,10 +465,10 @@ def fig_cycle():
     # 지금 상태
     y = 92
     f.text(lab, y + 30, "지금 상태", 19, "start", 700)
-    for i, t in enumerate(["The", "cat", "sat"]):
+    for i, t in enumerate(PROMPT):
         f.box(310 + i * 104, y, 92, ch, "c", t, fs=18, mono=True)
-    f.text(310 + 150, y + ch + 24, "확정 · target KV에 있다", 15, color=MUTED)
-    f.box(cx(0), y, cw, ch, "n", "on", fs=18, mono=True)
+    f.text(310 + 150, y + ch + 24, "프롬프트 · KV 있음", 15, color=MUTED)
+    pend(f, cx(0), y, cw, ch, "on")
     f.text(cx(0) + cw + 16, y + 22, "마지막으로 확정된 토큰", 15, "start", color=MUTED)
     f.text(cx(0) + cw + 16, y + 42, "아직 target에 넣지 않았다 (KV 없음)", 15, "start", color=MUTED)
 
@@ -183,7 +489,10 @@ def fig_cycle():
     f.text(lab, y + 22, "② verify", 19, "start", 700)
     f.text(lab, y + 46, "γ + 1개를 target에 한꺼번에 넣는다", 15, "start", color=MUTED)
     for i, t in enumerate(["on"] + draft):
-        f.box(cx(i), y, cw, ch, "n" if i == 0 else "d", t, fs=18, mono=True)
+        if i == 0:
+            pend(f, cx(i), y, cw, ch, t)
+        else:
+            f.box(cx(i), y, cw, ch, "d", t, fs=18, mono=True)
         f.arrow(cx(i) + cw / 2, y + ch + 3, cx(i) + cw / 2, y + ch + 25)
     yt = y + ch + 28
     f.box(cx(0), yt, cx(4) + cw - cx(0), 44, "t", "target forward 1번  ·  가중치는 한 번만 읽는다", fs=17, weight=700)
@@ -214,6 +523,7 @@ def fig_cycle():
     f.text(cx(3) + cw + gap / 2, y + ch + 22, "버린다", 15, color=MUTED)
     f.text(cx(0) + cw + gap / 2, y + ch + 22, "채택 a = 2", 15, weight=700, color="#3d7c45")
     f.text(310, y + 30, "→  이번 사이클에 3개 확정", 18, "start", 700)
+    legend(f, 40, 712)
     return f
 
 
@@ -484,40 +794,10 @@ def fig_thin_ar():
 
 # ---------------------------------------------------------------- 8. 병렬 drafter
 def fig_parallel():
-    f = Fig("08-parallel-drafters", 1560, 800)
-    f.title(40, 44, "병렬 drafter — 초안 블록을 forward 한 번에 만든다 (DFlash 계열)")
-    # 순차
-    f.text(40, 96, "순차 drafter — forward γ번", 19, "start", 700)
-    toks = ["on", "the", "mat", "and", "slept"]
-    x = 40
-    y = 120
-    for i, t in enumerate(toks):
-        f.box(x, y, 80, 40, "n" if i == 0 else "d", t, fs=16, mono=True)
-        if i < 4:
-            f.arrow(x + 83, y + 20, x + 99, y + 20)
-            f.box(x + 102, y + 2, 44, 36, "d", "1층", fs=14, weight=700)
-            f.arrow(x + 149, y + 20, x + 165, y + 20)
-        x += 168
-    f.text(40, 192, "걸리는 시간 = γ × (한 스텝).  초안을 길게 뽑을수록 그대로 늘어난다", 15, "start", color=MUTED)
-
-    # 병렬
-    px = 900
-    f.text(px, 96, "병렬 drafter — forward 1번", 19, "start", 700)
-    ins = ["on", "[M]", "[M]", "[M]", "[M]"]
-    outs = ["", "the", "mat", "and", "slept"]
-    for i, t in enumerate(ins):
-        f.box(px + i * 124, 112, 112, 36, "n", t, fs=15, mono=True)
-        f.arrow(px + i * 124 + 56, 151, px + i * 124 + 56, 167)
-    f.box(px, 170, 608, 40, "d", "draft 5층  —  블록 안의 자리들은 서로를 다 본다", fs=15, weight=700)
-    for i, t in enumerate(outs):
-        if t:
-            f.arrow(px + i * 124 + 56, 213, px + i * 124 + 56, 229)
-            f.box(px + i * 124, 232, 112, 36, "d", t, fs=15, mono=True)
-    f.text(px, 292, "첫 자리는 방금 확정된 토큰, 나머지는 마스크.  걸리는 시간이 γ와 무관하다", 15, "start", color=MUTED)
-
+    f = Fig("08-parallel-drafters", 1560, 530)
+    f.title(40, 44, "DFlash 계열의 장치 — target 정보를 모든 층에 넣고, 블록 안의 의존을 되살린다")
     # target 정보 주입
-    y0 = 340
-    f.line(40, y0 - 22, 1520, y0 - 22, "#d3d6e2", 1.5)
+    y0 = 70
     f.text(40, y0 + 6, "target의 정보는 어디로 들어가나 — 입력이 아니라 모든 draft 층의 K · V로", 19, "start", 700)
     f.rect(60, y0 + 34, 150, 200, KINDS["t"][0], KINDS["t"][1], 8, 2)
     f.text(135, y0 + 60, "target", 17, weight=700)
@@ -543,7 +823,7 @@ def fig_parallel():
                             "• 그래서 draft를 깊게 쌓을수록 잘 맞는다"], 15, 28)
 
     # 세대
-    y1 = 640
+    y1 = 370
     f.line(40, y1 - 24, 1520, y1 - 24, "#d3d6e2", 1.5)
     gens = [("DFlash", ["블록의 모든 자리를 동시에 뽑는다",
                         "뒤 자리는 앞 자리가 무엇으로 뽑혔는지 모른다",
@@ -615,16 +895,16 @@ def fig_verify_shapes():
 
 # ---------------------------------------------------------------- 10. KV cache의 한 사이클
 def fig_kv_lifecycle():
-    f = Fig("10-kv-lifecycle", 1560, 720)
+    f = Fig("10-kv-lifecycle", 1560, 640)
     f.title(40, 44, "target의 KV cache — K줄을 쓰고, 맞은 만큼만 남긴다  (γ = 4, K = 5)")
     rh, rg, sw_ = 26, 4, 230
     y0 = 150
 
     def stack(x, base, extra):
-        for r in range(base):
+        for r, t in enumerate(base):
             f.rect(x, y0 + r * (rh + rg), sw_, rh, KINDS["c"][0], KINDS["c"][1], 4, 1.5)
-        f.text(x + sw_ / 2, y0 + 2 * (rh + rg) + 19, "확정된 줄", 14, color=MUTED)
-        yy = y0 + base * (rh + rg)
+            f.text(x + sw_ / 2, y0 + r * (rh + rg) + 19, t, 15, mono=True)
+        yy = y0 + len(base) * (rh + rg)
         for t, k in extra:
             f.rect(x, yy, sw_, rh, KINDS[k][0], KINDS[k][1], 4, 1.5)
             f.text(x + sw_ / 2, yy + 19, t, 15, mono=True)
@@ -638,29 +918,30 @@ def fig_kv_lifecycle():
     for x, n in zip(xs, names):
         f.text(x, 110, n, 19, "start", 700)
     # ①
-    yb = stack(xs[0], 5, [])
-    f.box(xs[0], yb + 14, 96, 34, "n", "on", fs=15, mono=True)
-    f.text(xs[0] + 108, yb + 30, "뽑혔지만 아직", 14, "start", color=MUTED)
+    yb = stack(xs[0], PROMPT, [])
+    f.text(xs[0] + sw_ + 14, y0 + 50, "프롬프트", 14, "start", color=MUTED)
+    pend(f, xs[0], yb + 14, 96, 34, "on", 15)
+    f.text(xs[0] + 108, yb + 30, "방금 생성 · 아직", 14, "start", color=MUTED)
     f.text(xs[0] + 108, yb + 48, "KV가 없다", 14, "start", color=MUTED)
     # ②
-    stack(xs[1], 5, [(t, "d") for t in ["on", "the", "mat", "and", "slept"]])
-    f.text(xs[1] + sw_ + 14, y0 + 5 * (rh + rg) + 78, "새로 쓴", 14, "start", color=MUTED)
-    f.text(xs[1] + sw_ + 14, y0 + 5 * (rh + rg) + 98, "K = 5줄", 15, "start", 700)
+    stack(xs[1], PROMPT, [("on", "c")] + [(t, "d") for t in DRAFT])
+    f.text(xs[1] + sw_ + 14, y0 + 3 * (rh + rg) + 64, "새로 쓴", 14, "start", color=MUTED)
+    f.text(xs[1] + sw_ + 14, y0 + 3 * (rh + rg) + 84, "K = 5줄", 15, "start", 700)
     # ③
-    stack(xs[2], 5, [("on", "ok"), ("the", "ok"), ("mat", "ok"), ("and", "no"), ("slept", "no")])
-    f.text(xs[2] + sw_ + 14, y0 + 5 * (rh + rg) + 34, "남긴다", 14, "start", color=MUTED)
-    f.text(xs[2] + sw_ + 14, y0 + 5 * (rh + rg) + 54, "a + 1 = 3줄", 15, "start", 700)
-    f.text(xs[2] + sw_ + 14, y0 + 8 * (rh + rg) + 20, "버린다", 14, "start", color=MUTED)
-    f.text(xs[2] + sw_ + 14, y0 + 8 * (rh + rg) + 40, "γ − a = 2줄", 15, "start", 700)
+    stack(xs[2], PROMPT, [("on", "c"), ("the", "ok"), ("mat", "ok"), ("and", "no"), ("slept", "no")])
+    f.text(xs[2] + sw_ + 14, y0 + 3 * (rh + rg) + 34, "남긴다", 14, "start", color=MUTED)
+    f.text(xs[2] + sw_ + 14, y0 + 3 * (rh + rg) + 54, "a + 1 = 3줄", 15, "start", 700)
+    f.text(xs[2] + sw_ + 14, y0 + 6 * (rh + rg) + 20, "버린다", 14, "start", color=MUTED)
+    f.text(xs[2] + sw_ + 14, y0 + 6 * (rh + rg) + 40, "γ − a = 2줄", 15, "start", 700)
     # ④
-    yb = stack(xs[3], 8, [])
-    f.box(xs[3], yb + 14, 96, 34, "t", ".", fs=15, mono=True)
+    yb = stack(xs[3], PROMPT + ["on", "the", "mat"], [])
+    pend(f, xs[3], yb + 14, 96, 34, ".", 15)
     f.text(xs[3] + 108, yb + 30, "target이 고친 토큰", 14, "start", color=MUTED)
     f.text(xs[3] + 108, yb + 48, "다음 verify의 첫 줄이 된다", 14, "start", color=MUTED)
     for i in range(3):
         f.arrow(xs[i] + sw_ + 96, 104, xs[i + 1] - 16, 104)
 
-    by = 520
+    by = 440
     f.rect(40, by, 1480, 184, "#f6f5fd", "#d9d2f3", 10, 1.5)
     f.text(64, by + 34, "남는 줄 수 = 이번에 확정된 토큰 수  (채택 a개 + target의 1개).  target이 준 토큰 자신의 줄은 다음 사이클에 쓴다", 17,
            "start", 700)
@@ -863,7 +1144,8 @@ def fig_sim():
     return f
 
 
-FIGS = [fig_weights_once, fig_cycle, fig_accept_rule, fig_tau, fig_map, fig_timeline, fig_thin_ar, fig_parallel,
+FIGS = [fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
+        fig_weights_once, fig_cycle, fig_accept_rule, fig_tau, fig_map, fig_timeline, fig_thin_ar, fig_parallel,
         fig_verify_shapes, fig_kv_lifecycle, fig_tree, fig_drafter_caches, fig_cycle_time, fig_batch, fig_sim]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
