@@ -1862,11 +1862,73 @@ def fig_qsa_indexer_ops():
     return f
 
 
+# ---------------------------------------------------------------- 36. MLA 쿼리 압축
+def fig_mla_q_compression():
+    f = Fig("36-mla-q-compression", 1560, 680)
+    f.title(40, 44, "쿼리도 압축한다 — 큰 행렬 하나를 작은 행렬 둘로 (DeepSeek-V3, 층 하나)")
+    GRAY = ("#eef0f5", "#aeb3c4")
+
+    def wmat(x, y, w, h, label, dims, note):
+        f.rect(x, y, w, h, GRAY[0], GRAY[1], 5, 1.8)
+        f.text(x + w / 2, y + h / 2 + 6, label, 15, mono=True)
+        f.text(x + w / 2, y + h + 22, dims, 14, color=MUTED, mono=True)
+        f.text(x + w / 2, y + h + 42, note, 14, weight=700, color="#c2479c")
+
+    # ---- 바로 만든다면
+    y = 150
+    f.text(40, y + 4, "바로 만든다면", 20, "start", 700, MUTED)
+    f.text(40, y + 28, "(가정)", 15, "start", color=MUTED)
+    _box(f, 200, y - 10, 130, 20, "n", dims="x  1 × 7168")
+    f.text(350, y + 6, "×", 24)
+    wmat(374, y - 44, 300, 88, "W_Q", "7168 × 24,576", "가중치 약 1.76억 개")
+    f.text(694, y + 6, "=", 24)
+    _box(f, 720, y - 20, 160, 40, "q", "q", "128 × 192")
+    f.line(40, 268, 1520, 268, "#e3e5ee", 2, "6 6")
+
+    # ---- MLA
+    y = 380
+    f.text(40, y + 4, "MLA", 22, "start", 700)
+    f.text(40, y + 28, "작은 벡터를 거친다", 15, "start", color=MUTED)
+    _box(f, 200, y - 10, 130, 20, "n", dims="x  1 × 7168")
+    f.text(350, y + 6, "×", 24)
+    wmat(374, y - 44, 40, 88, "", "7168 × 1536", "약 1,100만")
+    f.text(394, y - 54, "W_DQ", 14, weight=700, mono=True)
+    f.text(434, y + 6, "=", 24)
+    _box(f, 458, y - 10, 70, 20, "c", solid=True, dims="c_Q  1 × 1536")
+    _op(f, 536, 636, y, "RMSNorm")
+    f.text(652, y + 6, "×", 24)
+    wmat(676, y - 8, 300, 16, "", "1536 × 24,576", "약 3,775만")
+    f.text(826, y - 18, "W_UQ", 14, weight=700, mono=True)
+    f.text(996, y + 6, "=", 24)
+    _box(f, 1022, y - 20, 160, 40, "q", "q", "128 × 192")
+    f.text(526, y + 116, "두 행렬을 합쳐 약 4,900만 개 — 바로 만들 때의 약 28%", 16, weight=700, color="#c2479c")
+
+    # 헤드마다 내용 128 + 위치 64로 나눈다
+    f.arrow(1188, y - 6, 1246, y - 54)
+    f.arrow(1188, y + 6, 1246, y + 54)
+    _box(f, 1252, y - 80, 100, 34, "q", "q_C", None)
+    f.text(1362, y - 70, "128 × 128 · 내용", 13, "start", color=MUTED, mono=False)
+    f.text(1362, y - 50, "→ × W_UKᵀ → q̃", 13, "start", 700, PURPLE)
+    _box(f, 1252, y + 44, 70, 34, "q", "q_R", None)
+    f.text(1332, y + 56, "128 × 64 · 위치", 13, "start", color=MUTED)
+    f.text(1332, y + 76, "→ RoPE를 건다", 13, "start", 700, PURPLE)
+
+    # ---- KV 압축과의 차이
+    f.rect(40, 560, 720, 96, "#fef7ea", "#f0cf93", 10, 1.5)
+    f.text(64, 594, "KV 압축  c_KV (512)", 18, "start", 700, "#b87410")
+    f.text(64, 626, "캐시에 저장한다 — 토큰마다 남아 계속 읽힌다 → 캐시가 준다", 15, "start")
+    f.rect(800, 560, 720, 96, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(824, 594, "Q 압축  c_Q (1,536)", 18, "start", 700, PURPLE)
+    f.text(824, 626, "저장하지 않는다 — 이번 토큰을 계산하고 버린다 → 캐시는 그대로", 15, "start")
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
         fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor,
         fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers, fig_knobs_read,
-        fig_dsa_indexer_ops, fig_v4_two_caches, fig_v4_cache_write, fig_qsa_indexer_ops]
+        fig_dsa_indexer_ops, fig_v4_two_caches, fig_v4_cache_write, fig_qsa_indexer_ops,
+        fig_mla_q_compression]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
