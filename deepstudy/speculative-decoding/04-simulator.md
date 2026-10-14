@@ -1,0 +1,365 @@
+# 04. 시뮬레이터에 넣기 — 무엇을 기준으로, 어떤 모델로, 어떻게
+
+> 가정: 시뮬레이터는 모델의 **op 표**(llm-arch-tracer의 `decode.csv` 같은 것)와 **하드웨어 사양**으로 스텝 시간을 낸다.
+> 그 위에 speculative decoding을 얹는 방법을 정리한다. 01 ~ 03의 내용을 비용 모형으로 옮기는 페이지다.
+
+| 순서 | 내용 |
+|---|---|
+| 1 | 무엇을 기준으로 고르나 — 이름이 아니라 비용 구조로 |
+| 2 | 어떤 모델로 — 트레이서에 있는 모델과 공개 drafter |
+| 3 | 시뮬레이터의 구조 |
+| 4 | 비용 모형 — verify와 drafter |
+| 5 | 채택 모형 |
+| 6 | 개략 검산 — 이 모형으로 공개 수치가 얼마나 나오나 |
+| 7 | 메모리 모형 |
+| 8 | 구현 순서와 확인 목록 |
+| 9 | 의사 코드 |
+
+---
+
+## 1. 무엇을 기준으로 고르나 — 이름이 아니라 비용 구조로
+
+| 기준 | 질문 |
+|---|---|
+| ① 실제로 쓰이나 | 주요 엔진이 지원하고, 공개 체크포인트가 있나 ([02](02-drafters.md#6-무엇이-표준인가)) |
+| ② **비용 구조가 다른가** | 시뮬레이터에 **새 코드 경로**를 요구하나. 이름이 달라도 비용 구조가 같으면 매개변수만 다르다 |
+| ③ 맞춰 볼 숫자가 있나 | 같은 target에서 보고된 `τ`와 속도가 있나 |
+| ④ op 표가 있나 | target을 트레이서로 이미 뽑았나 |
+
+②로 묶으면 drafter는 다섯 부류다.
+
+| 부류 | 해당 | 초안 비용 (사이클당) | drafter 캐시 | 검증 |
+|---|---|---|---|---|
+| **A. 얇은 순차** | 내장 MTP, EAGLE-3 | `γ` × (층 1개 + head) | 1층 분량 | 일렬 (트리는 선택) |
+| **B. 병렬 블록** | DFlash, DSpark, DFlash 2, PARD | 1 × (층 `L`개 + head) | `L`층 분량 (창이 있으면 상한) | 일렬 블록. DSpark는 요청마다 길이가 다르다 |
+| C. target KV를 읽는 순차 | Gemma 4 MTP | `γ` × (층 4개 + 작은 head) + target KV 읽기 | 없음 | 일렬 |
+| D. 별도 모델 | draft model | `γ` × (작은 모델의 decode 한 스텝) | 작은 모델 전체 | 일렬 |
+| E. 모델 없음 | n-gram, suffix | 거의 0 (CPU) | 없음 | 일렬 |
+
+- **A와 B만 있으면 실제로 쓰이는 것의 대부분이 덮인다.** C · D · E는 A의 변형이다 — 캐시 위치와 비용 항목만 바꾸면 된다
+- **내장 MTP와 EAGLE-3는 같은 코드다.** 다른 것은 매개변수 셋이다 — 층의 종류(MTP는 본체와 같은 층, EAGLE-3는 Q · K · V 입력이 `2d`인 decoder 층), head의 어휘 크기(MTP는 target 어휘, EAGLE-3는 3.2만), target에서 꺼내는 hidden 층 수(1 대 3)
+
+> **결론: 사이클 프레임 하나 + drafter 부류 A · B를 먼저 만든다.** 나머지는 매개변수와 작은 항목으로 붙인다.
+
+---
+
+## 2. 어떤 모델로
+
+### 트레이서에 있는 모델과 쓸 수 있는 drafter
+
+| target (트레이서) | 내장 MTP (config) | 공개 drafter | 맞춰 볼 숫자 |
+|---|---|---|---|
+| **Llama-3.1-8B** | 없음 | EAGLE-3 (yuhuili), DFlash (z-lab, 블록 10) | EAGLE-3 논문 배치별 표, NVIDIA의 EAGLE-3 2.2× vs DFlash 2.8× |
+| Llama-3.1-70B | 없음 | EAGLE-3 (Speculators) | EAGLE-3 논문 (Llama-3.3-70B 4.12×) |
+| gpt-oss-20b · 120b | 없음 | EAGLE-3 (Speculators), DFlash (z-lab) | NVIDIA (120b): 1.7× vs 2.3× |
+| Qwen3-30B-A3B | 없음 | EAGLE-3, DFlash (Speculators) | — |
+| **DeepSeek-V3** | 1 (`num_nextn_predict_layers`) | — | 채택률 0.85 ~ 0.90, 1.8× (DeepSeek) |
+| **DeepSeek-V4-Flash · Pro** | 1 | DSpark (DeepSeek-V4-*-DSpark) | DSpark vs MTP-1: 사용자당 +57 ~ 85% |
+| GLM-5.2 · GLM-4.5-Air | 1 | GLM 5.2: DSpark (Speculators) | — |
+| ERNIE-4.5-21B-A3B | 1 | — | — |
+| Nemotron-3 Super · Ultra | 1 | DFlash (Speculators) | — |
+| **Qwen3.5-4B · 397B-A17B** | 1 (`mtp_num_hidden_layers`) | DFlash (z-lab) | 4B: `τ` MTP 4.54 · DFlash 4.92 · DSpark 5.49 (Inco) / 397B: DFlash vs MTP (LMSYS) |
+| Qwen3.6-27B · 35B-A3B | 1 (`mtp_num_hidden_layers`) | DFlash (z-lab), 35B-A3B는 DSpark (Speculators) | 35B-A3B: MTP 1.28 ~ 1.49× vs DFlash 1.77 ~ 2.06× (AMD) |
+| Kimi-K2.6 · K2.7-Code | 0 | DFlash (z-lab) | — |
+| Kimi-K3 | 0 | DSpark (Speculators) | — |
+
+- 내장 MTP 열은 트레이서가 받은 각 모델의 `config.json`(`full/provenance.json`)에서 읽었다
+- drafter 열은 z-lab · Speculators · DeepSeek의 공개 목록(2026년 10월)이다. 쓰기 전에 다시 확인한다
+- DFlash 논문의 주 실험 모델인 **Qwen3-8B는 트레이서에 없다.** config만 있으면 되므로 추가해 두면 6절의 검산을 그대로 재현할 수 있다
+
+### 트레이서의 MTP 공백 — 시뮬레이터에서 합성해야 한다
+
+- 네이티브 transformers 구현은 MTP 모듈을 만들지 않는다. 그래서 MTP가 있는 모델도 **op 표에 MTP가 없다.** 트레이서의 검사 C15가 이것을 WARN으로 남긴다 (DeepSeek-V3 · V4, GLM, ERNIE, Nemotron 3 등 10개, tiny-deepseek-v3 포함)
+- ⚠️ **Qwen3.5 · Qwen3.6은 C15를 PASS로 통과했지만 MTP가 빠져 있다.** 이 모델들은 MTP를 `mtp_num_hidden_layers`라는 키로 선언하는데, C15는 `num_nextn_predict_layers`와 `num_mtp_layers`만 본다 (`src/validate.py`의 `c15_entrypoint_coverage`). 4개 모델(Qwen3.5-4B, 397B-A17B, Qwen3.6-27B, 35B-A3B)이 해당한다
+- 합성 규칙: MTP 블록은 **본체의 decoder 층 하나와 같은 종류**다 (DeepSeek-V3는 MLA + MoE 층). `decode.csv`에서 그 층의 op 행을 복사하고, 앞뒤에 `RMSNorm` 2개 · 이어 붙이기 · 투영 `2d → d` · final norm · LM head(공유)를 더한다. Qwen3.5 · 3.6의 MTP 층이 어떤 attention 종류인지는 엔진의 MTP 모델 코드에서 확인한다
+
+### 추천 순서
+
+| 단계 | 조합 | 이 단계에서 검증되는 것 |
+|---|---|---|
+| 1 | **Llama-3.1-8B + EAGLE-3, DFlash** | 가장 단순한 target(dense · GQA)에서 부류 A와 B. 같은 target에 두 drafter의 공개 비교가 있다 |
+| 2 | **DeepSeek-V3 + MTP-1** | MoE의 expert 합집합, MLA, 합성한 MTP op. 보고된 1.8×와 맞춰 본다 |
+| 3 | **Qwen3.5-397B-A17B 또는 Qwen3.6-35B-A3B + 내장 MTP vs DFlash** | 선형 attention 혼합 — 상태 저장 비용. MoE. LMSYS · AMD 결과 |
+| 4 | **DeepSeek-V4-Flash + DSpark** | 압축 · 희소 attention의 검증, 요청마다 다른 검증 길이(스케줄러), MTP-1과의 비교 |
+
+---
+
+## 3. 시뮬레이터의 구조
+
+![시뮬레이터 구조](figures/15-sim-structure.png)
+
+요청마다 두는 상태
+
+| 상태 | 뜻 |
+|---|---|
+| `S` | target KV에 있는 줄 수 (확정된 토큰 중 KV가 있는 것) |
+| 대기 토큰 | 마지막으로 확정됐지만 아직 KV가 없는 토큰 1개 — 다음 verify의 맨 앞 |
+| `S_draft` | drafter 캐시의 줄 수 (부류 A · B) |
+| `γ_r` | 이번 사이클에 검증할 초안 수. 고정이거나 스케줄러가 정한다 |
+| 선형 attention 상태 | 혼합 모델이면 층마다 상태 하나 + 검증 중 중간 상태 `K`개 |
+
+사이클 하나 = **① draft → ② verify → ③ accept → ④ commit.** 배치 안의 요청들은 같은 forward를 함께 탄다. 사이클 시간은 배치 전체로 한 번 센다.
+
+---
+
+## 4. 비용 모형 — verify와 drafter
+
+### 4.1 verify — decode 표의 새 토큰 축을 `K`로 바꾼다
+
+트레이서의 `decode.csv`는 새 토큰이 1줄인 스텝이다. shape에 `B`(새 토큰 줄), `T+1`(읽는 컨텍스트)이 기호로 들어 있다. verify는 이 표에서 **새 토큰 줄을 `Σ_r K_r`로, 컨텍스트를 요청마다 `S + K`로** 바꿔 센다.
+
+| op 종류 | 읽기 | 연산 | 쓰기 |
+|---|---|---|---|
+| 가중치 matmul (투영 · FFN · LM head) | 가중치 1번 | 줄 수 `Σ K_r`에 비례 | — |
+| **MoE expert matmul** | **불린 expert 수** × expert 크기 | 줄 수에 비례 | — |
+| attention 점수 · 가중합 | 요청마다 캐시 `S + K`줄 1번 | `K`배 | — |
+| KV 쓰기 | — | — | 요청마다 `K`줄 |
+| 원소별 연산 (norm · RoPE · softmax …) | 활성값 | `K`배 | 활성값 |
+| LM head 뒤 로짓 | — | — | `K × V` |
+| 비교 · 거부 샘플링 | 로짓 | 작다 | — |
+| 선형 attention 상태 갱신 | 상태 | `K`배 | **중간 상태 `K`개** |
+| 색인 · top-k (DSA · CSA · QSA) | 색인 키 `S` (또는 `S/4`) | `K`배 | — |
+| 골라 읽기 (gather) | **`K`개 선택의 합집합** | — | — |
+
+- op 하나의 시간은 시뮬레이터가 이미 쓰는 규칙을 그대로 쓴다 (예: `max(바이트 ÷ 대역폭, FLOP ÷ 연산 성능)`)
+- MoE의 불린 expert 수는 층마다 `E · (1 − (1 − k/E)^n)`로 센다. `n`은 그 forward에서 라우팅되는 토큰 수 `Σ K_r`다 ([03](03-compute-and-kv.md#8-모델-구조에-따라-깨지는-가정))
+- 스텝마다 붙는 고정 비용(호스트 작업, 커널 실행)도 따로 둔다. speculative decoding은 비교 · 롤백 · 초안 관리로 호스트 일을 늘린다. SGLang의 Spec V2가 이것을 GPU와 겹친 것만으로 처리량을 33% 올렸다 — 작은 항목이 아니다
+
+### 4.2 drafter — 부류별 op 목록
+
+**부류 A — 얇은 순차 (내장 MTP, EAGLE-3)**
+
+```
+첫 패스   줄 = a + 1  (지난 사이클에 확정된 위치)
+          [EAGLE-3만] hidden 섞기   (줄 × 3d) · (3d × d)
+          임베딩 조회 · RMSNorm × 2 · 이어 붙이기
+          [MTP만] 투영              (줄 × 2d) · (2d × d)
+          층 1개                     MTP: target의 층 하나와 같은 op  /  EAGLE-3: Q · K · V 입력이 2d
+                                     attention은 drafter 캐시 S_draft줄을 읽고, 줄 수만큼 쓴다
+          head (마지막 1줄)          MTP: (1 × d) · (d × V)   /   EAGLE-3: (1 × d) · (d × 32,000)
+나머지    (γ − 1)번 × [같은 층 1줄 + head 1줄]   — 입력 hidden은 직전 스텝의 자기 출력
+```
+
+- 트리를 쓰면 깊이마다 forward 한 번, 줄 수는 그 깊이의 후보 수(`topk`)다. 검증 줄 `K`는 노드 수다
+- **head가 비싸다.** target 어휘가 크면 drafter 한 스텝의 절반 이상이 head다 — EAGLE-3가 어휘를 줄이고, Gemma 4가 군집 top-k를 쓰는 이유다
+
+**부류 B — 병렬 블록 (DFlash, DSpark)**
+
+```
+컨텍스트 투영   줄 = a + 1
+                hidden 섞기          (줄 × m·d) · (m·d × d)        m = target에서 꺼내는 층 수 (DFlash 5)
+                층마다 K · V 투영    L층 × (줄 × d) · (d × 2 n_kv d_h)
+                drafter 캐시에 줄 × L층 쓰기          ← Q · attention · FFN은 없다
+블록 forward    줄 = γ + 1  (anchor + 마스크 γ개)
+                L층 × [Q · K · V · O 투영, attention(캐시 S_draft줄 + 블록 γ+1줄, 블록 안은 양방향), FFN]
+                head (γ줄)            (γ × d) · (d × V)              target의 head를 함께 쓴다
+[DSpark]        γ번 × [W1 행 조회 (r) + (1 × r) · (r × V)]            순차, r = 256
+                confidence head        γ × 작은 내적
+[DFlash 2]      자리마다 상위 16개 + 이웃 쌍 점수                      작다
+```
+
+- 초안 비용이 `γ`와 거의 무관하다 — 블록 forward의 가중치 읽기가 한 번이다
+- 창이 있는 drafter(DSpark 서비스용, 128토큰)는 캐시를 `min(S, 128)`줄만 읽는다
+
+**부류 C · D · E**
+
+| 부류 | 초안 비용 | 덧붙일 것 |
+|---|---|---|
+| C. Gemma 4 MTP | `γ` × [4층 1줄 + 작은 head] | 초안 스텝마다 **target KV 읽기** (읽는 층 수는 매개변수) |
+| D. 별도 모델 | `γ` × (작은 모델의 decode 표) | 작은 모델의 prefill과 KV — 트레이서에 있는 작은 모델의 표를 그대로 쓴다 |
+| E. n-gram · suffix | 상수 (CPU) | 채택 모형만 다르다 — 작업 종류에 크게 의존 |
+
+**prefill에 붙는 일**
+
+| 부류 | prefill 때 추가로 하는 일 |
+|---|---|
+| A | drafter 층 1개로 프롬프트 전체 forward (target hidden을 받아) |
+| B | 프롬프트 전체에 대해 섞기 + 층마다 K · V 투영만 |
+| C · E | 없음 |
+| D | 작은 모델의 prefill 전체 |
+
+---
+
+## 5. 채택 모형
+
+사이클마다 요청마다 **처음 실패하는 자리**를 뽑는다.
+
+```
+for k in 1 .. γ_r:
+    if random() > α_k:  break      # k번째 초안 거부
+a = (통과한 수)
+확정 토큰 = a + 1
+```
+
+**값은 어디서 얻나** — 보고값을 자리마다 같은 `α`로 바꾸면 이렇다 ([01](01-principle.md#두-가지-채택률--섞어-읽지-않는다)의 역산).
+
+| drafter · target · 작업 | `γ` | 보고값 | `α` (자리마다 같다고 볼 때) | 출처 |
+|---|---|---|---|---|
+| MTP-1 · DeepSeek-V3 | 1 | 채택률 0.85 ~ 0.90 | 0.85 ~ 0.90 | DeepSeek-V3 |
+| Gemma 4 MTP · Gemma 4 · GSM8K | 4 | MAL 4.35 | 0.93 | vLLM 블로그 |
+| EAGLE-3 · Kimi-K2.5 · GSM8K | 4 | MAL 3.96 | 0.88 | vLLM 블로그 |
+| EAGLE-3 · Qwen3-4B · GSM8K / MT-Bench | 7 | `τ` 5.14 / 2.39 | 0.87 / 0.59 | DSpark 논문 |
+| DFlash · Qwen3-4B · GSM8K / MT-Bench | 7 | `τ` 5.40 / 3.07 | 0.88 / 0.69 | DSpark 논문 |
+| DSpark · Qwen3-4B · GSM8K / MT-Bench | 7 | `τ` 6.11 / 3.64 | 0.92 / 0.75 | DSpark 논문 |
+| DSpark · Qwen3-8B · GSM8K | 7 | MAL 6.49 | 0.94 | vLLM 블로그 |
+| DFlash · Qwen3-8B · MATH-500 / MT-Bench | 15 | `τ` 7.87 / 4.24 | 0.89 / 0.77 | DFlash 논문 |
+| DFlash · Qwen3-8B · 평균, temp 0 / temp 1 | 15 | `τ` 6.49 / 5.48 | 0.86 / 0.83 | DFlash 논문 |
+
+**모양을 넣는다** — 자리마다 같은 `α`는 첫 근사일 뿐이다.
+
+- 순차 drafter(A)는 대체로 평평하다. 병렬 drafter(B)는 **첫 자리가 높고 뒤로 갈수록 떨어진다.** `α_k = α₁ · ρ^(k−1)` 정도로 두고 `ρ`를 맞춘다
+- 위키 [08-decoding 8.6](../../08-decoding.md)이 인용한 DSpark 논문의 위치별 값: DFlash는 첫 자리 약 0.88(수학), 2 ~ 7번째가 코드 0.87 → 0.78, 대화 0.72 → 0.63으로 떨어지고, EAGLE-3는 약 0.81에서 평평하다
+- DSpark · DFlash 2는 이 곡선을 펴는 것이 목적이다 — 같은 `α₁`에 `ρ`를 1에 가깝게
+
+**작업과 온도** — 같은 drafter도 작업에 따라 크게 다르다 (DFlash · Qwen3-8B: MATH-500 `τ` 7.87, MT-Bench 4.24). 시뮬레이션의 부하는 **작업 종류의 혼합**으로 넣는다. temperature 1은 0보다 낮다.
+
+💡 **요청 안의 상관** — 쉬운 구간(코드의 반복, 인용)은 연달아 잘 맞고 어려운 구간은 연달아 틀린다. 요청마다 `α`에 배율을 하나씩 뽑아 곱하면 토큰 간격의 분산(p99)이 현실에 가까워진다.
+
+---
+
+## 6. 개략 검산
+
+4절의 비용 모형을 **가중치를 읽는 양만으로** 단순하게 돌려 보고, 공개 수치와 견준다. 배치 1, 메모리에 묶인 구간이다.
+
+### Qwen3-8B — EAGLE-3와 DFlash
+
+![사이클 시간](figures/13-cycle-time.png)
+
+| | 계산 | target 한 스텝 대비 |
+|---|---|---|
+| target 한 스텝 | 층 36 × 192.9M + LM head 622M = 7.57B | 1 |
+| EAGLE-3 한 스텝 | 층 1개 218M (Q · K · V 입력 `2d`) + head 4096 × 32,000 = 131M → 0.35B | 0.046 |
+| EAGLE-3 초안 (깊이 8) | 8 × 0.046 + hidden 섞기 50M | **0.38** |
+| DFlash 초안 (블록 16) | 층 5개 965M + head 622M + 섞기 84M = 1.67B | **0.22** |
+| verify | 트리 60줄 / 블록 16줄 — 연산 증가분을 메모리 시간의 10% / 3%로 둠 | 1.10 / 1.03 |
+
+| | `τ` (보고) | 사이클 시간 | 계산한 속도 | 보고된 속도 |
+|---|---|---|---|---|
+| EAGLE-3 (트리 60) | 3.40 | 1.48 | **2.3×** | 2.02× |
+| DFlash (블록 16) | 6.49 | 1.25 | **5.2×** | 4.86× |
+| DFlash ÷ EAGLE-3 | | | 2.26 | 2.41 |
+
+- 두 경우 모두 **10 ~ 15% 높게** 나온다. 빠진 것은 호스트 작업, 샘플링, attention의 캐시 읽기, 작은 행렬곱의 커널 효율이다 — 4.1의 고정 비용 항목으로 메운다
+- 둘 사이의 비율은 잘 맞는다. **이 정도 단순한 모형으로도 어느 drafter가 왜 빠른지는 재현된다**
+- 왜 DFlash가 빠른가: `τ`가 1.9배 높고 사이클이 0.85배로 짧다. 앞은 깊은 drafter와 모든 층 주입에서, 뒤는 forward 한 번에서 나온다
+
+### DeepSeek-V3 — MTP-1, 배치에 따라
+
+| | 계산 | 값 |
+|---|---|---|
+| 층 하나의 활성 파라미터 | MLA 187M + expert 9개(공유 1 + 선택 8) × 44.0M | 584M |
+| target 한 스텝 | 61층 × 584M + 출력 head 927M | 36.5B |
+| MTP 한 스텝 | 층 1개 584M + 투영 `2d → d` 103M + head 927M | 1.61B → **0.044** |
+| verify `K` = 2, 배치 1 | 선택 expert 8 → 15.8개 (58개 MoE 층) | 읽기 **1.54배** |
+| verify `K` = 2, 큰 배치 | 이미 거의 모든 expert를 읽는 중 | 읽기 **약 1.0배** |
+
+| | `τ` | 사이클 시간 | 계산한 속도 |
+|---|---|---|---|
+| 배치 1 | 1.875 | 1.54 + 0.044 | **약 1.2×** |
+| 큰 배치 | 1.875 | 1.0 + 0.044 | **약 1.8×** — DeepSeek 보고값과 같다 |
+
+- 💡 MoE에서는 같은 drafter라도 **배치가 작을 때 이득이 작다.** 시뮬레이터가 expert 합집합을 세지 않으면 배치 1의 MoE 속도를 크게 부풀린다
+- 라우팅이 고르고 독립이라는 가정이다. 실제로는 이웃 토큰의 expert가 겹쳐 1.54배보다 작다. 이 값은 실제 라우팅 기록이 있으면 그것으로 바꾼다
+
+---
+
+## 7. 메모리 모형
+
+요청 하나가 차지하는 것
+
+| 항목 | 크기 | 비고 |
+|---|---|---|
+| target KV | `(S + K) ×` 토큰당 크기 | `K`줄은 verify용 여유 |
+| drafter 캐시 | 부류 A: `S ×` 1층분 / B: `min(S, W) ×` `L`층분 / C · E: 0 / D: 작은 모델 전체 | 03의 표: EAGLE-3 +3.1%, DSV3 MTP +1.6%, DFlash 5층 +13.9% |
+| 선형 attention 상태 | 층마다 (1 + `K`) × 상태 크기 | 혼합 모델만 |
+| 로짓 버퍼 | `K × V × 4 B` | 블록이 길고 어휘가 크면 수 MB |
+| hidden 버퍼 | `K × d ×` 꺼내는 층 수 `× 2 B` | 잠깐 쓴다 |
+
+모델 하나에 한 번 드는 것 — drafter 가중치
+
+| drafter | 크기 |
+|---|---|
+| EAGLE-3 (Llama-3.1-8B용) | 층 1개 + 어휘 3.2만 head ≈ 0.35B |
+| DFlash (Qwen3-8B용) | 층 5개 ≈ 1B (임베딩 · head는 target 것) |
+| MTP (DeepSeek-V3) | 14B — 체크포인트에 들어 있지만 올려 둬야 한다 |
+| Gemma 4 MTP | 76M ~ 500M |
+
+---
+
+## 8. 구현 순서와 확인 목록
+
+| 단계 | 만드는 것 | 확인 |
+|---|---|---|
+| 1 | 사이클 프레임 + 상수 `α` 채택 모형 + verify 비용 (decode 표를 `K`줄로). drafter 비용은 0 | `γ` = 0이면 **기존 decode 결과와 정확히 같다** · `α` = 1이면 `τ = γ + 1` · `α` = 0이면 사이클당 1토큰이고 기존보다 느리다 |
+| 2 | 부류 A (EAGLE-3 on Llama-3.1-8B). head 어휘 크기, 첫 패스 줄 수 | 배치가 커질수록 이득이 줄고, `τ`가 낮은 drafter가 먼저 1 아래로 내려간다 (03 그림의 왼쪽 모양) |
+| 3 | 부류 B (DFlash) | Qwen3-8B에서 DFlash ÷ EAGLE-3 ≈ 2.4 · 동시 요청 1 → 32에서 5.1× → 2.8×의 모양 |
+| 4 | MoE expert 합집합 + 합성한 MTP op (DeepSeek-V3) | 배치 1에서 약 1.2×, 큰 배치에서 약 1.8× |
+| 5 | 메모리 모형 — `K`줄 여유, drafter 캐시, 혼합 모델의 중간 상태 (Qwen3.5) | 같은 HBM에서 동시 요청 수의 상한이 drafter 종류에 따라 줄어드는 양 |
+| 6 | (선택) 트리 검증, DSpark 스케줄러 | 아래 |
+| 7 | 출력 — **사용자당 토큰/초 대 전체 처리량** 곡선 | DSpark · NVIDIA가 쓰는 축이다. "같은 처리량에서 사용자당 속도"로 비교한다 |
+
+**DSpark 스케줄러를 넣는다면** — `Θ = τ · SPS(B)`의 `SPS(B)`는 시뮬레이터가 **스스로 계산할 수 있다** (verify 줄 수 `B`에서의 사이클 시간의 역수). 요청마다 `a_(r,j) = α_(r,1) ⋯ α_(r,j)`를 한 줄로 세워 큰 것부터 넣고 `Θ`가 오르지 않으면 멈춘다. confidence 오차를 흉내 내려면 `α`에 잡음을 섞은 값으로 고르고, 채택은 진짜 `α`로 뽑는다.
+
+---
+
+## 9. 의사 코드
+
+```python
+def step(batch, target, drafter, hw):
+    """배치 하나의 사이클 한 번. 반환: 걸린 시간. 요청 상태를 갱신한다."""
+    # ① draft — 지난 사이클에 확정된 줄로 drafter 캐시를 채우고, 초안을 낸다
+    t_draft = drafter.cost(batch, hw)        # 부류 A: 첫 패스(a+1줄) + (γ-1) × 1줄 / 부류 B: 투영(a+1줄) + 블록 1번
+
+    # ② verify — target의 decode 표를 새 토큰 Σ K_r 줄로
+    rows = sum(r.gamma + 1 for r in batch)
+    t_verify = target.step_cost(new_rows=rows,
+                                ctx=[r.S + r.gamma + 1 for r in batch],
+                                moe_tokens=rows, hw=hw)
+
+    # ③ accept
+    for r in batch:
+        a = 0
+        while a < r.gamma and random() < r.alpha[a]:
+            a += 1
+        r.last_a = a
+        r.emitted += a + 1
+
+        # ④ commit — target KV는 K줄을 썼고 a+1줄을 남긴다
+        r.S += a + 1
+        r.kv_writes += r.gamma + 1
+        r.wasted_rows += r.gamma - a
+        drafter.commit(r, a)                 # 다음 첫 패스가 처리할 줄 = a + 1
+
+    return t_draft + t_verify + hw.step_overhead
+
+
+def serve(requests, target, drafter, hw):
+    clock, active = 0.0, []
+    while requests or active:
+        active += admit(requests, active, hw)          # 메모리: target KV (S+K) + drafter 캐시 + 상태
+        prefill = [r for r in active if not r.prefilled]
+        clock += prefill_cost(prefill, target, drafter, hw)   # 부류 A·B·D는 drafter의 prefill도 센다
+        decode = [r for r in active if r.prefilled]
+        for r in decode:
+            r.gamma = drafter.choose_gamma(r, decode, hw)     # 고정 γ, 또는 DSpark식 Θ 최대화
+        clock += step(decode, target, drafter, hw)
+        active = [r for r in active if not r.done()]
+    return clock
+```
+
+- `drafter.cost`와 `target.step_cost`는 4절의 표를 op 표 위에서 계산하는 함수다. 시뮬레이터의 기존 decode 비용 함수에 **새 토큰 줄 수**와 **MoE 토큰 수**를 인자로 받게 하면 대부분이 끝난다
+- prefill과 decode를 한 스텝에 섞는 엔진(청크 prefill)을 흉내 낸다면, 검증 토큰도 같은 토큰 예산에서 나간다는 점을 넣는다 ([03](03-compute-and-kv.md#7-배치--남는-연산을-누가-쓰나))
+
+---
+
+## 참고
+
+- llm-arch-tracer — `README.md`(op 표의 형식), `rules/structures/auxiliary/mtp.md`(MTP가 트레이스되지 않는 이유), `src/validate.py`의 `c15_entrypoint_coverage`
+- [DFlash](https://arxiv.org/abs/2602.06036) — Qwen3 결과, EAGLE-3 트리 60과의 비교 · [z-lab/Qwen3-8B-DFlash-b16 설정](https://huggingface.co/z-lab/Qwen3-8B-DFlash-b16)
+- [EAGLE-3](https://arxiv.org/abs/2503.01840) · [yuhuili/EAGLE3-LLaMA3.1-Instruct-8B 설정](https://huggingface.co/yuhuili/EAGLE3-LLaMA3.1-Instruct-8B)
+- [DeepSeek-V3 Technical Report](https://arxiv.org/abs/2412.19437) — MTP의 채택률과 속도
+- [DSpark](https://arxiv.org/abs/2607.05147) — 오프라인 `τ` 표, 스케줄러
+- [vLLM 블로그 — Speculative Decoding on AMD GPUs (2026-08)](https://vllm.ai/blog/2026-08-23-speculative-decoding-amd-gpus) — MAL과 acceptance rate
+- [Inco AI — DFlash 2](https://inco.ai/blog/dflash2/) — Qwen3.5-4B의 MTP · DFlash · DSpark · DFlash 2 `τ`
+- [LMSYS — DFlash and Spec V2](https://www.lmsys.org/blog/2026-06-15-next-generation-speculative-decoding-dflash-v2/) — 호스트 작업을 겹쳐 얻은 처리량
+- [vLLM Speculators](https://github.com/vllm-project/speculators) · [z-lab/dflash](https://github.com/z-lab/dflash) — 공개 drafter 목록
