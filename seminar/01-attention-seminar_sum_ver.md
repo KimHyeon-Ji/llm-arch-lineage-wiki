@@ -336,6 +336,7 @@ DeepSeek-V3: 헤드 128, `c_KV` 512, 헤드당 K 128 · V 128. `S` = 4,096.
                      softmax
 ```
 
+- **위치 점수는 다른 행렬 없이 그대로 곱한다.** `q_R`(헤드마다 64차원)과 캐시의 `k_R`(전 헤드 공유 64차원)은 둘 다 RoPE를 이미 건 값이라, `(128 × 64) × (64 × S)` → `(128 × S)` 행렬곱 하나다. 내용 쪽처럼 옮길 `W^UK`가 없다
 - 캐시에 `k_R` 64차원이 더 붙는 이유다 — 512 + 64 = **576**
 - `k_R`은 전 헤드가 공유하고, 쿼리 쪽 `q_R`은 헤드마다 다르다. **저장하는 쪽은 공유하고, 묻는 쪽만 헤드마다 다르게** 둔 것이다
 
@@ -539,89 +540,16 @@ MLA는 그대로 두고, 그 **앞에 단계 하나를 추가**한다. **작은 
 > **전부 훑는 일이 사라진 것은 아니다. 그 일을 싼 단계로 넘기고, 비싼 계산은 2,048토큰으로 줄였다.**
 
 <details>
-<summary>자세히 — indexer가 하는 연산</summary>
+<summary>자세히 — indexer의 텐서 연산</summary>
 
-attention에서 **점수를 내는 부분만** 작게 떼어 놓은 것이다. softmax도 없고 V도 없다.
+DeepSeek-V3.2 공개 코드 기준이다.
 
-![indexer의 구조](figures/18-dsa-structure.png)
+![DSA indexer의 텐서 연산](figures/32-dsa-indexer-ops.png)
 
-과거 토큰마다 점수가 하나씩 나온다. (숫자는 예시다)
-
-```
- 토큰      1      2      3      4      5      6      7      8   …
- 점수    0.01    0     0.72   0.13   0.91    0     0.02   0.83  …
-                                ↓  top-k
- 위치    [ 3, 5, 8, … ]          ← MLA에 넘기는 것은 이것뿐이다
-```
-
-</details>
-
-<details>
-<summary>자세히 — indexer의 계산과 고른 위치를 쓰는 방법</summary>
-
-DeepSeek-V3.2 공개 코드 기준이다. attention에서 **점수를 내는 단계만** 작게 떼어 놓은 것이다. softmax도 없고 V도 없다.
-
-**준비 — 토큰이 들어올 때마다 (쓰기)**
-
-```
-k_I = norm( x · W_k )            128차원 벡터 하나
-→ 색인 키 캐시 끝에 하나 붙인다     캐시는 ( S × 128 ), FP8
-```
-
-- 본 attention의 K에 해당한다. 다만 헤드마다 따로 두지 않고 **하나만** 둔다
-
-**점수 — 토큰을 하나 만들 때마다 (읽기)**
-
-```
-① 색인 쿼리     q_I = c_Q · W_q                      ( 64 × 128 )      헤드 64개
-② 헤드별 가중치  w   = x · W_w                        ( 64 )            헤드마다 숫자 하나
-③ 내적         q_I · k_Iᵀ    ( 64 × 128 ) × ( 128 × S )  →  ( 64 × S )
-④ ReLU         음수를 0으로 만든다                      ( 64 × S )
-⑤ 가중합        헤드 방향으로 w를 곱해 더한다             →  ( 1 × S )
-```
-
-한 줄로 쓰면 과거 토큰 `s`의 점수는
-
-```
-I(t, s) = Σ_h  w_h · ReLU( q_h · k_s )
-```
-
-- `q_h · k_s`는 색인 쿼리 헤드 `h`와 토큰 `s`의 색인 키를 내적한 숫자 하나다
-- 헤드 64개가 각자 낸 숫자를 ReLU로 걸러서, 가중치 `w_h`를 곱해 더한다. 과거 토큰마다 **점수 하나**가 나온다
-- `c_Q`는 본 attention의 쿼리를 만들 때 쓰는 중간 벡터(1,536차원)다. 색인 쿼리도 같은 벡터에서 만든다
-- 이렇게 작은 중간 벡터를 거쳐 만드는 것을 **low-rank**라고 한다. `x`(7,168차원)에서 바로 큰 행렬 하나로 만들지 않고, 작은 차원(1,536)으로 한 번 줄였다가 펴는 **행렬 둘**로 나눈 것이다. 가중치와 곱셈이 줄어든다
-- 캐시를 읽는 것은 ③ 하나다. 토큰당 128바이트라서 `S`개를 다 훑어도 가볍다 (MLA 캐시는 토큰당 1,152바이트)
-
-**고르기**
-
-```
-⑥ top-k        점수 ( 1 × S ) 에서 큰 것 2,048개의 위치를 뽑는다   →  정수 2,048개
-```
-
-**고른 위치를 본 attention에 쓰는 방법 — 두 가지다**
-
-| | 마스크로 가린다 | 고른 토큰만 읽는다 (gather) |
-|---|---|---|
-| 하는 일 | `( 1 × S )` 표를 만든다. 고른 위치는 0, 나머지는 `−∞`. 이것을 본 attention의 점수에 더한다 | 커널이 위치 목록을 받아, 그 위치의 토큰만 캐시에서 읽어 온다 |
-| 그다음 | softmax를 거치면 가린 자리의 비중이 0이 된다 | 읽어 온 2,048토큰에 대해서만 점수를 내고 섞는다 |
-| 읽는 양 | **캐시 전체** — 점수는 `S`개 다 계산한다 | **고른 2,048토큰** |
-| 어디서 쓰나 | 모델과 함께 공개된 참조 코드 | 서빙용 커널 — FlashMLA, vLLM, SGLang |
-
-- 결과는 같다. 가린 자리의 비중이 0이므로 고른 토큰만 계산한 것과 같은 출력이 나온다
-- 참조 코드는 **마스크 방식**이다. 읽기 쉽지만 읽는 양은 줄지 않는다
-- 읽는 양이 실제로 줄어드는 것은 **gather 방식**이다. 이 자료의 "고른 `k`개만 읽는다"는 이쪽을 가리킨다
-
-**서빙용 커널에서 확인한 것**
-
-| | 확인한 내용 |
-|---|---|
-| [FlashMLA](https://github.com/deepseek-ai/FlashMLA) (DeepSeek의 커널) | `indices` 텐서 `(batch, 쿼리 수, topk)`를 받아 "지정한 토큰에 대해서만 attention을 계산한다". 문서가 같은 동작을 `focused_kv = kv[indices]`로 적어 둔다. decode 커널 코드는 위치마다 캐시의 한 줄을 읽어 오는 gather를 쓴다 |
-| [vLLM](https://github.com/vllm-project/vllm/blob/main/vllm/v1/attention/backends/mla/flashmla_sparse.py) | indexer가 고른 위치를 캐시 안의 실제 자리로 바꿔 FlashMLA 커널에 넘긴다 |
-| [SGLang](https://github.com/sgl-project/sglang/blob/main/python/sglang/kernels/ops/attention/nsa_triton_decode/triton_mla_kernels_decode_fused.py) | decode 커널 이름이 "Fused Gather + Dequant + Attention"이다. 첫 단계가 "희소 위치에서 KV를 읽어 온다"다 |
-
-- 세 곳 모두 **gather가 attention 커널 안에 들어 있다.** 고른 토큰을 모아 둔 텐서를 메모리에 따로 만들지 않고, 캐시에서 읽어 온 값을 바로 계산에 쓴다
-- 위치는 "캐시의 몇 번째 블록, 그 안의 몇 번째 토큰"로 넘긴다. 캐시가 블록 단위로 나뉘어 있기 때문이다
-- FlashMLA의 최신 문서와 SGLang의 이 커널은 DeepSeek-V4 계열 기준으로 쓰여 있다. DSA(V3.2)용 희소 커널은 FlashMLA에 2025년 9월에 들어갔다
+- **쓰기** — 토큰마다 128차원 색인 키 하나를 캐시 끝에 붙인다. 헤드마다 따로 두지 않는다
+- **① 점수** — 색인 쿼리 64개와 색인 키 `S`개의 행렬곱 한 번이 캐시를 읽는 유일한 단계다. 그 뒤 ReLU로 음수를 0으로 만든다
+- **② 고르기** — 헤드마다 가중치 `w_h`를 곱해 더하면 과거 토큰마다 점수 하나가 남는다. 그중 큰 2,048개의 위치를 뽑아, MLA 캐시에서 그 토큰만 읽어 온다
+- 고른 위치를 쓰는 방법은 두 가지다. 공개 참조 코드는 나머지 자리를 `−∞`로 가려서 캐시 전체를 읽고, 서빙용 커널([FlashMLA](https://github.com/deepseek-ai/FlashMLA) · [vLLM](https://github.com/vllm-project/vllm/blob/main/vllm/v1/attention/backends/mla/flashmla_sparse.py) · [SGLang](https://github.com/sgl-project/sglang/blob/main/python/sglang/kernels/ops/attention/nsa_triton_decode/triton_mla_kernels_decode_fused.py))은 고른 위치만 읽는다(gather). 이 자료의 "고른 2,048토큰만 읽는다"는 뒤쪽이다
 
 </details>
 
@@ -788,6 +716,26 @@ Z^a = H · W^aZ       Z^b = H · W^bZ         가중치 두 벌     (S × 512)
 
 ---
 
+#### 한 층 안의 두 캐시
+
+![한 층 안의 두 캐시](figures/33-v4-two-caches.png)
+
+- CSA · HCA 층은 캐시가 둘이다 — **압축 엔트리**(과거의 꽉 찬 블록)와 **압축하지 않은 최근 128토큰**
+- 두 캐시의 KV를 **이어 붙여, 같은 쿼리로 attention을 한 번** 한다. softmax도 하나다
+- 압축 엔트리는 자기 블록 안의 토큰을 볼 수 없다. 그 빈자리를 최근 128토큰이 채운다
+
+---
+
+#### 캐시가 쌓이는 과정
+
+![캐시가 쌓이는 과정](figures/34-v4-cache-write.png)
+
+- 토큰은 바로 압축되지 않는다. 블록이 다 찰 때까지 **압축 대기**로 들고 있다가, 4번째(HCA는 128번째) 토큰이 오면 묶어서 엔트리 하나를 붙인다
+- 압축 대기와 최근 128토큰은 **요청마다 크기가 고정된 state cache**에, 압축 엔트리는 길이에 따라 자라는 KV cache에 둔다
+- CSA는 앞 블록과 겹쳐 묶으므로, 엔트리를 만들 때 앞 블록 4토큰의 값도 함께 쓴다
+
+---
+
 #### 층 배치
 
 CSA는 일부를 정밀하게, HCA는 전체를 거칠게 본다. 한 층에 둘을 넣지 않고 **층을 번갈아 쌓는다.**
@@ -803,28 +751,6 @@ CSA는 일부를 정밀하게, HCA는 전체를 거칠게 본다. 한 층에 둘
 1. **CSA는 4개씩 묶고 고른다. HCA는 128개씩 묶고 전부 읽는다.** 두 층을 1:1로 번갈아 쌓는다
 2. **쓰기와 캐시가 달라진다** — 토큰이 4개(또는 128개) 모여야 엔트리 하나가 생기고, 층마다 캐시의 길이 · 정밀도 · 읽는 방식이 다르다
 3. 1M 컨텍스트에서 V3.2 대비 **KV cache 10%, FLOPs 27%** (V4-Pro)
-
-<details>
-<summary>자세히 — SSD에 저장하는 방식</summary>
-
-앞부분(prefix)이 같은 요청이 다시 오면 저장해 둔 캐시를 읽어 prefill을 건너뛴다.
-
-**압축 엔트리 (CSA · HCA)**
-
-- 전부 저장한다. 요청이 저장된 앞부분과 겹치면 마지막으로 꽉 찬 블록까지 읽어 온다
-- 끝의 덜 찬 블록에 해당하는 토큰은 다시 계산한다
-
-**압축하지 않은 최근 토큰용 캐시**
-
-모든 층에 있고 압축되지 않아, 전부 저장하면 압축 엔트리의 약 8배다. 세 가지 중에서 고른다.
-
-| 방식 | 저장 | 다시 계산 | 특징 |
-|---|---|---|---|
-| 전부 저장 | 모든 토큰 | 없음 | 저장한 것 대부분이 다시 읽히지 않는다. 쓰기만 많은 패턴이 된다 |
-| 주기적 저장 | `p`토큰마다 최근 128토큰분 | 마지막 저장 지점 이후 | `p`로 저장량과 계산량을 맞바꾼다 |
-| 저장 안 함 | 없음 | 마지막 128 × 층 수 토큰 | 압축 엔트리만으로 복원한다 |
-
-</details>
 
 ---
 
@@ -848,32 +774,21 @@ Qwen도 같은 지점에서 출발했다. **DSA의 indexer가 토큰 `S`개를 �
 | 읽는 것 | 고른 압축 엔트리 1,024개 | **고른 블록 512개의 원본 토큰** (2,048토큰) |
 | 캐시 길이 | `S/4` | **`S` 그대로** |
 
-- indexer가 훑는 양은 둘 다 `S/4`다. QSA는 색인 키를 4토큰씩 평균해 블록 키를 만들고, 색인 쿼리 헤드가 **4개**뿐이다 (CSA는 64개)
+- indexer가 훑는 양은 둘 다 `S/4`다. 다만 QSA indexer는 **쿼리 헤드가 4개**다 (CSA는 64개). 같은 블록 키를 쿼리 4개로만 재므로, 점수 행렬곱이 `(4 × 128) × (128 × S/4)`로 CSA의 1/16이다
 - QSA의 블록은 **고르는 단위**일 뿐이다. 고른 토큰의 KV를 합쳐 압축하지 않으므로 **압축에 따른 세부 정보 손실은 없다.** 블록을 고르다 놓치는 것은 별개다
 - 대신 저장은 줄지 않는다
 
 > **CSA는 저장과 검색을 함께 줄인다. QSA는 검색만 줄인다.**
 
 <details>
-<summary>자세히 — QSA의 indexer</summary>
+<summary>자세히 — indexer의 텐서 연산</summary>
 
-```
-색인 키      k_i   = W_K · x_i                      토큰마다 하나
-블록 키      k̂_b   = RMSNorm( 평균( k_i, 블록 b의 r개 ) )
-점수         I(i, b) = Σ_h ReLU( q_i^h · k̂_b )       꽉 찬 블록에 대해서만
-고르는 개수   블록 ⌈K / r⌉개
-```
+![QSA indexer의 텐서 연산](figures/35-qsa-indexer-ops.png)
 
-| 항목 | 값 |
-|---|---|
-| 색인 쿼리 | 헤드 4개, 헤드당 128차원 |
-| 색인 키 | 헤드 공유 하나 (MQA 형태) |
-| 블록 크기 `r` · 예산 `K` | 4토큰 · 2,048토큰 → 블록 512개 (공개 설정) |
-| RoPE | 128차원 중 64차원에만. **평균을 낸 뒤에** 블록의 시작 위치로 건다 |
-
-- 평균을 먼저 내고 위치를 나중에 입힌다. 회전 각이 다른 토큰들을 그대로 평균하지 않기 위해서다
-- 고른 블록은 원래 토큰 위치로 펼쳐서 본 attention(GQA)이 읽는다
-- 아직 덜 찬 마지막 블록의 토큰은 고르는 과정 없이 항상 읽는다
+- **쓰기** — 토큰마다 색인 키 하나(128차원)를 만들고, 4개가 모이면 평균 → RMSNorm → RoPE를 거쳐 **블록 키** 하나를 만든다. 평균을 먼저 내고 위치를 나중에 건다 — 회전 각이 다른 토큰들을 그대로 평균하지 않으려는 것이다
+- **① 점수** — 쿼리 4개(헤드)와 블록 키 `S/4`개의 행렬곱, 그리고 ReLU. 꽉 찬 블록만 점수를 낸다
+- **② 고르기** — 헤드 방향으로 더해(DSA와 달리 가중치 없이) 블록마다 점수 하나를 얻고, 큰 512개 블록을 고른다. 블록을 토큰으로 펴면 2,048토큰이고, 덜 찬 마지막 블록의 토큰은 고르지 않고 항상 읽는다
+- 공개 설정: 색인 쿼리 헤드 4개 · 헤드당 128차원, 키는 헤드 공유 하나(MQA 형태), 블록 4토큰, 예산 2,048토큰. RoPE는 128차원 중 64차원에만 건다
 
 </details>
 
@@ -1019,7 +934,7 @@ CSA · HCA는 여기에 압축하지 않은 최근 128토큰을 함께 읽는다
 - [Mistral 7B](https://arxiv.org/abs/2310.06825) — SWA
 - [DeepSeek-V3.2-Exp](https://github.com/deepseek-ai/DeepSeek-V3.2-Exp) — DSA
 - [FlashMLA](https://github.com/deepseek-ai/FlashMLA) · [vLLM의 희소 MLA 백엔드](https://github.com/vllm-project/vllm/blob/main/vllm/v1/attention/backends/mla/flashmla_sparse.py) · [SGLang의 희소 decode 커널](https://github.com/sgl-project/sglang/blob/main/python/sglang/kernels/ops/attention/nsa_triton_decode/triton_mla_kernels_decode_fused.py) — 고른 줄만 읽는 서빙용 커널
-- [DeepSeek-V4](https://arxiv.org/abs/2606.19348) — CSA · HCA, KV cache 배치와 SSD 저장
+- [DeepSeek-V4](https://arxiv.org/abs/2606.19348) — CSA · HCA, KV cache 배치
 - [Qwen3.8-Next](https://arxiv.org/abs/2608.30320) — QSA
 - 모델 설정: Hugging Face의 `config.json` (Qwen3-235B-A22B, gpt-oss-120b, Kimi-K2, DeepSeek-V4-Pro / Flash)
 - 더 자세한 내용: `00-foundations.md`, `01-attention.md`

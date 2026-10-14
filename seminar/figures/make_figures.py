@@ -1581,10 +1581,292 @@ def fig_qsa_layers():
     return f
 
 
+# ---------------------------------------------------------------- 32 ~ 35 공통 도우미
+def _box(f, x, y, w, h, kind, label="", dims=None, sub=None, solid=False, fs=16):
+    fill, stroke = KINDS[kind]
+    f.rect(x, y, w, h, SOLID[kind] if solid else fill, stroke, 5, 1.8)
+    if label:
+        f.text(x + w / 2, y + h / 2 + fs * 0.36, label, fs, mono=True, color="#ffffff" if solid else INK)
+    if dims:
+        f.text(x + w / 2, y + h + 22, dims, 14, color=MUTED, mono=True)
+    if sub:
+        f.text(x + w / 2, y + h + 42, sub, 13, color=MUTED)
+
+
+def _chip(f, cx, y, text, kind):
+    col = {"g": "#4d9a56", "r": "#c2479c", "n": "#7b8196"}[kind]
+    w = sum(13 if ord(ch) > 0x2000 else 7.5 for ch in text) + 22
+    f.rect(cx - w / 2, y, w, 24, col, "none", 12)
+    f.text(cx, y + 17, text, 13, weight=700, color="#ffffff")
+
+
+def _op(f, x1, x2, y, label, chip=None, kind="g"):
+    """화살표 하나와 그 위의 연산 이름, 아래의 연산 종류."""
+    f.arrow(x1, y, x2, y)
+    if label:
+        f.text((x1 + x2) / 2, y - 12, label, 14, weight=700)
+    if chip:
+        _chip(f, (x1 + x2) / 2, y + 12, chip, kind)
+
+
+def _legend(f, x, y):
+    for i, (t, k) in enumerate((("행렬곱", "g"), ("원소별 연산", "n"), ("행렬곱이 아닌 일", "r"))):
+        col = {"g": "#4d9a56", "r": "#c2479c", "n": "#7b8196"}[k]
+        f.rect(x + i * 190, y - 13, 16, 16, col, "none", 4)
+        f.text(x + i * 190 + 24, y, t, 15, "start", 600)
+
+
+# ---------------------------------------------------------------- 32. DSA indexer의 텐서 연산
+def fig_dsa_indexer_ops():
+    f = Fig("32-dsa-indexer-ops", 1560, 700)
+    f.title(40, 44, "DSA indexer의 텐서 연산 — 층 하나, 토큰 하나를 만들 때")
+    _legend(f, 960, 44)
+
+    # ---- 쓰기
+    f.text(40, 112, "쓰기", 20, "start", 700)
+    f.text(40, 136, "토큰마다", 15, "start", color=MUTED)
+    _box(f, 160, 100, 120, 20, "n", dims="x  1 × 7168")
+    _op(f, 286, 400, 110, "× W_k · norm")
+    _chip(f, 343, 154, "행렬 × 벡터", "g")
+    _box(f, 406, 100, 44, 20, "i", solid=True, dims="k_I  1 × 128")
+    _op(f, 456, 560, 110, "끝에 붙인다")
+    f.rect(566, 80, 300, 60, KINDS["i"][0], KINDS["i"][1], 5, 1.8)
+    for r in range(1, 5):
+        f.line(567, 80 + r * 12, 865, 80 + r * 12, KINDS["i"][1], 0.8)
+    f.rect(567, 128, 298, 11, SOLID["i"], "none", 0)
+    f.text(716, 162, "색인 키 캐시  S × 128 · FP8", 14, color=MUTED, mono=True)
+    f.text(900, 104, "헤드마다 따로 두지 않는다 — 키는 하나", 15, "start", color=MUTED)
+    f.text(900, 128, "토큰당 128바이트 (MLA 캐시는 1,152바이트)", 15, "start", color=MUTED)
+    f.line(40, 196, 1520, 196, "#e3e5ee", 2, "6 6")
+
+    # ---- ① 점수
+    y = 236
+    f.text(40, 262, "① 점수", 20, "start", 700)
+    f.text(40, 286, "캐시를 읽는 것은", 15, "start", color=MUTED)
+    f.text(40, 306, "이 행렬곱 하나", 15, "start", color=MUTED)
+    _box(f, 180, y, 56, 64, "q", "q_I", "64 × 128", "헤드 64개")
+    f.text(256, y + 40, "×", 26)
+    _box(f, 280, y + 4, 280, 56, "i", "K_Iᵀ", "128 × S", "색인 키 캐시 전체")
+    f.text(580, y + 40, "=", 26)
+    _box(f, 604, y, 280, 64, "q", "q_I · K_Iᵀ", "64 × S")
+    _op(f, 892, 992, y + 32, "ReLU", "원소별", "n")
+    _box(f, 1000, y, 280, 64, "q", "ReLU( · )", "64 × S", "음수는 0이 된다")
+    _chip(f, 256, y + 124, "행렬 × 행렬", "g")
+    f.line(40, 392, 1520, 392, "#e3e5ee", 2, "6 6")
+
+    # ---- ② 하나로 합쳐 고른다
+    y = 432
+    f.text(40, 458, "② 고르기", 20, "start", 700)
+    f.text(40, 482, "점수 하나로 합쳐", 15, "start", color=MUTED)
+    f.text(40, 502, "2,048개를 뽑는다", 15, "start", color=MUTED)
+    _box(f, 180, y, 140, 64, "q", "64 × S")
+    f.text(338, y + 40, "×", 24)
+    _box(f, 356, y, 16, 64, "v", solid=True)
+    f.text(364, y + 86, "w  64", 14, color=MUTED, mono=True)
+    _op(f, 384, 492, y + 32, "Σ_h", "헤드 방향 합", "n")
+    _box(f, 500, y + 24, 200, 16, "q", solid=True, dims="I  1 × S")
+    _op(f, 708, 790, y + 32, "top-k", "비교 · 선택", "r")
+    for i, v in enumerate(("3", "5", "8", "…")):
+        f.rect(798 + i * 34, y + 20, 30, 24, "#ffffff", "#9a9fb3", 4, 1.5)
+        f.text(813 + i * 34, y + 37, v, 13, mono=True)
+    f.text(864, y + 66, "위치 2,048개", 14, color=MUTED)
+    _op(f, 940, 1030, y + 32, "gather", "흩어진 읽기", "r")
+    _box(f, 1038, y + 4, 150, 56, "c", "MLA 캐시", "2,048 × 576", "고른 토큰만")
+    _op(f, 1196, 1290, y + 32, "")
+    f.rect(1298, y + 8, 210, 48, "#fef7ea", "#f0cf93", 10, 1.6)
+    f.text(1403, y + 39, "MLA attention", 17, weight=700, color="#b87410")
+
+    f.rect(40, 600, 1480, 72, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 644, "I(t, s) = Σ_h  w_h · ReLU( q_h · k_s )", 19, "start", 700, mono=True)
+    f.text(560, 632, "q_I = c_Q · W_q   — 본 attention의 쿼리를 만드는 1,536차원 벡터에서 만든다", 14, "start", color=MUTED,
+           mono=False)
+    f.text(560, 656, "w = x · W_w   — 헤드마다 숫자 하나. softmax도 V도 없다", 14, "start", color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 33. V4 한 층 안의 두 캐시
+def fig_v4_two_caches():
+    f = Fig("33-v4-two-caches", 1560, 610)
+    f.title(40, 44, "한 층 안의 두 캐시 — 압축 엔트리와 최근 128토큰 (DeepSeek-V4)")
+    TOK = "#6b4fc8"
+
+    def row(y, name, m, picked, read_all, cap1, cap2):
+        f.text(40, y + 40, name, 22, "start", 700)
+        x0, x1 = 180, 980
+        # 토큰 축
+        f.line(x0, y, x1, y, "#9a9fb3", 2)
+        f.text(x0, y - 10, "토큰 0", 13, "start", color=MUTED)
+        f.text(x1, y - 10, "지금", 13, "end", color=MUTED)
+        # 압축 엔트리
+        n = 24 if m == 4 else 3
+        bw = (x1 - 130 - x0) / n
+        for j in range(n):
+            on = read_all or j in picked
+            f.rect(x0 + j * bw + 2, y + 16, bw - 4, 30, SOLID["c"] if on else KINDS["c"][0], KINDS["c"][1], 4, 1.4)
+        f.text(x0, y + 66, cap1, 14, "start", color=MUTED)
+        # 최근 128토큰
+        f.rect(x1 - 128, y + 16, 128, 30, "none", TOK, 4, 1.6, "4 3")
+        for i in range(8):
+            f.rect(x1 - 124 + i * 15.5, y + 21, 12, 20, TOK, "none", 2)
+        f.text(x1 - 64, y + 66, "최근 128토큰", 14, weight=700, color=TOK)
+        f.text(x1 - 64, y + 84, "압축 안 함", 13, color=MUTED)
+        # 이어 붙인 KV
+        cx = 1040
+        f.arrow(x1 + 6, y + 31, cx - 6, y + 31)
+        f.rect(cx, y + 12, 150, 38, KINDS["c"][0], KINDS["c"][1], 6, 1.6)
+        f.rect(cx + 104, y + 12, 46, 38, KINDS["q"][0], TOK, 6, 1.6)
+        f.text(cx + 52, y + 37, cap2, 13, mono=True)
+        f.text(cx + 127, y + 37, "128", 13, mono=True)
+        f.text(cx + 75, y + 70, "이어 붙인다", 13, color=MUTED)
+        f.arrow(cx + 156, y + 31, 1256, y + 31)
+        f.rect(1262, y + 8, 250, 46, "#fef7ea", "#f0cf93", 10, 1.6)
+        f.text(1387, y + 37, "attention · softmax 하나", 15, weight=700, color="#b87410")
+
+    row(110, "CSA 층", 4, {3, 9, 14, 17}, False, "압축 엔트리 S/4개 — 이 중 top-k 1,024개만 읽는다", "1,024")
+    row(300, "HCA 층", 128, set(), True, "압축 엔트리 S/128개 — 전부 읽는다", "S/128")
+
+    f.rect(40, 470, 1480, 110, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 506, "같은 쿼리가 두 캐시를 한 번에 본다. 두 캐시의 KV를 이어 붙여 softmax 하나로 섞는다.", 17, "start", 700)
+    f.text(64, 536, "압축 엔트리는 꽉 찬 과거 블록만 덮는다. 자기 블록 안의 토큰은 압축 엔트리로 볼 수 없어서, 최근 128토큰이 그 자리를 채운다.", 15,
+           "start", color=MUTED)
+    f.text(64, 560, "그림의 칸 수는 줄여 그렸다.", 13, "start", color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 34. V4 캐시가 쌓이는 과정
+def fig_v4_cache_write():
+    f = Fig("34-v4-cache-write", 1560, 640)
+    f.title(40, 44, "캐시가 쌓이는 과정 — CSA 층, 토큰이 하나씩 들어올 때 (m = 4)")
+    TOK, GRN = "#6b4fc8", "#4d9a56"
+    x0, cw = 300, 150
+    rows = {"tok": 110, "tail": 200, "comp": 320, "swa": 430}
+    f.text(40, rows["tok"] + 22, "새 토큰", 18, "start", 700)
+    f.text(40, rows["tail"] + 16, "압축 대기", 18, "start", 700)
+    f.text(40, rows["tail"] + 40, "state cache", 14, "start", color=MUTED, mono=True)
+    f.text(40, rows["comp"] + 16, "압축 엔트리", 18, "start", 700)
+    f.text(40, rows["comp"] + 40, "KV cache", 14, "start", color=MUTED, mono=True)
+    f.text(40, rows["swa"] + 16, "최근 128토큰", 18, "start", 700)
+    f.text(40, rows["swa"] + 40, "state cache", 14, "start", color=MUTED, mono=True)
+    for i in range(8):
+        t = i + 1
+        cx = x0 + i * cw + cw / 2
+        if i:
+            f.line(x0 + i * cw, 90, x0 + i * cw, 500, "#eef0f5", 1.5)
+        # 새 토큰
+        f.rect(cx - 40, rows["tok"], 80, 32, KINDS["q"][0], TOK, 6, 1.6)
+        f.text(cx, rows["tok"] + 22, f"토큰 {t}", 14, weight=700)
+        # 압축 대기 : 블록 안에서 모인 토큰
+        k = (t - 1) % 4 + 1
+        full = k == 4
+        for j in range(4):
+            on = j < k
+            f.rect(cx - 52 + j * 26, rows["tail"], 22, 30, ("#c9cddb" if full else "#9a9fb3") if on else "#ffffff",
+                   "#c9cddb", 3, 1.2, None if on else "3 3")
+        if full:
+            f.arrow(cx, rows["tail"] + 38, cx, rows["comp"] - 6, color=GRN)
+            f.text(cx - 10, rows["tail"] + 72, "4개가 모이면", 13, "end", 700, GRN)
+            f.text(cx - 10, rows["tail"] + 90, "묶는다", 13, "end", 700, GRN)
+        # 압축 엔트리
+        made = t // 4
+        for e in range(made):
+            new = full and e == made - 1
+            f.rect(cx - 50 + e * 52, rows["comp"], 48, 30, SOLID["c"] if new else KINDS["c"][0], KINDS["c"][1], 4, 1.4)
+            f.text(cx - 26 + e * 52, rows["comp"] + 20, f"E{e + 1}", 12, mono=True, color="#ffffff" if new else INK)
+        if not made:
+            f.text(cx, rows["comp"] + 20, "—", 14, color=MUTED)
+        # 최근 128토큰 : 매번 하나씩 들어간다
+        for j in range(min(t, 4)):
+            f.rect(cx - 52 + j * 26, rows["swa"], 22, 30, TOK if j == min(t, 4) - 1 else KINDS["q"][0], TOK, 3, 1.2)
+    f.text(x0 + 10, rows["swa"] + 56, "그림은 4칸만 그렸다 — 실제로는 최근 128토큰", 13, "start", color=MUTED)
+
+    f.rect(40, 520, 1480, 92, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 556, "토큰 1 ~ 3은 압축 대기로 들고 있다가, 4번째가 오면 4개를 묶어 엔트리 하나를 KV cache에 붙인다.", 17, "start", 700)
+    f.text(64, 586, "최근 128토큰 창에는 매 토큰 들어가고, 가장 오래된 것이 빠진다.  HCA도 같은 방식이고, 128개가 모일 때마다 엔트리 하나다.", 15,
+           "start", color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 35. QSA indexer의 텐서 연산
+def fig_qsa_indexer_ops():
+    f = Fig("35-qsa-indexer-ops", 1560, 700)
+    f.title(40, 44, "QSA indexer의 텐서 연산 — 층 하나, 토큰 하나를 만들 때")
+    _legend(f, 960, 44)
+
+    # ---- 쓰기
+    f.text(40, 112, "쓰기", 20, "start", 700)
+    f.text(40, 136, "토큰마다 ·", 15, "start", color=MUTED)
+    f.text(40, 156, "4토큰마다", 15, "start", color=MUTED)
+    _box(f, 160, 100, 110, 20, "n", dims="x  1 × d")
+    _op(f, 276, 360, 110, "× W_K")
+    _chip(f, 318, 154, "행렬 × 벡터", "g")
+    for j in range(4):
+        f.rect(368, 86 + j * 12, 44, 10, SOLID["i"] if j == 3 else KINDS["i"][0], KINDS["i"][1], 2, 1.2)
+    f.text(390, 78, "k_i  4개", 14, color=MUTED, mono=True)
+    _op(f, 420, 640, 110, "평균 → RMSNorm → RoPE")
+    _chip(f, 530, 154, "4토큰마다 한 번", "n")
+    _box(f, 648, 100, 44, 20, "i", solid=True, dims="블록 키  1 × 128")
+    _op(f, 698, 790, 110, "붙인다")
+    f.rect(796, 84, 220, 52, KINDS["i"][0], KINDS["i"][1], 5, 1.8)
+    for r in range(1, 4):
+        f.line(797, 84 + r * 13, 1015, 84 + r * 13, KINDS["i"][1], 0.8)
+    f.rect(797, 124, 218, 11, SOLID["i"], "none", 0)
+    f.text(906, 160, "블록 키  S/4 × 128", 14, color=MUTED, mono=True)
+    f.text(1050, 104, "평균을 먼저 내고 위치(RoPE)를 나중에 건다", 15, "start", color=MUTED)
+    f.text(1050, 128, "블록의 위치는 블록이 시작하는 자리다", 15, "start", color=MUTED)
+    f.line(40, 196, 1520, 196, "#e3e5ee", 2, "6 6")
+
+    # ---- ① 점수
+    y = 236
+    f.text(40, 262, "① 점수", 20, "start", 700)
+    f.text(40, 286, "꽉 찬 블록만", 15, "start", color=MUTED)
+    f.text(40, 306, "점수를 낸다", 15, "start", color=MUTED)
+    _box(f, 180, y + 20, 56, 24, "q", "q", "4 × 128", "헤드 4개")
+    f.text(256, y + 40, "×", 26)
+    _box(f, 280, y + 4, 200, 56, "i", "블록 키ᵀ", "128 × S/4")
+    f.text(500, y + 40, "=", 26)
+    _box(f, 524, y + 20, 200, 24, "q", "q · Kᵀ", "4 × S/4")
+    _op(f, 732, 832, y + 32, "ReLU", "원소별", "n")
+    _box(f, 840, y + 20, 200, 24, "q", "ReLU( · )", "4 × S/4")
+    _chip(f, 256, y + 104, "행렬 × 행렬", "g")
+    f.text(1070, y + 30, "쿼리 헤드가 4개라 점수 행렬이 4줄이다", 15, "start", color=MUTED)
+    f.text(1070, y + 54, "(DSA · CSA의 indexer는 64줄)", 15, "start", color=MUTED)
+    f.line(40, 392, 1520, 392, "#e3e5ee", 2, "6 6")
+
+    # ---- ② 고르기
+    y = 432
+    f.text(40, 458, "② 고르기", 20, "start", 700)
+    f.text(40, 482, "블록을 고르고", 15, "start", color=MUTED)
+    f.text(40, 502, "토큰으로 편다", 15, "start", color=MUTED)
+    _box(f, 180, y + 20, 110, 24, "q", "4 × S/4")
+    _op(f, 298, 400, y + 32, "Σ_h", "헤드 방향 합", "n")
+    _box(f, 408, y + 24, 150, 16, "q", solid=True, dims="I  1 × S/4")
+    _op(f, 566, 648, y + 32, "top-k", "비교 · 선택", "r")
+    for i in range(3):
+        f.rect(656 + i * 34, y + 20, 30, 24, "#ffffff", "#9a9fb3", 4, 1.5)
+    f.text(707, y + 66, "블록 512개", 14, color=MUTED)
+    _op(f, 764, 842, y + 32, "× 4", "편다", "n")
+    for i in range(12):
+        f.rect(850 + i * 11, y + 22, 9, 20, "#6b4fc8", "none", 2)
+    f.text(916, y + 66, "토큰 2,048개", 14, color=MUTED)
+    f.text(916, y + 84, "+ 덜 찬 마지막 블록", 13, color=MUTED)
+    _op(f, 990, 1078, y + 32, "gather", "블록째 읽기", "r")
+    _box(f, 1086, y + 4, 140, 56, "k", "KV", "2,048토큰", "압축하지 않은 원본")
+    _op(f, 1232, 1300, y + 32, "")
+    f.rect(1306, y + 8, 200, 48, "#fef7ea", "#f0cf93", 10, 1.6)
+    f.text(1406, y + 39, "GQA attention", 17, weight=700, color="#b87410")
+
+    f.rect(40, 600, 1480, 72, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 644, "I(i, b) = Σ_h  ReLU( q_i^h · k̄_b )", 19, "start", 700, mono=True)
+    f.text(520, 632, "DSA와 달리 헤드마다 곱하는 가중치 w_h가 없다", 14, "start", color=MUTED)
+    f.text(520, 656, "점수를 내는 대상이 토큰 S개가 아니라 블록 S/4개다", 14, "start", color=MUTED)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
         fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor,
-        fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers, fig_knobs_read]
+        fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers, fig_knobs_read,
+        fig_dsa_indexer_ops, fig_v4_two_caches, fig_v4_cache_write, fig_qsa_indexer_ops]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
