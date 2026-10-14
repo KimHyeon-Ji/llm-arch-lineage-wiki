@@ -51,7 +51,7 @@
 | 연산 종류 | decode (새 토큰 1줄) | verify (새 토큰 `K`줄) | 바뀌는 것 |
 |---|---|---|---|
 | 가중치 곱 (투영 · FFN · LM head) | 행렬 × 벡터 | 행렬 × 행렬 (`K`줄) | **읽기 그대로, 연산 `K`배** |
-| attention 점수 · 가중합 | `(n_h, 1, S)` | `(n_h, K, S + K)` | **캐시 읽기 그대로**, 연산 `K`배 |
+| attention 점수 · 가중합 | `(n_h, 1, S)` | `(n_h, K, S + K)` | 연산 `K`배 (`K·(S+K)`에 비례). 캐시 읽기는 커널이 쿼리 사이에서 재사용하면 거의 그대로 |
 | KV 쓰기 | 1줄 | `K`줄 | 쓰기 `K`배 |
 | 로짓 | `(1 × V)` | `(K × V)` | 버퍼 `K`배 |
 | 샘플링 | 1자리 | `K`자리 비교 | 가벼운 원소별 연산 |
@@ -59,7 +59,18 @@
 **새 줄끼리는 계단 모양으로 본다.** `j`번째 검증 토큰은 확정된 `S`줄과, 이번에 쓴 줄 중 `0 ~ j`번째까지만 본다. 같은 forward 안에서 방금 만든 K · V를 읽는 것이다.
 
 - 모양은 **긴 prefix 뒤에 짧은 chunk를 붙이는 prefill**과 같다. 엔진은 이것을 "extend"로 처리하거나, 요청당 쿼리를 여러 개 받는 decode 커널로 처리한다
-- 캐시 `S`줄은 한 번 읽어 `K`개 쿼리가 함께 쓴다. 그래서 **컨텍스트가 길어도 verify의 추가 비용은 `S`에 비례하지 않는다**
+- 캐시 `S`줄은 검증 쿼리 `K`개가 모두 읽는다. 커널이 쿼리 사이에서 KV를 재사용하면 반복 읽기를 줄일 수 있다 — 한 번만 읽는다는 것은 **이상적인 재사용 가정**이다. 실제로 몇 번 읽는지는 커널의 타일 크기와 헤드 공유 방식이 정한다
+- 재사용이 이상적이어도 **연산량은 `K·(S + K)`에 비례한다.** 컨텍스트가 길면 이 연산이 캐시 읽기 시간을 넘을 수 있다
+
+**attention이 읽기에 묶이나, 연산에 묶이나** — 캐시 1바이트를 읽어 하는 연산으로 본다 (재사용이 이상적일 때).
+
+| target | decode (`K` = 1) | verify | H100 균형점 약 295와 견주면 |
+|---|---|---|---|
+| Llama-3.1-8B (GQA, 쿼리 헤드 4개가 KV 헤드 1개를 함께 씀) | 약 4 | `K` = 16에서 약 64 | 여전히 읽기가 시간을 정한다 |
+| DeepSeek-V3 (MLA, 헤드 128개가 latent 하나를 함께 씀) | 약 130 ~ 240 | `K` = 2에서 약 260 ~ 480 | **`K` = 2만 돼도 연산이 시간을 정한다** |
+
+- 💡 GQA target은 verify의 attention이 거의 공짜다. **MLA target은 아니다.** decode만으로도 균형점 근처라, 검증 토큰이 늘면 attention 시간이 `K·S`에 비례해 는다. 컨텍스트가 길수록 크다
+- MLA의 decode 값은 [attention 세미나](../../seminar/01-attention-seminar.md)의 "읽은 바이트당 연산"이다. GQA는 쿼리 헤드 `g`개 × 검증 토큰 `K`개가 KV 한 줄을 함께 쓰므로 약 `g·K`다
 
 <details>
 <summary>자세히 — 로짓 버퍼는 작지 않다</summary>
@@ -178,12 +189,12 @@ drafter도 다음 토큰을 맞히려면 컨텍스트를 봐야 한다. **어디
 | drafter | 캐시에 든 것 | 토큰당 크기 (BF16) | prefill | 사이클마다 쓰는 줄 |
 |---|---|---|---|---|
 | 별도 draft 모델 | 자기 층 전부의 K · V | 그 모델의 KV 크기 | 프롬프트 전체를 자기 forward로 | `γ`줄 남짓, 롤백은 target처럼 |
-| **EAGLE-3** | 1층의 K · V (입력 = target hidden) | Llama-3.1-8B용: 4 KB (target의 **+3.1%**) | target hidden으로 1층 forward | 진짜 줄 `a + 1` + 추측 줄 `γ − 1` |
-| **MTP** (DeepSeek-V3) | MTP 블록 1개의 MLA latent | 1.15 KB (target의 **+1.6%**) | 위와 같음 | 위와 같음 |
+| **EAGLE-3** | 1층의 K · V (입력 = target hidden) | Llama-3.1-8B용: 4 KiB (target의 **+3.1%**) | target hidden으로 1층 forward | 진짜 줄 `a + 1` + 추측 줄 `γ − 1` |
+| **MTP** (DeepSeek-V3) | MTP 블록 1개의 MLA latent | 1.125 KiB (target의 **+1.6%**) | 위와 같음 | 위와 같음 |
 | **Gemma 4 MTP** | 컨텍스트 캐시 없음 — target의 KV를 읽는다 | 0 | **없음** | 이번 사이클의 초안 토큰만 잠깐 |
-| **DFlash** | 층마다 target hidden을 투영한 K · V | Qwen3-8B용 5층: 20 KB (target의 **+13.9%**) | 투영만 — attention · FFN 없음 | 진짜 줄 `a + 1` × 층 수. 블록은 저장하지 않는다 |
+| **DFlash** | 층마다 target hidden을 투영한 K · V | Qwen3-8B용 5층: 20 KiB (target의 **+13.9%**) | 투영만 — attention · FFN 없음 | 진짜 줄 `a + 1` × 층 수. 블록은 저장하지 않는다 |
 | DSpark (서비스용) | DFlash와 같음, 최근 128토큰만 | 요청당 128줄로 상한 | DFlash와 같음 | DFlash와 같음 |
-| n-gram · suffix | 호스트의 토큰 열 · suffix tree | GPU 0 | 없음 | 없음 |
+| n-gram · suffix | 모델 캐시 없음. CPU의 토큰 열 · suffix tree, 또는 GPU의 토큰 버퍼(`ngram_gpu`) | KV 없음 | 없음 | 없음 |
 
 ### 왜 진짜 줄을 다시 쓰나 — EAGLE-3 · MTP
 
@@ -211,14 +222,14 @@ DFlash의 컨텍스트 줄은 target hidden을 섞어(`W_c`) 층마다 K · V �
 
 | | 계산 | 값 |
 |---|---|---|
-| Llama-3.1-8B target | 2 (K, V) × KV 헤드 8 × 128 × 2 B × 32층 | 128 KB |
-| EAGLE-3 drafter | × 1층 | 4 KB |
-| Qwen3-8B target | 2 × 8 × 128 × 2 B × 36층 | 144 KB |
-| DFlash drafter | × 5층 | 20 KB |
-| DeepSeek-V3 target | 576 × 2 B × 61층 | 약 70 KB |
-| MTP 모듈 | 576 × 2 B × 1층 | 1.15 KB |
+| Llama-3.1-8B target | 2 (K, V) × KV 헤드 8 × 128 × 2 B × 32층 | 128 KiB |
+| EAGLE-3 drafter | × 1층 | 4 KiB |
+| Qwen3-8B target | 2 × 8 × 128 × 2 B × 36층 | 144 KiB |
+| DFlash drafter | × 5층 | 20 KiB |
+| DeepSeek-V3 target | 576 × 2 B × 61층 | 68.625 KiB |
+| MTP 모듈 | 576 × 2 B × 1층 | 1.125 KiB |
 
-- KB는 1,024 B 기준이다. DeepSeek-V3의 값은 [attention 세미나](../../seminar/01-attention-seminar.md)의 70.3 KB(1,000 B 기준)와 같은 양이다
+- KiB는 1,024 B다. DeepSeek-V3의 값은 [attention 세미나](../../seminar/01-attention-seminar.md)의 70.3 KB(1,000 B 기준)와 같은 양이다
 
 </details>
 
@@ -238,6 +249,12 @@ B200:  2.25 PFLOPS ÷ 8 TB/s   ≈ 280
 - 줄이 이 값보다 훨씬 적으면 줄을 늘려도 시간이 거의 그대로다 — speculative decoding이 공짜인 구간
 - `B × K`가 이 값에 다가가면 verify 시간이 `K`에 비례해 늘기 시작한다. 이득이 줄어든다
 - 실제 커널은 작은 줄 수에서 이론만큼 효율이 나지 않아, 꺾이는 지점이 이보다 앞에 온다
+
+**이것은 컨텍스트가 짧을 때의 이야기다.** 위 계산은 가중치 읽기가 병목이라고 둔 것이다.
+
+- 컨텍스트가 길면 요청마다의 **KV 읽기**가 병목이 된다. 이때는 배치가 커도 검증 쿼리 `K`개가 KV 읽기를 나눠 쓰므로(2절의 재사용 가정 아래) 이득이 남는다
+- MagicDec(2024)은 긴 컨텍스트에서 **큰 배치에도** speculative decoding이 처리량과 지연을 함께 줄인다고 보고했다. drafter는 KV의 일부만 읽게 했다
+- 단, MLA처럼 캐시 1바이트당 연산이 이미 높은 attention은 `K`배 연산에 먼저 막힌다 (2절의 표)
 
 ![배치와 이득](figures/14-batch-speedup.png)
 
@@ -275,9 +292,10 @@ DeepSeek-V3 (`E` = 256, `k` = 8)
 | 불리는 expert 수 | 8 | 15.8 | 30.5 | 57.4 | 102 | 222 |
 
 - **배치 1에서 MTP-1을 검증하면 (`n` = 2) routed expert를 약 2배 읽는다.** 층 전체로는 한 스텝의 가중치 읽기가 약 1.54배가 된다 ([04](04-simulator.md#6-개략-검산))
-  - 속도 = 1.87 / (1.54 + 0.044) ≈ **1.2배**
-- 배치가 커서 이미 거의 모든 expert를 읽고 있으면 검증 토큰이 늘어도 읽기는 그대로다
-  - 속도 = 1.87 / (1.0 + 0.044) ≈ **1.8배** — DeepSeek가 보고한 값
+  - MTP 한 스텝은 같은 조건(토큰 하나의 활성 가중치)에서 target의 0.044다 → 속도 = 1.87 / (1.54 + 0.044) ≈ **1.2배**
+- 배치가 커서 target과 MTP 모듈이 **모두** 거의 모든 expert를 이미 읽고 있다면, 검증 토큰이 늘어도 읽기는 그대로다
+  - 이때는 MTP 쪽도 같은 조건으로 다시 센다. MTP 블록도 expert 전부를 읽으므로 target의 약 0.019다 → 속도 = 1.87 / (1.0 + 0.019) ≈ **1.8배**
+- 둘 다 **가정 아래의 예시 계산**이다 — 라우팅이 고르고 독립이며, 가중치 읽기만 센다. 큰 배치에서는 KV 읽기와 연산도 시간에 들어온다. DeepSeek가 보고한 1.8배는 측정 조건이 공개되지 않았으므로, 큰 배치 계산이 그 값과 비슷하다는 것을 근거로 삼지 않는다
 - 💡 **MoE에서는 배치가 작을 때 오히려 이득이 작다.** dense와 반대 방향이다. 7절 오른쪽 그림에서 MoE 모델의 곡선이 평평했던 것도 같은 이유로 읽을 수 있다 — 동시 요청 1에서는 이득이 깎이고, 요청이 늘면 덜 깎인다
 - 실제 라우팅은 이웃한 토큰끼리 expert가 겹치는 경향이 있어 위 표보다 덜 늘어난다. 표는 위쪽 한계에 가깝다
 
@@ -309,7 +327,7 @@ DeepSeek-V3 (`E` = 256, `k` = 8)
 
 ## 9. 정리 — 시뮬레이터가 세야 할 것
 
-1. **verify = decode의 새 토큰 축을 `K`로.** 가중치 읽기는 그대로, 연산 · KV 쓰기 · 로짓은 `K`배. attention의 캐시 읽기는 그대로
+1. **verify = decode의 새 토큰 축을 `K`로.** 가중치 읽기는 그대로, 연산 · KV 쓰기 · 로짓은 `K`배. attention은 연산이 `K·(S+K)`, 캐시 읽기는 커널의 재사용 정도에 따라 1번 ~ `K`번 — MLA는 연산에 묶이기 쉽다
 2. **target KV** — `K`줄을 쓰고 `a + 1`줄을 남긴다. 요청마다 `K`줄의 여유 자리가 필요하다
 3. **drafter의 캐시** — 종류마다 다르다. 크기(층 수 × 토큰당 크기), prefill 비용, 사이클마다의 쓰기를 따로 센다
 4. **배치** — 한 forward의 줄 수 `Σ K_r`이 연산 강도의 균형점에 다가가면 verify가 비싸진다. 버리는 줄(`γ + 1 − τ`)이 다른 요청의 몫을 먹는다
@@ -333,3 +351,5 @@ DeepSeek-V3 (`E` = 256, `k` = 8)
 - [DSpark](https://arxiv.org/abs/2607.05147) — ragged 검증, DeepSeek-V4에서 고친 커널, 서비스용 drafter의 창 128
 - [Gemma 4 Technical Report](https://arxiv.org/abs/2607.02770) — target KV를 읽는 drafter, prefill 없음
 - [DeepSeek-V3 config](https://huggingface.co/deepseek-ai/DeepSeek-V3) — routed expert 256 · 상위 8, MLA 캐시 576
+- [FlashAttention](https://arxiv.org/abs/2205.14135) — 타일 단위로 KV를 읽는 커널. 재사용 정도가 타일 크기에 달린 이유
+- [MagicDec](https://arxiv.org/abs/2408.11049) — 긴 컨텍스트에서는 큰 배치에도 speculative decoding이 이득

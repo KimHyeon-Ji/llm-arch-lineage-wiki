@@ -132,10 +132,12 @@ P(최종 = x) = q(x) · min(1, p(x)/q(x))   +   (1 − β) · r(x)
 
 | 변형 | 하는 일 | 어디서 |
 |---|---|---|
-| block verification | 앞에서부터 하나씩 끊지 않고, 모든 prefix를 함께 보고 가장 긴 채택 prefix를 고른다. 분포는 그대로 지킨다 | SGLang `--speculative-use-block-verification` (`topk = 1`에서) |
+| block verification | 토큰마다 끊지 않고 prefix 단위로 판정한다. 토큰별로는 앞 자리에서 거부됐을 경우에도 더 긴 prefix를 받을 수 있다. 보정 분포로 분포는 지킨다 | SGLang `--speculative-use-block-verification` (`topk = 1`에서) |
 | 트리 검증 | 한 자리에 후보가 여럿이다. 형제 후보를 차례로 시도한다 | SGLang의 EAGLE 경로 ([03](03-compute-and-kv.md#5-트리-검증)) |
 | 서로 다른 어휘 | drafter와 target의 토크나이저가 달라도 텍스트로 맞춰 검증한다 | vLLM `use_heterogeneous_vocab` (greedy만) |
+| typical acceptance | target의 확률이 임계값을 넘는 후보를 받는다. **분포를 그대로 지키지 않는다** — 품질을 조금 내주고 채택을 늘린다 | Medusa |
 
+- 그래서 "검증 규칙은 하나"가 아니다. 공통인 것은 **한 번에 검증하고 target의 분포를 기준으로 판정한다**는 원리이고, 채택 알고리즘과 구현 경로는 다르다. 이 자료의 계산은 기본형(토큰별 거부 샘플링, 일렬)을 기준으로 한다
 - "손실 없음"은 수학적으로 그렇다는 뜻이다. 실제 엔진에서는 배치 구성이 바뀌면 부동소수점 결과가 미세하게 달라져, logprob이 실행마다 조금씩 다를 수 있다 (vLLM 문서)
 
 </details>
@@ -196,10 +198,11 @@ target decode 한 스텝의 시간을 1로 두고, 사이클 하나의 시간을
 | `γ` = 4, `α` = 0.8, `c` = 0.05 | 3.36 | 0.20 | 1.05 | **2.7×** |
 | `γ` = 4, `α` = 0.6, `c` = 0.05 | 2.31 | 0.20 | 1.05 | 1.8× |
 | `γ` = 4, `α` = 0.3, `c` = 0.05 | 1.43 | 0.20 | 1.05 | 1.1× |
-| DeepSeek-V3 MTP, `γ` = 1, `α` = 0.85 ~ 0.90 | 1.85 ~ 1.90 | 0.044 | 약 1.0 | **약 1.8×** |
+| DeepSeek-V3 MTP, `γ` = 1, `α` = 0.85 ~ 0.90 — 큰 배치를 가정한 예시 | 1.85 ~ 1.90 | 약 0.02 | 약 1.0 | 약 1.8× |
 
-- 마지막 줄의 `c` = 0.044는 MTP 모듈 하나(본체와 같은 블록 + 출력 head)를 본체 61층 + head와 견준 값이다 ([04](04-simulator.md#6-개략-검산)). DeepSeek-V3 기술 보고서는 두 번째 토큰의 채택률 85 ~ 90%, 속도 1.8배를 보고했다
-- `T_verify`를 1로 둔 것은 "K줄로 늘어도 읽는 양이 그대로"라는 가정이다. MoE 모델에서 배치가 작으면 이 가정이 깨진다 ([03](03-compute-and-kv.md#8-모델-구조에-따라-깨지는-가정))
+- 마지막 줄은 **가정 아래의 예시 계산**이다. 배치가 커서 target과 MTP 모듈이 모두 거의 모든 expert를 이미 읽는다고 두면, `c`는 MTP 블록 하나 + 출력 head를 본체 61층 + head와 견준 약 0.02이고, 검증 토큰이 늘어도 읽는 양이 그대로라 `T_verify` ≈ 1이다 ([04](04-simulator.md#6-개략-검산))
+- DeepSeek-V3 기술 보고서는 두 번째 토큰의 채택률 85 ~ 90%, 속도 1.8배를 보고했다. 측정 조건은 공개되지 않았다 — 위 계산과 값이 비슷하다는 것이 그 가정이 맞다는 근거는 아니다
+- 배치 1에서는 다르다. MoE는 검증 토큰마다 다른 expert를 불러 읽는 양이 늘고, 같은 계산이 약 1.2배가 된다 ([03](03-compute-and-kv.md#8-모델-구조에-따라-깨지는-가정))
 
 **`γ`를 하나 늘릴지 정하는 기준**
 
@@ -223,4 +226,5 @@ target decode 한 스텝의 시간을 1로 두고, 사이클 하나의 시간을
 - [DeepSeek-V3 Technical Report](https://arxiv.org/abs/2412.19437) 5.4.3절 — MTP 두 번째 토큰 채택률 85 ~ 90%, 1.8배
 - [vLLM — Speculative Decoding](https://docs.vllm.ai/en/latest/features/speculative_decoding/) — 손실 없음의 범위, `use_heterogeneous_vocab`
 - [SGLang — Speculative Decoding](https://docs.sglang.io/docs/advanced_features/speculative_decoding) — block verification
+- [Medusa](https://arxiv.org/abs/2401.10774) — typical acceptance
 - [vLLM 블로그 — Exploring Speculative Decoding in vLLM on AMD GPUs (2026-08)](https://vllm.ai/blog/2026-08-23-speculative-decoding-amd-gpus) — MAL과 acceptance rate 보고 방식

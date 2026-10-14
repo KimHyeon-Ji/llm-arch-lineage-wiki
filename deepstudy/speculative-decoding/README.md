@@ -19,11 +19,13 @@
 
 **1) 표준이 되는 것이 있나?**
 
-- **검증 쪽은 완전히 표준이다.** 초안을 target forward 한 번으로 확인하고, 거부 샘플링으로 출력 분포를 지킨다. 모든 엔진이 같은 규칙을 쓴다. 서빙 엔진의 기본은 **일렬(chain) 검증**으로 굳어지는 중이다 — vLLM의 기본 경로는 일렬이고, SGLang의 새 기본 엔진(Spec V2)도 일렬(`topk = 1`)만 받는다
-- **drafter는 하나로 정해지지 않았다.** 대신 "**target의 hidden state를 받아 쓰는 얇은 drafter**"라는 부류가 표준이 됐고, 그 안에서 셋이 공존한다
-  - **모델에 들어 있는 MTP** — 있으면 일단 이것을 쓴다. 추가 비용이 없다 (DeepSeek · Qwen3.5/3.6 · GLM · ERNIE · Nemotron 3 · MiMo, Gemma 4는 별도 체크포인트)
+- **검증의 원리는 공통이다.** 초안을 target forward 한 번으로 확인하고, 출력 분포를 target 단독 샘플링과 같게 지킨다. 다만 채택 알고리즘은 몇 갈래다 — 토큰별 거부 샘플링(기본형), block verification, 트리의 다중 후보. Medusa의 typical acceptance처럼 분포 일치를 포기하고 속도를 사는 방식도 있다
+- 서빙 엔진의 기본은 **일렬(chain) 검증 + 토큰별 거부 샘플링**으로 굳어지는 중이다 — vLLM의 기본 경로는 일렬이고, SGLang의 새 기본 엔진(Spec V2)도 일렬(`topk = 1`)만 받는다
+- **drafter는 하나로 정해지지 않았다.** 대신 "**target의 hidden state를 받아 쓰는 얇은 drafter**"라는 부류가 주류가 됐고, 그 안에서 셋이 공존한다
+  - **모델에 들어 있는 MTP** — 있으면 일단 이것을 쓴다. 별도 drafter를 학습할 필요가 없다. 추론에서는 MTP 블록 · head 연산, 가중치 메모리, drafter KV가 든다 (DeepSeek · Qwen3.5/3.6 · GLM · ERNIE · Nemotron 3 · MiMo, Gemma 4는 별도 체크포인트)
   - **EAGLE-3** — 사후 학습 drafter의 기존 표준. 공개 체크포인트가 가장 넓게 깔려 있다
-  - **DFlash 계열 (DFlash → DSpark → DFlash 2)** — 2026년에 가장 빠르게 퍼진 쪽. 같은 target에서 EAGLE-3와 내장 MTP보다 빠르다는 보고가 이어지고, DeepSeek는 자체 서비스의 MTP를 DSpark로 바꿨다
+  - **DFlash 계열 (DFlash → DSpark → DFlash 2)** — 2026년에 엔진 지원과 공개 체크포인트가 가장 빠르게 늘어난 쪽. 공개된 실험에서는 같은 target의 EAGLE-3와 내장 MTP보다 빨랐고, DeepSeek는 자체 서비스의 MTP를 DSpark로 바꿨다
+- 근거는 엔진 지원 · 공개 체크포인트 · 공개 측정이다. 실제 서비스에서의 사용 비중을 보여 주는 자료는 없다
 
 **2) draft/target 구도와 MTP 모듈, 무엇이 대세인가?**
 
@@ -36,7 +38,7 @@
 
 **3) 연산과 KV cache는?** — [03](03-compute-and-kv.md)에서 그림으로 따라간다. 요점만
 
-- verify는 decode와 같은 forward이고 **새 토큰 축만 1 → K**가 된다. 가중치는 한 번 읽고, 연산과 KV 쓰기가 K배다
+- verify는 decode와 같은 forward이고 **새 토큰 축만 1 → K**가 된다. 가중치는 한 번 읽고, 연산과 KV 쓰기가 K배다. attention 연산은 `K·S`에 비례하고, 캐시를 몇 번 읽는지는 커널의 재사용 정도가 정한다
 - target KV에 K줄을 쓰고 **맞은 만큼(a + 1줄)만 남긴다.** 롤백은 길이 값을 되돌리거나 자리를 반납하는 것이다
 - drafter도 컨텍스트를 읽어야 한다. **어디서 읽느냐가 drafter마다 다르다** — 자기 KV(1층 · 여러 층) / target의 KV / 없음
 - MoE · 희소 attention · 선형 attention 혼합 모델에서는 "가중치는 한 번만 읽는다"와 "길이만 되돌리면 된다"가 **깨진다**

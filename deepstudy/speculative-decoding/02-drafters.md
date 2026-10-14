@@ -1,6 +1,6 @@
 # 02. drafter의 지형 — 누가 초안을 만드나
 
-> 검증 규칙은 모두 같다. 갈리는 것은 **초안을 만드는 쪽**이다.
+> 한 번에 검증하고 target의 분포를 지킨다는 원리는 공통이다. 크게 갈리는 것은 **초안을 만드는 쪽**이다.
 > 이 페이지는 지금 실제로 쓰이는 drafter의 구조를 보고, 무엇이 표준이고 흐름이 어디로 가는지 정리한다.
 
 | 순서 | 내용 | |
@@ -50,7 +50,7 @@
 
 - **로컬 추론** — llama.cpp에서 같은 계열의 작은 모델을 draft로 쓰는 것이 흔하다
 - **엔진의 일반 경로** — vLLM `draft_model`, SGLang `STANDALONE`. vLLM은 어휘가 다른 draft도 받는다 (`use_heterogeneous_vocab`, greedy만)
-- **PARD** (2025) — 작은 LLM에 마스크 토큰을 넣어 **여러 개를 한 번에** 뽑도록 고친 것. 별도 모델 줄의 병렬판이다 (vLLM `parallel_drafting`)
+- **PARD** (2025, AMD) — 작은 LLM에 마스크 토큰을 넣어 **여러 개를 한 번에** 뽑도록 고친 것. 별도 모델 줄의 병렬판이다 (vLLM `parallel_drafting`). 초안은 DFlash처럼 한 번에 뽑지만, 컨텍스트는 **자기 KV를 자기 prefill로** 만든다 — target hidden을 받지 않는다
 
 ---
 
@@ -182,7 +182,7 @@ H_ctx = RMSNorm( W_c · [ H^(l1) ; H^(l2) ; … ; H^(l5) ] )      target 5개 �
 - `H_ctx`를 draft의 **모든 층**에서 각자의 K · V 투영으로 바꿔 캐시에 둔다. 블록의 자리들이 이것을 attention으로 읽는다
 - EAGLE-3는 같은 정보를 입력 한 곳에만 넣었다. DFlash는 **모든 층이 직접 참조**한다. 그래서 draft를 깊게 쌓을수록 잘 맞는다
 
-**학습** — 응답에서 anchor 자리를 무작위로 뽑아(시퀀스당 512개) 그 뒤를 마스킹하고 맞히게 한다. 손실 가중치 `w_k = exp(−(k−1)/γ)`로 **앞 자리를 무겁게** 본다 (블록 16이면 `γ` = 7). 앞이 틀리면 뒤는 어차피 버려지기 때문이다. 데이터는 target이 직접 생성한 응답 약 80만 개다.
+**학습** — 응답에서 anchor 자리를 무작위로 뽑아(시퀀스당 512개) 그 뒤를 마스킹하고 맞히게 한다. 손실 가중치 `w_k = exp(−(k−1)/λ)`로 **앞 자리를 무겁게** 본다 (블록 16이면 `λ` = 7. 논문은 이 감쇠 상수도 `γ`로 적지만, 여기서는 초안 수 `γ`와 헷갈리지 않게 `λ`로 쓴다). 앞이 틀리면 뒤는 어차피 버려지기 때문이다. 데이터는 target이 직접 생성한 응답 약 80만 개다.
 
 📌 보고된 수치 (DFlash 논문, Qwen3, temperature 0, 7개 벤치 평균)
 
@@ -266,12 +266,13 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다.
 
 ## 5. 모델 없는 방법 — n-gram · suffix
 
-| 방법 | 하는 일 | 엔진 |
-|---|---|---|
-| n-gram (prompt lookup) | 마지막 몇 토큰과 같은 구간을 프롬프트와 생성 결과에서 찾아, 그 뒤에 왔던 토큰을 초안으로 낸다 | vLLM `ngram` · `ngram_gpu`, SGLang `NGRAM` |
-| suffix decoding | 프롬프트와 **이전 요청들의 생성 결과**로 suffix tree를 만들어 찾는다 | vLLM `suffix` (Arctic Inference) |
+| 방법 | 하는 일 | 어디서 도나 | 엔진 |
+|---|---|---|---|
+| n-gram (prompt lookup) | 마지막 몇 토큰과 같은 구간을 프롬프트와 생성 결과에서 찾아, 그 뒤에 왔던 토큰을 초안으로 낸다 | vLLM `ngram`은 CPU, `ngram_gpu`는 **GPU** | vLLM `ngram` · `ngram_gpu`, SGLang `NGRAM` |
+| suffix decoding | 프롬프트와 **이전 요청들의 생성 결과**로 suffix tree를 만들어 찾는다 | 호스트(CPU)의 suffix tree | vLLM `suffix` (Arctic Inference) |
 
-- 초안 비용이 거의 없다. GPU 연산도 메모리도 쓰지 않는다
+- **모델 가중치가 없다.** 초안 비용은 CPU의 매칭 시간이거나(`ngram`, suffix), GPU 위의 작은 매칭 연산과 토큰 버퍼다(`ngram_gpu`). "GPU를 전혀 안 쓴다"는 아니다
+- 검증 비용은 다른 drafter와 같다. target이 `K`줄을 처리한다
 - 입력을 다시 베끼는 작업(코드 수정, RAG, 문서 편집)에서는 길게 맞고, 새 글을 쓰는 작업에서는 거의 안 맞는다
 - vLLM 문서는 이득이 작지만 **최대 부하에서 일을 늘리지 않는** 방법으로 소개한다. 큰 배치에서 모델 기반 drafter의 보조로 쓴다
 
@@ -297,7 +298,7 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다.
 
 ### 표준은 세 층으로 나눠 본다
 
-**① 검증 규칙 — 완전히 표준이다.** 01의 채택 규칙을 모든 엔진이 쓴다.
+**① 검증의 원리 — 공통이다.** 초안을 한 번에 검증하고 target의 분포를 기준으로 판정한다는 원리는 같다. 채택 알고리즘은 다르다 — 토큰별 거부 샘플링(기본형), block verification(SGLang 옵션), 트리의 다중 후보. Medusa의 typical acceptance처럼 분포 일치를 포기하고 채택을 늘리는 방식도 있다 ([01](01-principle.md#3-채택-규칙--왜-출력이-같은가)). 서빙 엔진의 기본 경로는 토큰별 거부 샘플링이다.
 
 **② 검증 모양 — 일렬로 모이는 중이다.**
 
@@ -311,9 +312,11 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다.
 
 | | 위치 | 근거 |
 |---|---|---|
-| **내장 MTP** | 모델이 들고 나오면 일단 쓰는 기본값 | 추가 학습 0, 엔진 1급 지원. DeepSeek의 서비스 기준선(MTP-1) |
+| **내장 MTP** | 모델이 들고 나오면 일단 쓰는 기본값 | 따로 학습할 것이 없다 (추론 비용은 든다). 엔진 1급 지원. DeepSeek의 서비스 기준선(MTP-1) |
 | **EAGLE-3** | MTP가 없는 모델의 사후 drafter 표준 | 체크포인트가 가장 넓다 (Llama · Qwen3 · gpt-oss · Gemma 4 · Kimi …). SGLang 문서의 권장 |
-| **DFlash 계열** | 성능의 최전선, 가장 빠르게 퍼지는 중 | z-lab 체크포인트 20개 이상, NVIDIA · LMSYS · vLLM의 지원과 측정, DeepSeek 서비스가 MTP-1에서 DSpark로 |
+| **DFlash 계열** | 공개된 측정에서의 최전선. 지원과 체크포인트가 가장 빠르게 늘었다 | z-lab 체크포인트 20개 이상, NVIDIA · LMSYS · vLLM의 지원과 측정, DeepSeek 서비스가 MTP-1에서 DSpark로 |
+
+- 이 표의 근거는 엔진 지원 · 공개 체크포인트 · 공개 측정이다. 실제 서비스에서 무엇이 얼마나 쓰이는지를 보여 주는 자료는 아니다
 
 ### 공개 비교 — 조건과 함께
 
@@ -328,8 +331,8 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다.
 | MTP-1 vs DSpark | DeepSeek-V4 서비스 | 사용자당 속도 **+57 ~ 85%** | DSpark 논문 |
 | 반례 | Qwen3-8B, AMD, vLLM | EAGLE-3는 MATH-500에서 **기준보다 느림** (최대 0.88×), DSpark 1.15 ~ 1.63× | vLLM 블로그 |
 
-- 같은 target 안에서는 대체로 **EAGLE-3 < 내장 MTP ≲ DFlash < DSpark ≲ DFlash 2** 순이다
-- 하지만 GPU · 엔진 · 체크포인트가 바뀌면 크기도 순서도 바뀐다. vLLM 블로그의 결론도 "하나를 고를 수 없다 — 대표 작업에서 처리량과 자리별 채택률로 고르라"다
+- 위 실험들에서는 같은 target 안에서 대체로 **EAGLE-3 < 내장 MTP ≲ DFlash < DSpark ≲ DFlash 2** 순으로 관찰됐다. 다섯을 같은 조건에서 함께 잰 실험은 없다 — 쌍마다 따로 잰 결과를 이어 붙인 순서다
+- GPU · 엔진 · 체크포인트가 바뀌면 크기도 순서도 바뀐다 (위의 반례). vLLM 블로그의 결론도 "하나를 고를 수 없다 — 대표 작업에서 처리량과 자리별 채택률로 고르라"다
 
 ---
 
@@ -355,8 +358,8 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다.
 
 | | |
 |---|---|
-| 강점 | 추가 작업이 없다. 본 학습 품질도 올린다. 모든 엔진이 1급으로 지원한다 |
-| 한계 | 층 하나 · 순차 — `γ`를 늘리기 어렵다. 모듈을 반복해 쓰면 뒤 자리가 약하다 |
+| 강점 | 따로 학습할 것이 없다. 본 학습 품질도 올린다. 모든 엔진이 1급으로 지원한다 |
+| 한계 | 층 하나 · 순차 — `γ`를 늘리기 어렵다. 모듈을 반복해 쓰면 뒤 자리가 약하다. 추론 때는 블록 · head 연산, 가중치 메모리(DeepSeek-V3는 14B), drafter KV가 든다 |
 | 자리 | **모델이 주는 기본값.** 더 빠르게 하려면 병렬 drafter로 간다 — DeepSeek 자신이 그렇게 했다 |
 
 > 💡 **"draft 모델이냐 MTP냐"는 이제 맞는 질문이 아니다.** 지금 쓰이는 drafter는 거의 전부 target의 hidden을 받는 얇은 모듈이고, 갈리는 것은 **언제 학습했나 · 순차냐 병렬이냐 · target 정보를 어디에 넣나** 세 가지다.
@@ -370,13 +373,14 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다.
 - [Medusa](https://arxiv.org/abs/2401.10774) · [EAGLE](https://arxiv.org/abs/2401.15077) · [EAGLE-2](https://arxiv.org/abs/2406.16858) · [EAGLE-3](https://arxiv.org/abs/2503.01840)
 - [DeepSeek-V3 Technical Report](https://arxiv.org/abs/2412.19437) 2.2절 · 5.4.3절 — MTP 모듈의 식, 손실 가중치, 채택률
 - [FastMTP](https://arxiv.org/abs/2509.18362) — MTP 층을 여러 스텝용으로 미세조정
+- [PARD](https://arxiv.org/abs/2504.18583) — 작은 draft 모델을 병렬 초안용으로 고친다
 - [DFlash](https://arxiv.org/abs/2602.06036) — 블록 diffusion drafter, KV 주입, Qwen3 결과와 동시 요청 수별 표
 - [DSpark](https://arxiv.org/abs/2607.05147) — 마르코프 head, confidence head, `Θ = τ · SPS(B)` 스케줄러, DeepSeek-V4 서비스 결과
 - [Gemma 4 Technical Report](https://arxiv.org/abs/2607.02770) 2.6절 — MTP drafter의 구조, target KV cross-attention
 - [H-Spec](https://arxiv.org/abs/2609.24197) — drafter 쪽 KV cache 없이 병렬 초안
 
 **구현 · 문서 · 측정**
-- [vLLM — Speculative Decoding](https://docs.vllm.ai/en/latest/features/speculative_decoding/) · [MTP](https://docs.vllm.ai/en/latest/features/speculative_decoding/mtp/) · [llm_base_proposer.py](https://github.com/vllm-project/vllm/blob/main/vllm/v1/spec_decode/llm_base_proposer.py)
+- [vLLM — Speculative Decoding](https://docs.vllm.ai/en/latest/features/speculative_decoding/) · [MTP](https://docs.vllm.ai/en/latest/features/speculative_decoding/mtp/) · [llm_base_proposer.py](https://github.com/vllm-project/vllm/blob/main/vllm/v1/spec_decode/llm_base_proposer.py) · [ngram_proposer_gpu.py](https://github.com/vllm-project/vllm/blob/main/vllm/v1/spec_decode/ngram_proposer_gpu.py)
 - [vLLM Speculators](https://github.com/vllm-project/speculators) · [Speculators — MTP](https://docs.vllm.ai/projects/speculators/en/latest/user_guide/algorithms/mtp/)
 - [SGLang — Speculative Decoding](https://docs.sglang.io/docs/advanced_features/speculative_decoding) · [LMSYS — DFlash and Spec V2 (2026-06)](https://www.lmsys.org/blog/2026-06-15-next-generation-speculative-decoding-dflash-v2/)
 - [z-lab/dflash](https://github.com/z-lab/dflash) · [Inco AI — DFlash 2](https://inco.ai/blog/dflash2/)

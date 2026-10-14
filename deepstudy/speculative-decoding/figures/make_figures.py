@@ -566,7 +566,7 @@ def fig_parallel():
 
 # ---------------------------------------------------------------- 9. verify의 모양
 def fig_verify_shapes():
-    f = Fig("09-verify-shapes", 1560, 640)
+    f = Fig("09-verify-shapes", 1560, 670)
     f.title(40, 44, "verify forward — decode에서 한 줄이던 것이 K줄이 된다")
     S, K = 12, 5
     cs, cg = 24, 3
@@ -606,9 +606,10 @@ def fig_verify_shapes():
     f.text(820 + (S + K) * (cs + cg) + 30, 330 + 58, "계단 모양", 15, "start", 700)
     f.text(820 + (S + K) * (cs + cg) + 30, 330 + 80, "j번째 줄은", 14, "start", color=MUTED)
     f.text(820 + (S + K) * (cs + cg) + 30, 330 + 100, "j번째까지만 본다", 14, "start", color=MUTED)
-    f.rect(40, 524, 1480, 96, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.rect(40, 524, 1480, 126, "#f6f5fd", "#d9d2f3", 10, 1.5)
     f.lines(64, 556, ["• 가중치 — 같은 행렬을 한 번 읽는다. 곱하는 줄만 K배다  (행렬 × 벡터가 행렬 × 행렬이 된다)",
-                      "• 캐시 — 같은 S줄을 한 번 읽어 K개 쿼리가 함께 쓴다.  새로 쓰는 줄은 1줄에서 K줄이 된다"], 16, 30)
+                      "• 캐시 — K개 쿼리가 같은 S줄을 읽는다. 커널이 쿼리 사이에서 재사용하면 한 번만 읽는다 (이상적인 경우).  연산은 K·(S+K)에 비례한다",
+                      "• 새로 쓰는 KV는 1줄에서 K줄이 된다"], 16, 30)
     return f
 
 
@@ -716,7 +717,7 @@ def fig_drafter_caches():
             ("EAGLE-3 · MTP 모듈", 16, "1층 분량의 KV", "target hidden을 받아 만든다"),
             ("Gemma 4 MTP", 0, "컨텍스트 캐시 없음", "target의 KV를 직접 읽는다"),
             ("DFlash · DSpark", 40, "draft 층 수만큼의 KV", "target hidden을 투영한 것"),
-            ("n-gram · suffix", -1, "캐시 없음", "토큰 열에서 문자열을 찾는다")]
+            ("n-gram · suffix", -1, "모델 캐시 없음", "토큰 열에서 문자열을 찾는다")]
     rows, rh, rg = 9, 20, 4
     for i, (name, dw, l1, l2) in enumerate(cols):
         x = 40 + i * 300
@@ -738,7 +739,7 @@ def fig_drafter_caches():
             f.text(dx + 40, 310, "읽기만 한다", 14, color=MUTED)
         else:
             f.box(dx - 16, 226, 110, 60, "n", "토큰 열", fs=15)
-            f.text(dx + 39, 310, "호스트 CPU", 14, color=MUTED)
+            f.text(dx + 39, 310, "CPU 또는 GPU", 14, color=MUTED)
         f.text(x + 142, 446, l1, 16, weight=700)
         f.text(x + 142, 472, l2, 14, color=MUTED)
     f.lines(40, 536, ["• 파란 막대의 폭 = 캐시를 두는 층 수 (개념적인 비율).  줄 수는 어느 쪽이든 컨텍스트 길이 S다",
