@@ -430,36 +430,58 @@ def fig_anatomy():
 
     cw, ch = 474, 330
 
+    def tw(t, size):
+        w = 0
+        for c in t:
+            o = ord(c)
+            if 0xAC00 <= o <= 0xD7A3:
+                w += size * 0.95
+            elif c == " ":
+                w += size * 0.3
+            elif c in "×·":
+                w += size * 0.62
+            elif c.isupper():
+                w += size * 0.64
+            elif c.isascii():
+                w += size * 0.56
+            else:
+                w += size * 0.9
+        return w
+
     def card(cx, cy, name, sub, flow, flow_col, draft, cap, mode, foot):
         f.rect(cx, cy, cw, ch, "#ffffff", "#dfe2ec", 14, 1.5)
         f.text(cx + 24, cy + 38, name, 20, "start", 700)
         f.text(cx + 24, cy + 62, sub, 14, "start", color=MUTED)
         # target — 모든 카드에서 같은 모양
-        f.rect(cx + 28, cy + 92, 112, 112, KINDS["t"][0], KINDS["t"][1], 16, 2.5)
-        f.text(cx + 84, cy + 154, "target", 17, weight=700)
-        # 받는 것
+        f.rect(cx + 28, cy + 92, 104, 112, KINDS["t"][0], KINDS["t"][1], 16, 2.5)
+        f.text(cx + 80, cy + 154, "target", 17, weight=700)
+        # 받는 것 — 화살표 한가운데에 라벨을 얹는다
+        ay = cy + 148
         if flow:
-            f.line(cx + 146, cy + 148, cx + 286, cy + 148, flow_col, 4, None, True)
-            w = 14 * len(flow) * 0.62 + 24
-            f.rect(cx + 216 - w / 2, cy + 118, w, 24, "#ffffff", flow_col, 12, 1.8)
-            f.text(cx + 216, cy + 135, flow, 13, weight=700, color=flow_col)
+            f.line(cx + 138, ay, cx + 300, ay, flow_col, 4, None, True)
+            w = tw(flow, 13) + 24
+            mid = cx + 214
+            f.rect(mid - w / 2, ay - 13, w, 26, "#ffffff", flow_col, 13, 2)
+            f.text(mid, ay + 5, flow, 13, weight=700, color=flow_col)
         # draft 모듈
-        dx, dy, dw, dh = cx + 296, cy + 92, 146, 112
+        dx, dy, dw, dh = cx + 308, cy + 92, 138, 112
         if draft == "llm":
             f.rect(dx, dy, dw, dh, KINDS["d"][0], KINDS["d"][1], 16, 2.5)
             for j in range(5):
                 f.rect(dx + 18, dy + 16 + j * 18, dw - 36, 10, "#ffffff", KINDS["d"][1], 3, 1.2)
+            bottom = dy + dh
         elif draft == "none":
             f.rect(dx, dy + 22, dw, dh - 44, "#f4f5f9", GRAY, 14, 2, "6 5")
             f.text(dx + dw / 2, dy + dh / 2 + 6, "문자열 매칭", 15, weight=700, color="#5d6377")
+            bottom = dy + dh - 22
         else:
-            n = draft
-            gap = 6
+            n, gap = draft, 6
             bh = min(30, (dh - (n - 1) * gap) / n)
             top = dy + (dh - (n * bh + (n - 1) * gap)) / 2
             for j in range(n):
                 f.rect(dx, top + j * (bh + gap), dw, bh, KINDS["d"][0], KINDS["d"][1], 7, 2.2)
-        f.text(dx + dw / 2, cy + 226, cap, 13, color=MUTED)
+            bottom = top + n * bh + (n - 1) * gap
+        f.text(dx + dw / 2, bottom + 22, cap, 13, color=MUTED)
         # 초안을 뽑는 방식
         y = cy + 252
         if mode == "seq":
@@ -467,16 +489,16 @@ def fig_anatomy():
                 f.rect(cx + 28 + i * 58, y, 38, 26, SOLID["d"], "none", 7)
                 if i < 3:
                     f.line(cx + 70 + i * 58, y + 13, cx + 82 + i * 58, y + 13, KINDS["d"][1], 2, None, True)
-            f.text(cx + 270, y + 19, "1개씩 · γ번 돈다", 15, "start", 700, KINDS["d"][1])
+            f.text(cx + 28 + 3 * 58 + 38 + 24, y + 19, "1개씩 · γ번 돈다", 15, "start", 700, KINDS["d"][1])
         elif mode == "par":
             f.rect(cx + 22, y - 6, 192, 38, "none", KINDS["d"][1], 10, 2)
             for i in range(4):
                 f.rect(cx + 30 + i * 46, y, 38, 26, SOLID["d"], "none", 7)
-            f.text(cx + 270, y + 19, "한 번에 γ개 · 1번", 15, "start", 700, KINDS["d"][1])
+            f.text(cx + 214 + 24, y + 19, "한 번에 γ개 · 1번", 15, "start", 700, KINDS["d"][1])
         else:
             for i in range(4):
                 f.rect(cx + 28 + i * 46, y, 38, 26, "#c9cddb", "none", 7)
-            f.text(cx + 270, y + 19, "찾아서 베낀다", 15, "start", 700, "#5d6377")
+            f.text(cx + 28 + 3 * 46 + 38 + 24, y + 19, "찾아서 베낀다", 15, "start", 700, "#5d6377")
         f.text(cx + 24, cy + 312, foot, 14, "start")
 
     xs, ys = [40, 543, 1046], [86, 436]
