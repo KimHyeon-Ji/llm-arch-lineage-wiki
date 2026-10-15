@@ -1208,8 +1208,8 @@ def fig_mla_tensor():
 
 
 # ---------------------------------------------------------------- 26. 줄이는 축
-def fig_axes():
-    f = Fig("26-axes", 1560, 600)
+def fig_axes(name="26-axes", with_v4=True):
+    f = Fig(name, 1560, 600)
     f.title(40, 44, "KV cache를 표로 보면 — 토큰 수 × 토큰당 차원")
     top, RH, NR = 200, 20, 13
     H = RH * NR
@@ -1259,7 +1259,7 @@ def fig_axes():
     f.line(540, 96, 540, 560, "#e3e5ee", 2, "6 6")
 
     # ---- MLA
-    cx = 700
+    cx = 700 if with_v4 else 790
     head(cx, "MLA", "토큰당 차원을 줄인다", "#b87410")
     ghost(cx - 100, 200)
     table(cx - 100, top, 40, NR, "c")
@@ -1267,7 +1267,7 @@ def fig_axes():
     foot(cx, "32,768 → 576", "S 그대로")
 
     # ---- DSA
-    cx = 1000
+    cx = 1000 if with_v4 else 1230
     head(cx, "DSA", "읽는 토큰만 고른다", "#3b7dd8")
     table(cx - 50, top, 40, NR, "c")
     for r in (1, 4, 5, 8, 11):
@@ -1277,21 +1277,27 @@ def fig_axes():
     foot(cx, "576 + 색인 128", "S 그대로 · 읽기 2,048")
 
     # ---- CSA · HCA
-    cx = 1320
-    head(cx, "CSA · HCA", "토큰 수 쪽을 줄인다", PURPLE)
-    for dx, rows, nm, cap in ((-110, 3, "CSA", "S / 4"), (50, 0, "HCA", "S / 128")):
-        ghost(cx + dx, 40)
-        if rows:
-            table(cx + dx, top, 40, rows, "c", True)
-        else:
-            f.rect(cx + dx, top, 40, 7, SOLID["c"], KINDS["c"][1], 3, 1.8)
-        f.arrow(cx + dx + 20, top + H - 8, cx + dx + 20, top + rows * RH + 22, color=RED)
-        f.text(cx + dx + 52, top + 22, nm, 18, "start", 700)
-        f.text(cx + dx + 52, top + 46, cap, 15, "start", color=MUTED, mono=True)
-    foot(cx, "512", "S → S/4 · S/128")
+    if with_v4:
+        cx = 1320
+        head(cx, "CSA · HCA", "토큰 수 쪽을 줄인다", PURPLE)
+        for dx, rows, nm, cap in ((-110, 3, "CSA", "S / 4"), (50, 0, "HCA", "S / 128")):
+            ghost(cx + dx, 40)
+            if rows:
+                table(cx + dx, top, 40, rows, "c", True)
+            else:
+                f.rect(cx + dx, top, 40, 7, SOLID["c"], KINDS["c"][1], 3, 1.8)
+            f.arrow(cx + dx + 20, top + H - 8, cx + dx + 20, top + rows * RH + 22, color=RED)
+            f.text(cx + dx + 52, top + 22, nm, 18, "start", 700)
+            f.text(cx + dx + 52, top + 46, cap, 15, "start", color=MUTED, mono=True)
+        foot(cx, "512", "S → S/4 · S/128")
 
     f.text(1520, 584, "그림의 비율은 실제와 다르다", 13, "end", color=MUTED)
     return f
+
+
+def fig_axes_intro():
+    """4장 도입용. CSA · HCA 칸을 뺀다 — 아직 나오지 않은 기법이다."""
+    return fig_axes("26b-axes-intro", with_v4=False)
 
 
 # ---------------------------------------------------------------- 27. 묶는 방법
@@ -1923,12 +1929,167 @@ def fig_mla_q_compression():
     return f
 
 
+# ---------------------------------------------------------------- 37 ~ 39. 컨텍스트 길이에 따른 KV cache
+# 요청 하나, 전 층, 컨텍스트 S 토큰. 정밀도는 5장 표의 기준을 따른다
+#   MHA(가상)   DeepSeek-V3의 헤드 구성(128 × 128) · 61층 · BF16
+#   GQA         Qwen3-235B-A22B: 94층 · KV 헤드 4 × 128 · BF16
+#   MLA         DeepSeek-V3: 61층 · latent 512 + RoPE 64 · BF16
+#   DSA         DeepSeek-V3.2: MLA + 색인 키 128 (FP8)
+#   CSA · HCA   DeepSeek-V4-Pro (config): CSA 30층 · HCA 31층 · 엔트리 576 B (FP8 448 + BF16 64) · CSA 색인 키 FP4 64 B
+#               모든 층에 압축하지 않은 최근 128토큰 (같은 576 B) · 압축 대기 버퍼는 뺐다
+#   SWA 혼합    gpt-oss-120b (config): 전부 읽는 층 18 · 최근 128만 남기는 층 18 · KV 헤드 8 × 64 · BF16
+#   선형 혼합   Qwen3.5-397B-A17B (config): full attention 15층 (KV 헤드 2 × 256, BF16)
+#               + Gated DeltaNet 45층의 고정 상태 (값 헤드 64 × 128 × 128, FP32 — mamba_ssm_dtype) + conv 상태 (BF16)
+KV_MODELS = {
+    "mha": lambda S: S * 2 * 128 * 128 * 2 * 61,
+    "gqa": lambda S: S * 2 * 4 * 128 * 2 * 94,
+    "mla": lambda S: S * 576 * 2 * 61,
+    "dsa": lambda S: S * (1152 + 128) * 61,
+    "v4": lambda S: 30 * (S // 4) * (576 + 64) + 31 * (S // 128) * 576 + 61 * min(S, 128) * 576,
+    "oss": lambda S: 18 * S * 2048 + 18 * min(S, 128) * 2048,
+    "q35": lambda S: 15 * S * 2048 + 45 * 64 * 128 * 128 * 4 + 45 * 3 * (16 * 128 + 16 * 128 + 64 * 128) * 2,
+}
+KV_READ = {  # 토큰 하나를 만들 때 읽는 양 (재사용 · 커널 효율은 넣지 않은 하한)
+    "mha": KV_MODELS["mha"],
+    "mla": KV_MODELS["mla"],
+    "dsa": lambda S: 61 * (S * 128 + min(S, 2048) * 1152),
+    "v4": lambda S: 30 * ((S // 4) * 64 + min(S // 4, 1024) * 576) + 31 * (S // 128) * 576 + 61 * min(S, 128) * 576,
+}
+GROWTH = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#6250d6"]   # 차트 계열 — 이 순서로 쓴다
+
+
+def _bytes(b):
+    for unit, v in (("TB", 1e12), ("GB", 1e9), ("MB", 1e6)):
+        if b >= v:
+            x = b / v
+            return f"{x:.1f} {unit}" if x < 100 else f"{x:.0f} {unit}"
+    return f"{b / 1e3:.0f} KB"
+
+
+def _logchart(f, series, e_lo, e_hi, ylabel, gpu=True, note=None):
+    """x: 1K ~ 1M (log2), y: 10^e_lo ~ 10^e_hi 바이트 (log10).
+    series = (이름, 함수, 색, 점선, 라벨 dy[, 공개 설정의 최대 길이]) — 최대 길이 뒤는 점선(메모리 식 외삽)"""
+    import math
+    x0, x1, y0, y1 = 130, 1000, 96, 520
+
+    def X(S):
+        return x0 + (math.log2(S) - 10) / 10 * (x1 - x0)
+
+    def Y(b):
+        return y1 - (math.log10(b) - e_lo) / (e_hi - e_lo) * (y1 - y0)
+
+    names = {6: "1 MB", 7: "10 MB", 8: "100 MB", 9: "1 GB", 10: "10 GB", 11: "100 GB", 12: "1 TB", 13: "10 TB"}
+    for e in range(e_lo, e_hi + 1):
+        f.line(x0, Y(10 ** e), x1, Y(10 ** e), "#e6e8f1", 1)
+        f.text(x0 - 10, Y(10 ** e) + 5, names[e], 13, "end", color=MUTED, mono=True)
+    f.line(x0, y1, x1, y1, "#8b90a3", 1.5)
+    for lg, lab in ((10, "1K"), (12, "4K"), (14, "16K"), (16, "64K"), (18, "256K"), (20, "1M")):
+        S = 2 ** lg
+        f.line(X(S), y1, X(S), y1 + 5, "#8b90a3", 1.5)
+        f.text(X(S), y1 + 24, lab, 14, color=MUTED, mono=True)
+    f.line(X(2 ** 17), y0, X(2 ** 17), y1, "#c9cddb", 1.2, "3 4")
+    f.text(X(2 ** 17), y0 - 8, "128K", 13, color=MUTED, mono=True)
+    f.text((x0 + x1) / 2, y1 + 52, "컨텍스트 길이 (토큰, 로그)", 15, color=MUTED)
+    f.text(x1, y1 + 52, "1K = 1,024 · 1M = 1,048,576 · 바이트는 1,000 단위", 12, "end", color=MUTED)
+    # 실선 · 점선 범례
+    f.line(560, y0 - 30, 600, y0 - 30, INK, 2.6)
+    f.text(608, y0 - 25, "공개 설정의 최대 길이까지", 13, "start", color=MUTED)
+    f.line(790, y0 - 30, 830, y0 - 30, INK, 2.6, "7 5")
+    f.text(838, y0 - 25, "그 뒤는 메모리 식으로 늘린 값", 13, "start", color=MUTED)
+    f.text(x0 - 60, y0 - 26, ylabel, 15, "start", color=MUTED)
+    if gpu:
+        f.line(x0, Y(80e9), x1, Y(80e9), "#343a4d", 1.5, "8 5")
+        f.text(x0 + 8, Y(80e9) - 8, "H100 한 장 80 GB — KV에만 쓸 때 (가중치 제외)", 13, "start", 700)
+    Ss = [int(round(2 ** (10 + i / 16))) for i in range(161)]
+    for sr in series:
+        name, fn, col, dash, dy = sr[:5]
+        smax = sr[5] if len(sr) > 5 else None
+
+        def line(pts_s, dashed):
+            pts = " ".join(f"{X(S):.1f},{Y(fn(S)):.1f}" for S in pts_s)
+            d = ' stroke-dasharray="7 5"' if dashed else ""
+            f.raw(f'<polyline points="{pts}" fill="none" stroke="{col}" stroke-width="2.6" stroke-linejoin="round"{d}/>')
+
+        if dash or not smax or smax >= 2 ** 20:
+            line(Ss, dash)
+        else:
+            line([S for S in Ss if S < smax] + [smax], False)
+            line([smax] + [S for S in Ss if S > smax], True)
+            f.raw(f'<circle cx="{X(smax):.1f}" cy="{Y(fn(smax)):.1f}" r="4" fill="#ffffff" stroke="{col}" stroke-width="2"/>')
+        f.raw(f'<circle cx="{X(2 ** 20):.1f}" cy="{Y(fn(2 ** 20)):.1f}" r="5" fill="{col}" stroke="#fff" stroke-width="2"/>')
+        f.text(x1 + 12, Y(fn(2 ** 20)) + 5 + dy, f"{name}  {_bytes(fn(2 ** 20))}", 14, "start", 700)
+    if note:
+        nx, ny, rows = note
+        f.rect(nx - 20, ny - 34, 1540 - nx, 34 + len(rows) * 26 + 14, "#f6f5fd", "#d9d2f3", 10, 1.5)
+        for i, (t, w) in enumerate(rows):
+            f.text(nx, ny + i * 26, t, 14 if w < 700 else 15, "start", w, INK if w == 700 else MUTED)
+    return X, Y
+
+
+def fig_kv_growth_family():
+    f = Fig("37-kv-growth-family", 1560, 660)
+    f.title(40, 44, "컨텍스트가 길어질 때 KV cache — 같은 DeepSeek 계열에서 (요청 하나, 전 층)")
+    M = KV_MODELS
+    _logchart(f, [("MHA (가상)", M["mha"], "#8b90a3", True, 0), ("DSA · V3.2", M["dsa"], GROWTH[1], False, -9, 163840),
+                  ("MLA · V3", M["mla"], GROWTH[0], False, 11, 163840), ("CSA · HCA · V4-Pro", M["v4"], GROWTH[2], False, 0)],
+              6, 13, "저장량 (로그)",
+              note=(1230, 120, [("128K 요청 하나", 700), ("MHA (가상)  524 GB", 400), ("MLA  9.2 GB", 400),
+                                ("DSA  10.2 GB", 400), ("CSA · HCA  0.65 GB", 400), ("", 400),
+                                ("토큰 하나당 (전 층)", 700), ("MHA (가상)  4.0 MB", 400), ("MLA  70 KB", 400),
+                                ("DSA  78 KB", 400), ("CSA · HCA  4.9 KB", 400), ("", 400),
+                                ("정밀도", 700), ("MHA · MLA · DSA  BF16", 400), ("V4  FP8 · BF16 혼합", 400)]))
+    f.rect(40, 586, 1480, 56, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 620, "긴 구간에서는 네 선이 평행하다 — 저장량은 길이에 비례하고, 기법이 바꾼 것은 높이(토큰 하나당 크기)다.", 17, "start", 700)
+    return f
+
+
+def fig_kv_growth_models():
+    f = Fig("38-kv-growth-models", 1560, 660)
+    f.title(40, 44, "컨텍스트가 길어질 때 KV cache — 구조가 다른 모델들 (요청 하나, 전 층)")
+    M = KV_MODELS
+    X, Y = _logchart(f, [("GQA · Qwen3-235B", M["gqa"], GROWTH[3], False, 0, 40960),
+                         ("MLA · DeepSeek-V3", M["mla"], GROWTH[0], False, -8, 163840),
+                         ("SWA 혼합 · gpt-oss-120b", M["oss"], GROWTH[4], False, 6, 131072),
+                         ("선형 혼합 · Qwen3.5-397B", M["q35"], GROWTH[5], False, 24, 262144),
+                         ("CSA · HCA · V4-Pro", M["v4"], GROWTH[2], False, 0)],
+                     6, 12, "요청별 캐시 · 상태 메모리 (로그)",
+                     note=(1290, 120, [("1K 요청 하나", 700), ("Qwen3.5  223 MB", 400), ("GQA  197 MB", 400),
+                                       ("MLA  72 MB", 400), ("gpt-oss  42 MB", 400), ("V4-Pro  9.6 MB", 400), ("", 400),
+                                       ("길이와 무관한 고정 부분", 700), ("Qwen3.5  약 190 MB", 400),
+                                       ("gpt-oss · V4-Pro  약 5 MB", 400)]))
+    f.text(X(2 ** 10) + 20, Y(4e9), "Qwen3.5의 고정 크기 상태 (약 190 MB)", 13, "start", 700, GROWTH[5])
+    f.text(X(2 ** 10) + 20, Y(4e9) + 20, "길이와 무관하게 처음부터 있다", 13, "start", color=MUTED)
+    f.arrow(X(2 ** 10) + 60, Y(4e9) + 28, X(2 ** 10.4), Y(M["q35"](int(2 ** 10.4))) - 6, color=GROWTH[5])
+    f.rect(40, 586, 1480, 56, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 620, "고정 상태가 있으면 짧을 때 평평하다. 길어지면 '토큰마다 KV를 남기는 층'의 수가 선의 높이를 정한다.", 17, "start", 700)
+    return f
+
+
+def fig_kv_read_growth():
+    f = Fig("39-kv-read-growth", 1560, 660)
+    f.title(40, 44, "컨텍스트가 길어질 때 토큰 하나를 만들며 읽는 KV — DeepSeek 계열 (전 층)")
+    R = KV_READ
+    X, Y = _logchart(f, [("MLA · V3", R["mla"], GROWTH[0], False, 0, 163840),
+                         ("DSA · V3.2", R["dsa"], GROWTH[1], False, 0, 163840), ("CSA · HCA · V4-Pro", R["v4"], GROWTH[2], False, 0)],
+                     6, 11, "토큰 하나를 만들 때 읽는 양 (로그)", gpu=False,
+                     note=(1230, 120, [("1M에서 읽기 시간으로 환산하면", 700), ("단일 H100 SXM 최대 대역폭 3.35 TB/s", 400),
+                                       ("— 실제 생성 시간이 아니다", 400), ("", 400),
+                                       ("MLA  73.7 GB → 22 ms", 400), ("DSA  8.3 GB → 2.5 ms", 400),
+                                       ("CSA · HCA  0.67 GB → 0.2 ms", 400), ("", 400),
+                                       ("저장은 DSA가 MLA보다 크지만,", 400), ("긴 구간의 읽기는 약 1/9이다.", 400)]))
+    f.text(X(2 ** 11) + 10, Y(R["dsa"](2 ** 11)) + 30, "2,048토큰부터 고른 KV 읽기는 멈추고, 색인 키만 늘어난다", 13, "start", 700, GROWTH[1])
+    f.rect(40, 586, 1480, 56, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 620, "고르는 기법은 선을 아래로 내린다 — 긴 구간에서 다시 평행해지지만, 높이가 MLA의 약 1/9이다.", 17, "start", 700)
+    return f
+
+
 FIGS = [fig_decode, fig_heads, fig_mla_cache, fig_mla_absorb, fig_patterns, fig_dsa, fig_v4, fig_v4_layers, fig_qsa,
         fig_cache_size, fig_knobs, fig_lineage, fig_mha, fig_mla_shape, fig_swa, fig_store_read, fig_dsa_shape,
         fig_dsa_structure, fig_journey, fig_amortize, fig_mha_mqa, fig_mla_flow, fig_kv_cache, fig_kv_bars, fig_mla_tensor,
         fig_axes, fig_compress, fig_v4_tensor, fig_qsa_read, fig_qsa_tensor, fig_qsa_layers, fig_knobs_read,
         fig_dsa_indexer_ops, fig_v4_two_caches, fig_v4_cache_write, fig_qsa_indexer_ops,
-        fig_mla_q_compression]
+        fig_mla_q_compression, fig_kv_growth_family, fig_kv_growth_models, fig_kv_read_growth,
+        fig_axes_intro]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
