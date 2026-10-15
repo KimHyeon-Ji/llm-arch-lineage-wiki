@@ -412,6 +412,146 @@ def fig_cycle_tokens():
     return f
 
 
+# ---------------------------------------------------------------- 22. 갈래별 target과 draft 모듈
+def fig_anatomy():
+    f = Fig("22-drafter-anatomy", 1560, 1090)
+    f.title(40, 44, "갈래별로 나란히 — target 모델과 draft 모듈은 어떻게 생겼고, 초안을 어떻게 뽑나")
+    AMB = KINDS["a"][1]
+    pw, ph = 480, 430
+
+    def tlabel(x, y, w, h, kind, rows, fs=13, bold=False):
+        f.rect(x, y, w, h, KINDS[kind][0], KINDS[kind][1], 6, 1.8)
+        n = len(rows)
+        for i, r in enumerate(rows):
+            f.text(x + w / 2, y + h / 2 + (i - (n - 1) / 2) * (fs + 5) + fs * 0.35, r, fs, weight=700 if bold and i == 0 else 400)
+
+    def panel(px, py, name, sub, kind):
+        f.rect(px, py, pw, ph, "#fafbfd", "#d3d6e2", 12, 1.5)
+        f.text(px + 20, py + 32, name, 18, "start", 700)
+        f.text(px + 20, py + 54, sub, 13, "start", color=MUTED)
+        # target
+        tx, ty, tw, th = px + 22, py + 76, 104, 236
+        f.rect(tx, ty, tw, th, KINDS["t"][0], KINDS["t"][1], 8, 2)
+        f.text(tx + tw / 2, ty + 22, "target", 15, weight=700)
+        stripes = []
+        for j in range(8):
+            yy = ty + 36 + j * 24
+            f.rect(tx + 10, yy, tw - 20, 15, "#ffffff", KINDS["t"][1], 3, 1.1)
+            stripes.append(yy + 7.5)
+        f.text(tx + tw / 2, ty + th + 18, "N층 · 위가 마지막 층", 12, color=MUTED)
+        mx, mw = px + 240, 216
+        return tx, tw, stripes, mx, mw
+
+    def loop(px, py, txt):
+        x = px + pw - 14
+        f.curve(x - 6, py + 300, x + 6, py + 300, x + 6, py + 100, x - 6, py + 100, dash="5 4")
+
+    def foot(px, py, rows):
+        for i, (k, v) in enumerate(rows):
+            f.text(px + 20, py + 360 + i * 24, k, 13, "start", 700, MUTED)
+            f.text(px + 128, py + 360 + i * 24, v, 14, "start")
+
+    P = [(40, 86), (540, 86), (1040, 86), (40, 538), (540, 538), (1040, 538)]
+
+    # ① 별도 draft 모델
+    px, py = P[0]
+    tx, tw, st, mx, mw = panel(px, py, "별도 draft 모델", "llama.cpp · vLLM draft_model · SGLang STANDALONE", "n")
+    f.arrow(tx + tw + 4, st[0], mx - 4, py + 96, color="#8b90a3")
+    f.text(tx + tw + 60, st[0] + 26, "토큰 ID만", 12, color=MUTED)
+    tlabel(mx, py + 78, mw, 36, "n", ["자기 임베딩"])
+    f.rect(mx, py + 128, mw, 132, KINDS["d"][0], KINDS["d"][1], 6, 1.8)
+    for j in range(6):
+        f.rect(mx + 14, py + 150 + j * 17, mw - 28, 11, "#ffffff", KINDS["d"][1], 2, 1)
+    f.text(mx + mw / 2, py + 144, "작은 LLM의 층 전부", 13, weight=700)
+    tlabel(mx, py + 272, mw, 34, "d", ["자기 head"])
+    f.text(mx + mw / 2, py + 330, "→ 토큰 1개 · γ번 반복", 14, weight=700)
+    loop(px, py, "")
+    foot(px, py, [("target이 주는 것", "없음 (토큰만)"), ("초안", "순차 — 한 번에 1토큰, γ번"),
+                  ("draft 비용", "작은 LLM decode × γ + 자기 prefill")])
+
+    # ② EAGLE-3
+    px, py = P[1]
+    tx, tw, st, mx, mw = panel(px, py, "EAGLE-3", "사후 학습 · target은 얼려 둔다", "n")
+    for j in (1, 4, 6):
+        f.arrow(tx + tw - 6, st[j], px + 142, py + 196, color=AMB)
+    tlabel(px + 142, py + 178, 84, 40, "a", ["세 층 섞기", "3d → d"], 12)
+    tlabel(mx, py + 78, mw, 36, "n", ["토큰 임베딩 (target 표 공유)"])
+    f.arrow(px + 228, py + 198, mx - 4, py + 190, color=AMB)
+    tlabel(mx, py + 128, mw, 132, "d", ["decoder 층 1개", "Q · K · V가 [hidden ; 임베딩]", "2d를 바로 받는다"], 13, True)
+    tlabel(mx, py + 272, mw, 34, "d", ["자기 head — 어휘 3.2만"])
+    f.text(mx + mw / 2, py + 330, "→ 토큰 1개 · γ번 반복", 14, weight=700)
+    loop(px, py, "")
+    foot(px, py, [("target이 주는 것", "세 층의 hidden"), ("초안", "순차 — γ번 (2번째부터 자기 hidden)"),
+                  ("draft 비용", "(1층 + 작은 head) × γ")])
+
+    # ③ MTP (DeepSeek식)
+    px, py = P[2]
+    tx, tw, st, mx, mw = panel(px, py, "MTP 모듈 — DeepSeek식", "본 학습 때 함께 · DeepSeek · Qwen3.5 · GLM", "n")
+    f.arrow(tx + tw - 6, st[0], mx - 4, py + 160, color=AMB)
+    f.text(px + 184, st[0] - 8, "마지막 층 hidden", 12, weight=700, color=AMB)
+    tlabel(mx, py + 78, mw, 36, "n", ["토큰 임베딩 (target 표 공유)"])
+    tlabel(mx, py + 128, mw, 40, "d", ["RMSNorm × 2 · 투영 2d → d"])
+    tlabel(mx, py + 180, mw, 80, "d", ["Transformer 블록 1개", "본체 층과 같은 것", "(V3: MLA + MoE)"], 13, True)
+    tlabel(mx, py + 272, mw, 34, "t", ["target head 공유 — 어휘 전체"])
+    f.text(mx + mw / 2, py + 330, "→ 토큰 1개 · γ번 반복", 14, weight=700)
+    loop(px, py, "")
+    foot(px, py, [("target이 주는 것", "마지막 층 hidden"), ("초안", "순차 — γ번 (같은 블록 반복)"),
+                  ("draft 비용", "(target 층 1개 + 전체 head) × γ")])
+
+    # ④ DFlash · DSpark
+    px, py = P[3]
+    tx, tw, st, mx, mw = panel(px, py, "DFlash · DSpark", "사후 학습 · 블록 diffusion drafter", "n")
+    for j in (0, 2, 4, 6, 7):
+        f.arrow(tx + tw - 6, st[j], px + 142, py + 196, color=AMB)
+    tlabel(px + 142, py + 176, 84, 44, "a", ["다섯 층", "섞어 투영"], 12)
+    tlabel(mx, py + 78, mw, 36, "n", ["블록: anchor + [M] × γ"])
+    for i in range(5):
+        yy = py + 132 + i * 25
+        f.rect(mx + 40, yy, mw - 40, 19, KINDS["d"][0], KINDS["d"][1], 3, 1.5)
+        f.text(mx + 40 + (mw - 40) / 2, yy + 14, f"draft 층 {i + 1}", 12)
+        f.rect(mx, yy, 34, 19, KINDS["c"][0], KINDS["c"][1], 3, 1.3)
+        f.text(mx + 17, yy + 14, "K·V", 11, mono=True)
+        f.arrow(px + 228, py + 198, mx - 4, yy + 10, color=AMB)
+    tlabel(mx, py + 272, mw, 34, "t", ["target head 공유 — γ자리"])
+    f.text(mx + mw / 2, py + 330, "→ 토큰 γ개를 동시에 · 1번", 14, weight=700)
+    foot(px, py, [("target이 주는 것", "다섯 층의 hidden → 층마다 K · V"), ("초안", "병렬 — 한 번에 γ개, 1번"),
+                  ("draft 비용", "(5층 · γ+1줄) × 1 + head γ줄")])
+
+    # ⑤ Gemma 4 MTP
+    px, py = P[4]
+    tx, tw, st, mx, mw = panel(px, py, "Gemma 4 MTP", "별도 체크포인트(assistant)로 배포", "n")
+    f.arrow(tx + tw - 6, st[0], mx - 4, py + 100, color=AMB)
+    f.text(px + 184, st[0] + 26, "마지막 층 hidden", 12, weight=700, color=AMB)
+    for j in range(5):
+        f.rect(px + 140, py + 214 + j * 15, 44, 11, KINDS["c"][0], KINDS["c"][1], 2, 1.2)
+    f.text(px + 162, py + 300, "target KV", 11, color=MUTED)
+    f.arrow(px + 188, py + 240, mx - 4, py + 200, color=PURPLE)
+    tlabel(mx, py + 78, mw, 36, "n", ["자기 임베딩"])
+    tlabel(mx, py + 128, mw, 132, "d", ["층 4개 (지역 3 + 전역 1)", "target의 KV를", "cross-attention으로 읽는다"], 13, True)
+    tlabel(mx, py + 272, mw, 34, "d", ["작은 head (군집 top-k)"])
+    f.text(mx + mw / 2, py + 330, "→ 토큰 1개 · γ번 반복", 14, weight=700)
+    loop(px, py, "")
+    foot(px, py, [("target이 주는 것", "마지막 층 hidden + KV"), ("초안", "순차 — 한 번에 1토큰, γ번"),
+                  ("draft 비용", "(4층 + 작은 head) × γ + target KV 읽기")])
+
+    # ⑥ n-gram · suffix
+    px, py = P[5]
+    tx, tw, st, mx, mw = panel(px, py, "n-gram · suffix", "모델 없음 · vLLM ngram · ngram_gpu · suffix", "n")
+    tlabel(mx, py + 78, mw, 50, "n", ["지금까지의 토큰 열", "(suffix는 이전 요청들까지)"])
+    f.arrow(mx + mw / 2, py + 131, mx + mw / 2, py + 165)
+    tlabel(mx, py + 168, mw, 60, "n", ["문자열 매칭", "CPU · ngram_gpu는 GPU"], 13, True)
+    f.arrow(mx + mw / 2, py + 231, mx + mw / 2, py + 265)
+    f.text(mx + mw / 2, py + 290, "같은 구간 뒤에 왔던", 14)
+    f.text(mx + mw / 2, py + 312, "토큰 γ개를 베낀다", 14, weight=700)
+    foot(px, py, [("target이 주는 것", "없음"), ("초안", "찾아서 베낀다"), ("draft 비용", "매칭 시간 — 모델 가중치 없음")])
+
+    f.rect(40, 990, 1480, 84, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 1024, "target 쪽은 모든 갈래가 같다 — 초안을 받아 K줄을 한 번에 검증하는 forward 하나. 다른 것은 target이 hidden을 몇 층에서 내주느냐뿐이다.", 16, "start", 700)
+    f.text(64, 1054, "갈래를 가르는 것은 draft 모듈 쪽이다 — 무엇을 받나(토큰 / hidden / KV), 무엇으로 구성되나(층 종류 · 개수 · head 크기), 몇 번 도나(γ번 / 1번).", 15, "start",
+           color=MUTED)
+    return f
+
+
 # ---------------------------------------------------------------- 1. 가중치는 한 번 읽는다
 def fig_weights_once():
     f = Fig("01-weights-once", 1560, 520)
@@ -1144,7 +1284,7 @@ def fig_sim():
     return f
 
 
-FIGS = [fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
+FIGS = [fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
         fig_weights_once, fig_cycle, fig_accept_rule, fig_tau, fig_map, fig_timeline, fig_thin_ar, fig_parallel,
         fig_verify_shapes, fig_kv_lifecycle, fig_tree, fig_drafter_caches, fig_cycle_time, fig_batch, fig_sim]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",

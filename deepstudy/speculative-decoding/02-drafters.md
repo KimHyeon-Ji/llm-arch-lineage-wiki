@@ -1,29 +1,147 @@
 # 02. drafter — 초안을 누가, 어떻게 만드나
 
-> 01에서 drafter는 "초안을 주는 무언가"였다. 이 장은 가장 단순한 drafter에서 출발해, 이후 방법들이 **무엇을 하나씩 바꿨는지** 따라간다.
-> 마지막에 무엇이 표준이고 흐름이 어디로 가는지 정리한다.
+> 01에서 drafter는 "초안을 주는 무언가"였다. 이 장은 먼저 **갈래 전체를 한눈에** 놓고 무엇이 표준인지 본 뒤,
+> 가장 단순한 drafter에서 출발해 이후 방법들이 **무엇을 하나씩 바꿨는지** 자세히 따라간다.
 
 좋은 drafter의 조건은 둘이다. 01의 속도 식 `τ ÷ (초안 시간 + 검증 시간)`에서 바로 나온다.
 
 - **잘 맞힌다** — `α`가 높아야 `τ`가 크다
 - **싸다** — 초안 시간이 짧아야 한다
 
-아래의 방법들은 이 둘 중 하나를 개선하면서, 대개 다른 비용을 하나 새로 만든다.
+갈래마다 이 둘 중 하나를 개선하면서, 대개 다른 비용을 하나 새로 만든다.
 
-| 순서 | 질문 | 방법 |
+| 순서 | 내용 | |
 |---|---|---|
-| 1 | 작은 LLM을 옆에 두면 되지 않나? | 별도 draft 모델 |
-| 2 | target이 이미 읽은 것을 받으면 무엇을 덜 해도 될까? | EAGLE · EAGLE-3 |
-| 3 | 처음부터 같이 학습하면? | MTP 모듈 |
-| 4 | 초안을 꼭 하나씩 만들어야 할까? | DFlash · DSpark · DFlash 2 |
-| 5 | drafter는 컨텍스트를 어디서 받나? | 경로 비교 · Gemma 4 MTP · n-gram |
-| 6 | 한눈에 비교 | |
-| 7 | 무엇이 표준인가 | **질문 1** |
+| 1 | 한눈에 보기 — 갈래별 target과 draft 모듈, 워크로드로 옮기면 | 갈래 |
+| 2 | 무엇이 표준인가 | **질문 1** |
+| 3 | 작은 LLM을 옆에 두면 되지 않나? — 별도 draft 모델 | 자세히 |
+| 4 | target이 이미 읽은 것을 받으면? — EAGLE · EAGLE-3 | 자세히 |
+| 5 | 처음부터 같이 학습하면? — MTP 모듈 | 자세히 |
+| 6 | 초안을 꼭 하나씩 만들어야 할까? — DFlash · DSpark · DFlash 2 | 자세히 |
+| 7 | drafter는 컨텍스트를 어디서 받나? — Gemma 4 MTP · n-gram | 자세히 |
 | 8 | draft/target 구도와 MTP — 흐름 | **질문 2** |
 
 ---
 
-## 1. 작은 LLM을 옆에 두면 되지 않나? — 별도 draft 모델
+## 1. 한눈에 보기 — 갈래와 구성
+
+자세히 보기 전에 갈래 전체를 나란히 놓는다. 처음 보는 말은 3절부터 하나씩 풀어 쓰니, 여기서는 두 가지만 알면 된다.
+
+- **hidden** — target이 문맥을 읽고 층마다 만들어 내는 벡터 한 줄. "여기까지 읽은 이해"다 (4절)
+- **KV injection** — target의 hidden을 draft 층들이 읽는 K · V로 바꿔 넣는 것 (6절)
+
+### target 모델과 draft 모듈을 나란히
+
+![갈래별 target과 draft 모듈](figures/22-drafter-anatomy.png)
+
+패널 하나가 갈래 하나다. 왼쪽 주황 탑이 **target**, 오른쪽 상자들이 **draft 모듈**이다.
+
+- **target은 여섯 갈래 모두 같다.** 초안을 받아 `K`줄을 한 번에 검증하는 forward 하나다. 다른 것은 **주황 화살표** — hidden을 몇 층에서 내주느냐뿐이다 (없음 / 마지막 층 / 세 층 / 다섯 층)
+- **draft 모듈은 위에서 아래로 읽는다.** 맨 위가 입력(토큰 임베딩, 또는 블록), 가운데가 층(종류와 개수), 아래가 head(어휘를 얼마나 다루나), 맨 아래 굵은 글자가 출력이다
+- **오른쪽 점선 되돌이 화살표**가 있으면 순차다 — 한 번에 토큰 1개를 내고 `γ`번 돈다. DFlash · DSpark에는 없다 — 한 번에 `γ`개를 낸다
+- **보라 화살표**(Gemma 4)는 target의 KV를 직접 읽는 길이다. 이 갈래만 draft 쪽에 문맥 캐시가 없다
+- 아래 세 줄이 패널의 요약이다 — target이 주는 것, 초안을 만드는 방식, draft 비용
+
+### 워크로드로 옮기면
+
+시뮬레이터에서 각 갈래를 모델링할 때 셀 것을 그림과 같은 순서로 적으면 이렇다. 사이클 하나 기준이다.
+
+| 갈래 | target 쪽 | draft 모듈 — 한 번 도는 일 | 몇 번 | draft의 문맥 캐시 |
+|---|---|---|---|---|
+| 별도 draft 모델 | verify (`K`줄) | 작은 LLM의 decode 한 스텝 (자기 임베딩 · 전 층 · 자기 head) | `γ` | 자기 KV, 전 층 |
+| EAGLE-3 | verify + 세 층의 hidden 내보내기 | decoder 1층 (Q · K · V 입력 `2d`) + 어휘 3.2만 head. 첫 스텝 앞에 세 층 섞기(`3d → d`) | `γ` | 1층 |
+| MTP (DeepSeek식) | verify + 마지막 층 hidden | 투영 `2d → d` + **target 층 하나와 같은 블록** + target head(어휘 전체) | `γ` | 1층 |
+| Gemma 4 MTP | verify + 마지막 층 hidden | 4층 (target KV를 읽는다) + 작은 head | `γ` | 없음 |
+| DFlash · DSpark | verify + 다섯 층의 hidden | 5층 × 블록 `γ + 1`줄 + target head `γ`줄. 확정된 줄을 층마다 K · V로 투영 | **1** | 5층 (DSpark 서비스용은 최근 128줄) |
+| n-gram · suffix | verify | 문자열 매칭 (CPU, `ngram_gpu`는 GPU) | — | 없음 |
+
+- **target 쪽은 새로 만들 것이 거의 없다.** 기존 decode의 연산 표에서 새 토큰을 1줄에서 `K`줄로 바꾸면 된다 ([03](03-compute-and-kv.md#1-verify-한-번은-decode-한-번보다-얼마나-비쌀까))
+- **draft 쪽은 "한 번 도는 일 × 몇 번 + 캐시"로 모델링한다.** 이름이 달라도 이 세 칸이 같으면 같은 코드다 — EAGLE-3와 MTP는 층의 종류와 head 크기만 다르다 ([04](04-simulator.md#1-무엇을-기준으로-고르나--이름이-아니라-비용-구조로))
+
+### 지도로 보면
+
+![drafter 지도](figures/05-drafter-map.png)
+
+- 세로축은 **어디에 사나**(별도 모델 / target에 붙는 모듈 / 모델 없음), 가로축은 **초안을 어떻게 뽑나**(순차 / 병렬)다
+- 가운데 보라 테두리 줄이 지금의 주류다. 2026년에 그 안에서 무게가 **왼쪽(순차)에서 오른쪽(병렬)으로** 옮겨 가고 있다
+
+### 다섯 가지 질문으로 비교하면
+
+| | 별도 draft 모델 | EAGLE-3 | MTP (DeepSeek식) | DFlash · DSpark | Gemma 4 MTP | n-gram · suffix |
+|---|---|---|---|---|---|---|
+| **무엇을 입력으로 받나** | 토큰 | target 세 층의 hidden + 토큰 | target 마지막 층 hidden + 토큰 | target 다섯 층의 hidden + 블록(anchor + 마스크) | target 마지막 층 hidden + 토큰 + **target KV** | 토큰 열 |
+| **무엇을 계산하나** | 작은 LLM 전체 | decoder 1층 + 작은 head | 본체와 같은 블록 1개 + 공유 head | draft 5층 (서비스용 DSpark는 3층) + 공유 head | 4층 + 작은 head | 문자열 매칭 |
+| **초안을 어떻게 만드나** | 순차 | 순차 | 순차 (같은 블록 반복) | **병렬** (+ DSpark는 얇은 순차 보정) | 순차 | 찾아서 베낀다 |
+| **어디에 캐시를 두나** | 자기 KV, 전 층 | 1층 분량 | 1층 분량 | 층 수만큼, 투영만 해서 | **없음** — target 것을 읽는다 | 모델 캐시 없음 |
+| **줄어드는 비용** | — | 문맥 다시 읽기 | 문맥 다시 읽기 + 따로 학습하기 | 초안의 순차 반복 | drafter 캐시와 prefill | 초안 비용 거의 전부 |
+| **추가되는 비용** | 자기 prefill · KV · 관리 | 사후 학습, 1층 KV | 14B 모듈 (V3), 반복하면 뒤 자리 약함 | 5층 KV, 뒤 자리 약함(DSpark가 보정), 스케줄러 | 초안 스텝마다 target KV 읽기 | 잘 맞는 작업이 좁다 |
+
+---
+
+## 2. 무엇이 표준인가
+
+### 검증 — 원리는 공통, 서빙의 기본은 일렬
+
+모든 방법이 "한 번에 검증하고 target의 분포를 기준으로 판정한다"는 원리를 쓴다. 채택 알고리즘은 몇 갈래가 있다 ([01](01-principle.md#3-초안을-받아들이면-출력이-달라지지-않을까)의 자세히). 서빙 엔진의 기본 경로는 **토큰별 거부 샘플링 + 일렬 초안**으로 모이는 중이다.
+
+- vLLM의 drafter 기반 클래스는 일렬 초안만 만든다 (`[배치, γ]` 모양). 이 클래스에는 트리 처리가 없다
+- SGLang의 새 기본 엔진(Spec V2)은 `topk = 1`, 즉 일렬만 받는다. 트리는 이전 경로에 남아 있다
+- DFlash · DSpark는 블록 하나를 일렬로 검증한다
+
+💡 일렬로 모이는 이유는 03에서 본다 — 큰 배치에서는 넓은 트리를 검증할 여유가 없고, 롤백도 일렬이 단순하다.
+
+### drafter — 하나가 아니라 셋이 공존한다
+
+| | 위치 | 근거 |
+|---|---|---|
+| **내장 MTP** | 모델이 들고 나오면 일단 쓰는 기본값 | 따로 학습할 것이 없다 (추론 비용은 든다). 엔진 1급 지원. DeepSeek의 서비스 기준선(MTP-1) |
+| **EAGLE-3** | MTP가 없는 모델의 사후 drafter 표준 | 체크포인트가 가장 넓다 (Llama · Qwen3 · gpt-oss · Gemma 4 · Kimi …). SGLang 문서의 권장 |
+| **DFlash 계열** | 공개된 측정에서의 최전선. 지원과 체크포인트가 가장 빠르게 늘었다 | z-lab 체크포인트 20개 이상, NVIDIA · LMSYS · vLLM의 지원과 측정, DeepSeek 서비스가 MTP-1에서 DSpark로 |
+
+- 이 표의 근거는 엔진 지원 · 공개 체크포인트 · 공개 측정이다. 실제 서비스에서 무엇이 얼마나 쓰이는지를 보여 주는 자료는 아니다
+- 공개된 실험들에서는 같은 target 안에서 대체로 **EAGLE-3 < 내장 MTP ≲ DFlash < DSpark ≲ DFlash 2** 순으로 관찰됐다. 다섯을 같은 조건에서 함께 잰 실험은 없다 — 쌍마다 따로 잰 결과를 이어 붙인 순서다
+- GPU · 엔진 · 체크포인트가 바뀌면 크기도 순서도 바뀐다. vLLM 블로그의 결론도 "하나를 고를 수 없다 — 대표 작업에서 처리량과 자리별 채택률로 고르라"다
+
+<details>
+<summary>자세히 — 엔진이 지원하는 것 (2026년 10월, 공식 문서 기준)</summary>
+
+| drafter | vLLM (`method`) | SGLang (`--speculative-algorithm`) |
+|---|---|---|
+| 별도 draft 모델 | `draft_model` | `STANDALONE` |
+| EAGLE · EAGLE-3 | `eagle` · `eagle3` | `EAGLE` · `EAGLE3` (**문서의 권장**) |
+| 내장 MTP | `mtp` | EAGLE 경로 (`NEXTN`은 `EAGLE`의 다른 이름) |
+| Gemma 4 MTP | `mtp` + assistant 체크포인트 | 문서에는 없다. 코드에 `frozen_kv_mtp` worker가 있다 (이름으로 보아 target KV를 읽는 MTP용) |
+| 병렬 draft 모델 (PARD) | `parallel_drafting` | — |
+| DFlash | `dflash` | `DFLASH` |
+| DSpark | 지원, 검증 길이 조절은 DSpark만 | 코드에 DSpark 구성 요소가 있다 |
+| n-gram · suffix | `ngram` · `ngram_gpu` · `suffix` | `NGRAM` |
+
+- TensorRT-LLM도 draft 모델 · EAGLE-3 · MTP · n-gram을 지원하고, NVIDIA는 gpt-oss-120b에서 DFlash를 TensorRT-LLM으로 돌린 결과를 냈다
+- llama.cpp는 draft 모델과 MTP(`--spec-type mtp`)를 지원한다
+
+</details>
+
+<details>
+<summary>자세히 — 공개 비교와 그 조건</summary>
+
+| 비교 | 조건 | 결과 | 출처 |
+|---|---|---|---|
+| EAGLE-3 vs DFlash | Qwen3-8B, temp 0, 7개 벤치 평균 | 2.02× vs **4.86×** | DFlash 논문 |
+| EAGLE-3 vs DFlash | gpt-oss-120b, TensorRT-LLM, B300, 같은 동시 요청 수 | 평균 1.7× vs **2.3×** | NVIDIA |
+| EAGLE-3 vs DFlash | Llama-3.1-8B, 같은 조건 | 평균 2.2× vs **2.8×** | NVIDIA |
+| 내장 MTP (7스텝) vs DFlash | Qwen3.5-397B-A17B, 8 × B200, SGLang | 동시 요청 1 ~ 32 전 구간 DFlash 우세, 동시 1에서 MTP의 1.5배 | LMSYS |
+| 내장 MTP vs DFlash | Qwen3.6-35B-A3B, AMD MI300X · MI355X, vLLM | 1.28 ~ 1.49× vs **1.77 ~ 2.06×** | vLLM 블로그 |
+| Gemma 4 MTP vs DFlash vs EAGLE-3 | gemma-4-26B-A4B, AMD, vLLM | 최대 2.74× · **2.87×** · 2.11 ~ 2.27× | vLLM 블로그 |
+| MTP-1 vs DSpark | DeepSeek-V4 서비스 | 사용자당 속도 **+57 ~ 85%** | DSpark 논문 |
+| 반례 | Qwen3-8B, AMD, vLLM | EAGLE-3는 MATH-500에서 **기준보다 느림** (최대 0.88×), DSpark 1.15 ~ 1.63× | vLLM 블로그 |
+
+속도 배수는 각 출처의 모델 · GPU · 엔진 · 배치 조건 안에서만 읽는다. 표의 줄끼리 직접 비교하지 않는다.
+
+</details>
+
+---
+
+## 3. 작은 LLM을 옆에 두면 되지 않나? — 별도 draft 모델
 
 *2022 · Google (Leviathan et al.), DeepMind (Chen et al.)*
 
@@ -45,13 +163,13 @@
 <summary>자세히 — 별도 모델 계열의 변형</summary>
 
 - **어휘가 다른 draft** — vLLM은 토크나이저가 달라도 텍스트로 맞춰 검증하는 경로를 둔다 (`use_heterogeneous_vocab`, greedy만)
-- **PARD** (2025, AMD) — 작은 LLM에 마스크 토큰을 넣어 **여러 개를 한 번에** 뽑도록 고친 것이다 (vLLM `parallel_drafting`). 초안은 4절의 DFlash처럼 한 번에 뽑지만, 컨텍스트는 **자기 KV를 자기 prefill로** 만든다. target의 hidden을 받지 않는다
+- **PARD** (2025, AMD) — 작은 LLM에 마스크 토큰을 넣어 **여러 개를 한 번에** 뽑도록 고친 것이다 (vLLM `parallel_drafting`). 초안은 6절의 DFlash처럼 한 번에 뽑지만, 컨텍스트는 **자기 KV를 자기 prefill로** 만든다. target의 hidden을 받지 않는다
 
 </details>
 
 ---
 
-## 2. target이 이미 읽은 것을 받으면? — EAGLE · EAGLE-3
+## 4. target이 이미 읽은 것을 받으면? — EAGLE · EAGLE-3
 
 ### 어떻게 바꾸나 — target의 hidden을 넘겨받는다
 
@@ -125,7 +243,7 @@ EAGLE(2024)이 위 구조를 처음 제안했고, EAGLE-3가 세 가지를 바�
 
 ---
 
-## 3. 처음부터 같이 학습하면? — MTP 모듈
+## 5. 처음부터 같이 학습하면? — MTP 모듈
 
 *2024 · DeepSeek · Multi-Token Prediction*
 
@@ -163,11 +281,11 @@ P(t_(i+2)) = OutHead( h''_i )                                    본체의 출�
 - **따로 학습할 것이 없다.** 모델이 들고 나온다. 그래서 MTP가 있는 모델은 일단 MTP부터 켠다
 - **추론 비용은 든다.** MTP 블록과 head의 연산, 모듈의 가중치 메모리(DeepSeek-V3는 14B), drafter용 KV가 붙는다 ([03](03-compute-and-kv.md#4-drafter도-캐시가-필요할까))
 
-**MTP를 가진 공개 모델** — DeepSeek-V3 · V3.2 · V4, Qwen3-Next · Qwen3.5 · Qwen3.6, GLM-4.5 · GLM-5.x, ERNIE-4.5, Nemotron 3 Super · Ultra, MiMo. Gemma 4는 MTP라는 이름의 별도 체크포인트를 낸다 (5절).
+**MTP를 가진 공개 모델** — DeepSeek-V3 · V3.2 · V4, Qwen3-Next · Qwen3.5 · Qwen3.6, GLM-4.5 · GLM-5.x, ERNIE-4.5, Nemotron 3 Super · Ultra, MiMo. Gemma 4는 MTP라는 이름의 별도 체크포인트를 낸다 (7절).
 
 ---
 
-## 4. 초안을 하나씩 만들어야 할까? — 병렬 drafter
+## 6. 초안을 하나씩 만들어야 할까? — 병렬 drafter
 
 ### 무엇이 문제인가 — 얇아도 `γ`번 돈다
 
@@ -320,7 +438,7 @@ DSpark처럼 자리 사이의 의존을 되살리되, 더 싸게 한다. 자리�
 
 ---
 
-## 5. drafter는 컨텍스트를 어디서 받나?
+## 7. drafter는 컨텍스트를 어디서 받나?
 
 지금까지 본 drafter를 **문맥을 받는 길**로 다시 놓으면 차이가 선명해진다. 이 길이 03에서 볼 캐시 크기와 prefill 비용을 정한다.
 
@@ -352,91 +470,6 @@ drafter가 아예 없어도 초안을 만들 수 있다. **이미 나온 글에�
 - **suffix decoding** — 프롬프트와 **이전 요청들의 생성 결과**로 suffix tree를 만들어 찾는다 (vLLM `suffix`, Arctic Inference)
 - 모델 가중치가 없으니 초안 비용이 작다. vLLM `ngram`과 suffix는 CPU에서 찾고, `ngram_gpu`는 GPU에서 작은 매칭 연산을 돈다 — "GPU를 전혀 안 쓴다"는 아니다
 - 검증 비용은 다른 drafter와 같다. 새 글을 쓰는 작업에서는 거의 안 맞으므로, 큰 배치에서 모델 기반 drafter의 보조로 쓴다
-
----
-
-## 6. 한눈에 비교
-
-각 방법을 위에서 봤으니 이제 나란히 놓는다. 먼저 지도로 본다.
-
-![drafter 지도](figures/05-drafter-map.png)
-
-- 세로축은 **어디에 사나**(별도 모델 / target에 붙는 모듈 / 모델 없음), 가로축은 **초안을 어떻게 뽑나**(순차 / 병렬)다
-- 가운데 보라 테두리 줄이 1 ~ 4절에서 본 주류다. 2026년에 그 안에서 무게가 **왼쪽(순차)에서 오른쪽(병렬)으로** 옮겨 가고 있다
-
-같은 내용을 02의 질문 다섯 개로 정리하면 이렇다.
-
-| | 별도 draft 모델 | EAGLE-3 | MTP (DeepSeek식) | DFlash · DSpark | Gemma 4 MTP | n-gram · suffix |
-|---|---|---|---|---|---|---|
-| **무엇을 입력으로 받나** | 토큰 | target 세 층의 hidden + 토큰 | target 마지막 층 hidden + 토큰 | target 다섯 층의 hidden + 블록(anchor + 마스크) | target 마지막 층 hidden + 토큰 + **target KV** | 토큰 열 |
-| **무엇을 계산하나** | 작은 LLM 전체 | decoder 1층 + 작은 head | 본체와 같은 블록 1개 + 공유 head | draft 5층 (서비스용 DSpark는 3층) + 공유 head | 4층 + 작은 head | 문자열 매칭 |
-| **초안을 어떻게 만드나** | 순차 | 순차 | 순차 (같은 블록 반복) | **병렬** (+ DSpark는 얇은 순차 보정) | 순차 | 찾아서 베낀다 |
-| **어디에 캐시를 두나** | 자기 KV, 전 층 | 1층 분량 | 1층 분량 | 층 수만큼, 투영만 해서 | **없음** — target 것을 읽는다 | 모델 캐시 없음 |
-| **줄어드는 비용** | — | 문맥 다시 읽기 | 문맥 다시 읽기 + 따로 학습하기 | 초안의 순차 반복 | drafter 캐시와 prefill | 초안 비용 거의 전부 |
-| **추가되는 비용** | 자기 prefill · KV · 관리 | 사후 학습, 1층 KV | 14B 모듈 (V3), 반복하면 뒤 자리 약함 | 5층 KV, 뒤 자리 약함(DSpark가 보정), 스케줄러 | 초안 스텝마다 target KV 읽기 | 잘 맞는 작업이 좁다 |
-
----
-
-## 7. 무엇이 표준인가
-
-### 검증 — 원리는 공통, 서빙의 기본은 일렬
-
-모든 방법이 "한 번에 검증하고 target의 분포를 기준으로 판정한다"는 원리를 쓴다. 채택 알고리즘은 몇 갈래가 있다 ([01](01-principle.md#3-초안을-받아들이면-출력이-달라지지-않을까)의 자세히). 서빙 엔진의 기본 경로는 **토큰별 거부 샘플링 + 일렬 초안**으로 모이는 중이다.
-
-- vLLM의 drafter 기반 클래스는 일렬 초안만 만든다 (`[배치, γ]` 모양). 이 클래스에는 트리 처리가 없다
-- SGLang의 새 기본 엔진(Spec V2)은 `topk = 1`, 즉 일렬만 받는다. 트리는 이전 경로에 남아 있다
-- DFlash · DSpark는 블록 하나를 일렬로 검증한다
-
-💡 일렬로 모이는 이유는 03에서 본다 — 큰 배치에서는 넓은 트리를 검증할 여유가 없고, 롤백도 일렬이 단순하다.
-
-### drafter — 하나가 아니라 셋이 공존한다
-
-| | 위치 | 근거 |
-|---|---|---|
-| **내장 MTP** | 모델이 들고 나오면 일단 쓰는 기본값 | 따로 학습할 것이 없다 (추론 비용은 든다). 엔진 1급 지원. DeepSeek의 서비스 기준선(MTP-1) |
-| **EAGLE-3** | MTP가 없는 모델의 사후 drafter 표준 | 체크포인트가 가장 넓다 (Llama · Qwen3 · gpt-oss · Gemma 4 · Kimi …). SGLang 문서의 권장 |
-| **DFlash 계열** | 공개된 측정에서의 최전선. 지원과 체크포인트가 가장 빠르게 늘었다 | z-lab 체크포인트 20개 이상, NVIDIA · LMSYS · vLLM의 지원과 측정, DeepSeek 서비스가 MTP-1에서 DSpark로 |
-
-- 이 표의 근거는 엔진 지원 · 공개 체크포인트 · 공개 측정이다. 실제 서비스에서 무엇이 얼마나 쓰이는지를 보여 주는 자료는 아니다
-- 공개된 실험들에서는 같은 target 안에서 대체로 **EAGLE-3 < 내장 MTP ≲ DFlash < DSpark ≲ DFlash 2** 순으로 관찰됐다. 다섯을 같은 조건에서 함께 잰 실험은 없다 — 쌍마다 따로 잰 결과를 이어 붙인 순서다
-- GPU · 엔진 · 체크포인트가 바뀌면 크기도 순서도 바뀐다. vLLM 블로그의 결론도 "하나를 고를 수 없다 — 대표 작업에서 처리량과 자리별 채택률로 고르라"다
-
-<details>
-<summary>자세히 — 엔진이 지원하는 것 (2026년 10월, 공식 문서 기준)</summary>
-
-| drafter | vLLM (`method`) | SGLang (`--speculative-algorithm`) |
-|---|---|---|
-| 별도 draft 모델 | `draft_model` | `STANDALONE` |
-| EAGLE · EAGLE-3 | `eagle` · `eagle3` | `EAGLE` · `EAGLE3` (**문서의 권장**) |
-| 내장 MTP | `mtp` | EAGLE 경로 (`NEXTN`은 `EAGLE`의 다른 이름) |
-| Gemma 4 MTP | `mtp` + assistant 체크포인트 | 문서에는 없다. 코드에 `frozen_kv_mtp` worker가 있다 (이름으로 보아 target KV를 읽는 MTP용) |
-| 병렬 draft 모델 (PARD) | `parallel_drafting` | — |
-| DFlash | `dflash` | `DFLASH` |
-| DSpark | 지원, 검증 길이 조절은 DSpark만 | 코드에 DSpark 구성 요소가 있다 |
-| n-gram · suffix | `ngram` · `ngram_gpu` · `suffix` | `NGRAM` |
-
-- TensorRT-LLM도 draft 모델 · EAGLE-3 · MTP · n-gram을 지원하고, NVIDIA는 gpt-oss-120b에서 DFlash를 TensorRT-LLM으로 돌린 결과를 냈다
-- llama.cpp는 draft 모델과 MTP(`--spec-type mtp`)를 지원한다
-
-</details>
-
-<details>
-<summary>자세히 — 공개 비교와 그 조건</summary>
-
-| 비교 | 조건 | 결과 | 출처 |
-|---|---|---|---|
-| EAGLE-3 vs DFlash | Qwen3-8B, temp 0, 7개 벤치 평균 | 2.02× vs **4.86×** | DFlash 논문 |
-| EAGLE-3 vs DFlash | gpt-oss-120b, TensorRT-LLM, B300, 같은 동시 요청 수 | 평균 1.7× vs **2.3×** | NVIDIA |
-| EAGLE-3 vs DFlash | Llama-3.1-8B, 같은 조건 | 평균 2.2× vs **2.8×** | NVIDIA |
-| 내장 MTP (7스텝) vs DFlash | Qwen3.5-397B-A17B, 8 × B200, SGLang | 동시 요청 1 ~ 32 전 구간 DFlash 우세, 동시 1에서 MTP의 1.5배 | LMSYS |
-| 내장 MTP vs DFlash | Qwen3.6-35B-A3B, AMD MI300X · MI355X, vLLM | 1.28 ~ 1.49× vs **1.77 ~ 2.06×** | vLLM 블로그 |
-| Gemma 4 MTP vs DFlash vs EAGLE-3 | gemma-4-26B-A4B, AMD, vLLM | 최대 2.74× · **2.87×** · 2.11 ~ 2.27× | vLLM 블로그 |
-| MTP-1 vs DSpark | DeepSeek-V4 서비스 | 사용자당 속도 **+57 ~ 85%** | DSpark 논문 |
-| 반례 | Qwen3-8B, AMD, vLLM | EAGLE-3는 MATH-500에서 **기준보다 느림** (최대 0.88×), DSpark 1.15 ~ 1.63× | vLLM 블로그 |
-
-속도 배수는 각 출처의 모델 · GPU · 엔진 · 배치 조건 안에서만 읽는다. 표의 줄끼리 직접 비교하지 않는다.
-
-</details>
 
 ---
 
