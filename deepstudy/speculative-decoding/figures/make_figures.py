@@ -464,8 +464,8 @@ def fig_pipeline():
     card(x + 20 - 20, 176, 112, "t", [("target forward 1번", True), ("마지막 확정 토큰 + 초안 = K줄", False),
                                       ("가중치는 한 번만 읽는다", False)])
     f.text(x + 20, 326, "검증 모양", 14, "start", 700, MUTED)
-    chip(x + 20, 336, 300, "t", "일렬 — 서빙의 기본")
-    chip(x + 20, 376, 300, "t", "트리 — EAGLE-2 · 3, 배치 1용")
+    chip(x + 20, 336, 300, "t", "일렬 — vLLM · SGLang Spec V2")
+    chip(x + 20, 376, 300, "t", "트리 — SGLang EAGLE 경로 일부")
     chip(x + 20, 416, 300, "t", "요청마다 다른 길이 — DSpark")
     f.line(x + 20, 466, x + 320, 466, "#f3cdb7", 1.5)
     f.text(x + 20, 498, "출력 — 자리마다 다음 토큰의 분포 K개", 14, "start", 700)
@@ -538,7 +538,7 @@ def fig_verify_ops():
     f.text(bx + 18, by + 28, "층마다 반복 (× N층)", 15, "start", 700, "#b87410")
     ops = [("Q · K · V 투영", ["가중치 1번 읽기", "곱셈만 K배"], "k"),
            ("KV 쓰기", ["K줄을 쓴다", "나중에 a+1줄만 남는다"], "k"),
-           ("attention", ["캐시 S줄 + 새 K줄 (계단)", "곱셈 K배 · 읽기는 커널 따라", "MLA는 곱셈에 먼저 막힌다"], "warn"),
+           ("attention", ["캐시 S줄 + 새 K줄 (계단)", "곱셈 K배 · 읽기는 커널 따라", "MLA는 곱셈에 막히기 쉽다"], "warn"),
            ("O 투영", ["가중치 1번 읽기", "곱셈만 K배"], "k"),
            ("FFN · MoE", ["dense: 가중치 1번", "MoE: K줄이 부르는", "expert의 합집합을 읽는다"], "warn")]
     ow, gap = 204, 14
@@ -571,7 +571,7 @@ def fig_verify_ops():
         f.text(lx + 34, 574, label, 14, "start", color=MUTED)
     f.rect(40, 600, 1480, 76, "#f6f5fd", "#d9d2f3", 10, 1.5)
     f.text(64, 632, "verify = decode의 연산 표에서 새 토큰 줄만 1 → K. 가중치는 한 번 읽고, 곱셈과 KV 쓰기가 K배다.", 17, "start", 700)
-    f.text(64, 660, "주의할 곳은 셋 — attention (MLA는 곱셈에 막힌다) · FFN (MoE는 expert 합집합) · 출력 (로짓 K줄).", 15, "start", color=MUTED)
+    f.text(64, 660, "주의할 곳은 셋 — attention (MLA는 곱셈에 막히기 쉽다) · FFN (MoE는 expert 합집합) · 출력 (로짓 K줄).", 15, "start", color=MUTED)
     return f
 
 
@@ -671,7 +671,7 @@ def fig_anatomy():
          "target이 읽은 결과를 받아 1층으로 맞힌다")
     card(xs[2], ys[0], "MTP 모듈", "본 학습 때 함께 (DeepSeek · Qwen)", "hidden × 1층", AMB, 1, "본체와 같은 블록 1개", "seq",
          "EAGLE과 같은 모양 — 모델이 들고 나온다")
-    card(xs[0], ys[1], "DFlash · DSpark", "나중에 따로 학습", "hidden × 5층", AMB, 5, "5층 · 층마다 target 정보", "par",
+    card(xs[0], ys[1], "DFlash · DSpark", "나중에 따로 학습", "hidden × 5층", AMB, 5, "5층 (서비스용 DSpark는 3층)", "par",
          "블록을 한 번에 — 길게 뽑아도 시간이 같다")
     card(xs[1], ys[1], "Gemma 4 MTP", "별도 체크포인트로 배포", "KV 직접 읽기", PURPLE, 4, "4층 · 자기 캐시 없음", "seq",
          "target의 KV를 읽어 캐시와 prefill이 없다")
@@ -1222,7 +1222,7 @@ def fig_kv_lifecycle():
     f.text(64, by + 100, "요청의 길이 값을 거부된 수만큼 줄인다. 버린 줄은 그 자리에 그대로 있다가 다음 verify가 덮어쓴다  (vLLM)", 15, "start",
            color=MUTED)
     f.text(64, by + 132, "버리는 방법 ②  자리를 반납한다", 16, "start", 700)
-    f.text(64, by + 156, "캐시 자리를 토큰 단위로 나눠 주는 경우. 버린 줄의 자리를 돌려주고 '토큰 → 자리' 표만 고친다. 트리 검증에는 이 방식이 필요하다", 15,
+    f.text(64, by + 156, "캐시 자리를 토큰 단위로 나눠 주는 경우. 버린 줄의 자리를 돌려주고 '토큰 → 자리' 표만 고친다 (SGLang)", 15,
            "start", color=MUTED)
     return f
 
