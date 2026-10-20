@@ -412,6 +412,169 @@ def fig_cycle_tokens():
     return f
 
 
+# ---------------------------------------------------------------- 23. 큰 구조 — 한 사이클의 네 칸
+def fig_pipeline():
+    f = Fig("23-pipeline", 1560, 740)
+    f.title(40, 44, "speculative decoding의 큰 구조 — 한 사이클은 네 칸이다")
+    cols = [(40, "d", "① draft", "초안을 만든다", "갈래마다 다르다"),
+            (420, "t", "② verify", "target이 한 번에 확인한다", "거의 같다"),
+            (800, "ok", "③ accept", "어디까지 받을지 정한다", "같다"),
+            (1180, "c", "④ 정리", "캐시를 맞추고 다음으로", "캐시에 따라 다르다")]
+    W = 340
+
+    def chip(x, y, w, kind, s, fs=14, weight=600):
+        f.rect(x, y, w, 32, KINDS[kind][0], KINDS[kind][1], 16, 1.8)
+        f.text(x + w / 2, y + 21, s, fs, weight=weight)
+
+    def card(x, y, h, kind, rows, fs=14):
+        f.rect(x, y, W, h, "#ffffff", KINDS[kind][1], 10, 2)
+        for i, (t, b) in enumerate(rows):
+            f.text(x + W / 2, y + 30 + i * 24, t, fs, weight=700 if b else 400, color=INK if b else MUTED)
+
+    for x, kind, name, sub, tag in cols:
+        f.rect(x, 78, W, 522, KINDS[kind][0], KINDS[kind][1], 14, 2)
+        f.text(x + 24, 116, name, 22, "start", 700)
+        f.text(x + 24, 142, sub, 15, "start", color=MUTED)
+        f.rect(x + W - 24 - len(tag) * 14 - 20, 96, len(tag) * 14 + 20, 28, "#ffffff", KINDS[kind][1], 14, 1.8)
+        f.text(x + W - 24 - (len(tag) * 14 + 20) / 2, 115, tag, 13, weight=700, color=KINDS[kind][1])
+    for x in (380, 760, 1140):
+        f.arrow(x + 2, 380, x + 38, 380)
+
+    # ① draft
+    x = 60
+    f.text(x, 186, "순차 — 1개씩 γ번", 14, "start", 700, MUTED)
+    chip(x, 196, 145, "d", "별도 draft 모델")
+    chip(x + 155, 196, 145, "d", "EAGLE-3")
+    chip(x, 236, 145, "d", "MTP 모듈")
+    chip(x + 155, 236, 145, "d", "Gemma 4 MTP")
+    f.text(x, 300, "병렬 — 한 번에 γ개", 14, "start", 700, MUTED)
+    chip(x, 310, 95, "d", "DFlash")
+    chip(x + 102, 310, 95, "d", "DSpark")
+    chip(x + 204, 310, 96, "d", "DFlash 2")
+    f.text(x, 374, "모델 없음 — 베낀다", 14, "start", 700, MUTED)
+    chip(x, 384, 145, "n", "n-gram")
+    chip(x + 155, 384, 145, "n", "suffix")
+    f.line(x, 446, x + 300, 446, "#c9d9f2", 1.5)
+    f.text(x, 478, "입력 — 마지막 확정 토큰 (+ target의 hidden)", 14, "start")
+    f.text(x, 504, "출력 — 초안 γ개", 14, "start", 700)
+    f.text(x, 530, "예: the  mat  and  slept", 14, "start", color=MUTED, mono=True)
+
+    # ② verify
+    x = 420
+    card(x + 20 - 20, 176, 112, "t", [("target forward 1번", True), ("마지막 확정 토큰 + 초안 = K줄", False),
+                                      ("가중치는 한 번만 읽는다", False)])
+    f.text(x + 20, 326, "검증 모양", 14, "start", 700, MUTED)
+    chip(x + 20, 336, 300, "t", "일렬 — 서빙의 기본")
+    chip(x + 20, 376, 300, "t", "트리 — EAGLE-2 · 3, 배치 1용")
+    chip(x + 20, 416, 300, "t", "요청마다 다른 길이 — DSpark")
+    f.line(x + 20, 466, x + 320, 466, "#f3cdb7", 1.5)
+    f.text(x + 20, 498, "출력 — 자리마다 다음 토큰의 분포 K개", 14, "start", 700)
+    f.text(x + 20, 524, "예: the  mat  .  …  …", 14, "start", color=MUTED, mono=True)
+
+    # ③ accept
+    x = 800
+    card(x, 176, 112, "ok", [("앞에서부터 비교한다", True), ("처음 틀린 자리에서 멈춘다", False),
+                             ("틀린 자리는 target의 토큰으로", False)])
+    f.text(x + 20, 326, "채택 규칙", 14, "start", 700, MUTED)
+    chip(x + 20, 336, 300, "ok", "토큰별 거부 샘플링 — 기본")
+    chip(x + 20, 376, 300, "ok", "block verification — SGLang")
+    chip(x + 20, 416, 300, "n", "typical acceptance — 분포 보존 X")
+    f.line(x + 20, 466, x + 320, 466, "#c7e2c9", 1.5)
+    f.text(x + 20, 498, "출력 — 채택 a개 + target 토큰 1개", 14, "start", 700)
+    f.text(x + 20, 524, "예: the  mat  +  .  →  3개 확정", 14, "start", color=MUTED, mono=True)
+
+    # ④ 정리
+    x = 1180
+    for i, (t, s) in enumerate([("target KV", "K줄 중 a+1줄만 남긴다"), ("drafter 캐시", "확정된 자리를 다시 쓴다"),
+                                ("혼합 모델의 선형 상태", "채택된 자리로 되돌린다"), ("다음 사이클의 입력", "마지막 토큰 → verify 맨 앞")]):
+        y = 176 + i * 88
+        f.rect(x + 20, y, 300, 72, "#ffffff", KINDS["c"][1], 10, 1.8)
+        f.text(x + 170, y + 30, t, 15, weight=700)
+        f.text(x + 170, y + 54, s, 14, color=MUTED)
+    f.text(x + 20, 556, "버린 줄은 지우지 않는다 —", 14, "start", color=MUTED)
+    f.text(x + 20, 580, "길이를 되돌리거나 자리를 반납한다", 14, "start", color=MUTED)
+
+    # 되돌이
+    f.raw('<path d="M1350,602 C1350,628 1350,628 1322,628 L238,628 C210,628 210,628 210,608" fill="none" '
+          'stroke="#5d6377" stroke-width="2.2" stroke-dasharray="7 5" marker-end="url(#ah)"/>')
+    f.text(780, 652, "다음 사이클 — 마지막 확정 토큰(예: .)부터 다시 초안을 만든다", 14, color=MUTED)
+    f.rect(40, 668, 1480, 60, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 705, "갈래가 갈리는 곳은 ① draft뿐이다. ②③은 거의 같고, ④는 정리할 캐시의 종류에 따라 달라진다.", 17, "start", 700)
+    return f
+
+
+# ---------------------------------------------------------------- 24. verify의 연산 순서
+def fig_verify_ops():
+    f = Fig("24-verify-ops", 1560, 700)
+    f.title(40, 44, "verify forward의 연산 — 순서대로, decode와 무엇이 다른가")
+    TAG = {"same": ("#eff0f6", "#8b90a3", "decode와 같다"), "k": (KINDS["t"][0], KINDS["t"][1], "K배"),
+           "warn": (KINDS["no"][0], KINDS["no"][1], "주의")}
+
+    def op(x, y, w, h, name, rows, tag):
+        fill, stroke, label = TAG[tag]
+        f.rect(x, y, w, h, "#ffffff", stroke, 10, 2)
+        f.rect(x, y, w, 30, fill, stroke, 10, 2)
+        f.rect(x + 1, y + 20, w - 2, 10, fill, "none", 0)
+        f.text(x + 14, y + 21, name, 15, "start", 700)
+        f.text(x + w - 12, y + 21, label, 12, "end", 700, stroke)
+        for i, r in enumerate(rows):
+            f.text(x + 14, y + 54 + i * 22, r, 13, "start", color=INK if i == 0 else MUTED)
+
+    # 입력
+    f.text(40, 108, "입력 K줄", 15, "start", 700)
+    for i, t in enumerate(["on", "the", "mat", "and", "slept"]):
+        if i == 0:
+            pend(f, 40, 122 + i * 38, 110, 30, t, 14)
+        else:
+            f.box(40, 122 + i * 38, 110, 30, "d", t, fs=14, mono=True)
+    f.text(95, 330, "확정 토큰 + 초안 4개", 13, color=MUTED)
+    f.arrow(154, 213, 176, 213)
+    op(180, 138, 190, 150, "임베딩", ["표에서 K줄 꺼낸다", "한 번만 · 가볍다"], "same")
+    f.arrow(374, 213, 398, 213)
+
+    # 층 블록
+    bx, by, bw, bh = 400, 90, 1120, 252
+    f.rect(bx, by, bw, bh, "#fbfaf6", "#d18a1c", 14, 2, "8 5")
+    f.text(bx + 18, by + 28, "층마다 반복 (× N층)", 15, "start", 700, "#b87410")
+    ops = [("Q · K · V 투영", ["가중치 1번 읽기", "곱셈만 K배"], "k"),
+           ("KV 쓰기", ["K줄을 쓴다", "나중에 a+1줄만 남는다"], "k"),
+           ("attention", ["캐시 S줄 + 새 K줄 (계단)", "곱셈 K배 · 읽기는 커널 따라", "MLA는 곱셈에 먼저 막힌다"], "warn"),
+           ("O 투영", ["가중치 1번 읽기", "곱셈만 K배"], "k"),
+           ("FFN · MoE", ["dense: 가중치 1번", "MoE: K줄이 부르는", "expert의 합집합을 읽는다"], "warn")]
+    ow, gap = 204, 14
+    for i, (n, rows, tag) in enumerate(ops):
+        x = bx + 18 + i * (ow + gap)
+        op(x, by + 48, ow, 150, n, rows, tag)
+        if i < len(ops) - 1:
+            f.arrow(x + ow + 1, by + 123, x + ow + gap - 1, by + 123)
+    f.text(bx + 18, by + 228, "다섯 연산이 층마다 되풀이된다", 13, "start", color=MUTED)
+
+    # 끝 단계 — 왼쪽에서 오른쪽으로
+    y2 = 392
+    f.arrow(bx + 160, by + bh + 2, bx + 160, y2 - 4)
+    ends = [("hidden 꺼내기", ["drafter에 넘길 hidden", "EAGLE-3 3층 · MTP 1층 · DFlash 5층"], "k", 400),
+            ("출력 head", ["로짓 K × V", "큰 어휘 · 긴 블록이면 버퍼가 크다"], "warn", 760),
+            ("비교 · 거부 샘플링", ["앞에서부터 비교 → 채택 a", "작은 연산 + 호스트 작업"], "same", 1120)]
+    for i, (n, rows, tag, x) in enumerate(ends):
+        op(x, y2, 330, 118, n, rows, tag)
+    f.arrow(732, y2 + 59, 756, y2 + 59)
+    f.arrow(1092, y2 + 59, 1116, y2 + 59)
+    f.text(1285, y2 + 146, "→ ③ accept로", 15, weight=700, color=KINDS["ok"][1])
+    f.text(180, y2 + 50, "마지막 층의 출력", 13, "start", color=MUTED)
+    f.text(180, y2 + 72, "(drafter용으로 일부 층의", 13, "start", color=MUTED)
+    f.text(180, y2 + 94, " hidden도 함께 꺼낸다)", 13, "start", color=MUTED)
+
+    # 범례와 요약
+    for k, lx in (("same", 40), ("k", 200), ("warn", 290)):
+        fill, stroke, label = TAG[k]
+        f.rect(lx, 560, 26, 18, fill, stroke, 4, 1.8)
+        f.text(lx + 34, 574, label, 14, "start", color=MUTED)
+    f.rect(40, 600, 1480, 76, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 632, "verify = decode의 연산 표에서 새 토큰 줄만 1 → K. 가중치는 한 번 읽고, 곱셈과 KV 쓰기가 K배다.", 17, "start", 700)
+    f.text(64, 660, "주의할 곳은 셋 — attention (MLA는 곱셈에 막힌다) · FFN (MoE는 expert 합집합) · 출력 (로짓 K줄).", 15, "start", color=MUTED)
+    return f
+
+
 # ---------------------------------------------------------------- 22. 갈래별 target과 draft 모듈
 def fig_anatomy():
     f = Fig("22-drafter-anatomy", 1560, 900)
@@ -1254,7 +1417,7 @@ def fig_sim():
     return f
 
 
-FIGS = [fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
+FIGS = [fig_pipeline, fig_verify_ops, fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
         fig_weights_once, fig_cycle, fig_accept_rule, fig_tau, fig_map, fig_timeline, fig_thin_ar, fig_parallel,
         fig_verify_shapes, fig_kv_lifecycle, fig_tree, fig_drafter_caches, fig_cycle_time, fig_batch, fig_sim]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
