@@ -750,89 +750,6 @@ def fig_dspark_schedule():
     return f
 
 
-# ---------------------------------------------------------------- 28. 채택의 분포와 시간 축
-def fig_accept_dynamics():
-    import random
-    f = Fig("28-accept-dynamics", 1560, 720)
-    f.title(40, 44, "채택은 평균이 아니라 분포다 — 사이클마다, 요청마다, 출력 구간마다 다르다 (초안 4개)")
-    g = 4
-
-    def dist(alpha):
-        p = []
-        for k in range(g + 1):
-            s = 1.0
-            for j in range(k):
-                s *= alpha
-            p.append(s * (1 - alpha) if k < g else s)
-        return p   # P(a = k), 확정 토큰 = k + 1
-
-    d1 = dist(0.8)
-    d2 = [0.5 * x + 0.5 * y for x, y in zip(dist(0.95), dist(0.55))]
-    # ① 막대
-    x0, y0, w, h = 110, 120, 560, 320
-    f.text(40, 100, "① 사이클 하나에 확정되는 토큰 수의 분포", 16, "start", 700)
-    for v in (0, .2, .4, .6):
-        yy = y0 + h - v / .6 * h
-        f.line(x0, yy, x0 + w, yy, GRID, 1)
-        f.text(x0 - 10, yy + 5, f"{v:.1f}", 12, "end", color=MUTED, mono=True)
-    for k in range(g + 1):
-        cxk = x0 + 40 + k * 108
-        for s, (dd, col) in enumerate(((d1, SERIES[0]), (d2, SERIES[1]))):
-            hh = dd[k] / .6 * h
-            f.rect(cxk + s * 34, y0 + h - hh, 30, hh, col, "none", 3)
-        f.text(cxk + 32, y0 + h + 22, f"{k + 1}개", 14, color=MUTED)
-    f.text(x0 + 4 + 4 * 108 + 40, y0 + h + 44, "보너스 포함", 12, color=MUTED)
-    f.rect(x0, y0 + h + 62, 16, 16, SERIES[0], "none", 3)
-    f.text(x0 + 24, y0 + h + 76, "모든 요청 α = 0.8", 14, "start")
-    f.rect(x0 + 200, y0 + h + 62, 16, 16, SERIES[1], "none", 3)
-    f.text(x0 + 224, y0 + h + 76, "반은 α = 0.95 (코드), 반은 0.55 (대화)", 14, "start")
-    tau1 = sum((k + 1) * p for k, p in enumerate(d1))
-    tau2 = sum((k + 1) * p for k, p in enumerate(d2))
-    f.text(x0, y0 + h + 104, f"평균 τ: {tau1:.2f} vs {tau2:.2f} — 평균은 비슷해도 분포는 전혀 다르다", 14, "start", 700)
-
-    # ② 시간 축
-    random.seed(7)
-    bx = 760
-    f.line(bx - 30, 86, bx - 30, 600, "#e3e5ee", 2, "6 6")
-    f.text(bx, 100, "② 요청 하나를 시간 순으로 — 사이클마다 확정된 토큰 수", 16, "start", 700)
-
-    def run(model, n=48):
-        # mk: 출력 위치마다 난이도 구간을 미리 정해 둔다 (토큰마다 4%로 전환) — γ 정책이 바뀌어도 워크로드는 같다
-        hard, state = [], 0
-        for _ in range(n * (g + 1)):
-            if random.random() < 0.04:
-                state = 1 - state
-            hard.append(state)
-        out, pos = [], 0
-        for _ in range(n):
-            a = 0
-            while a < g:
-                al = 0.75 if model == "iid" else (0.45 if hard[pos + a] else 0.93)
-                if random.random() >= al:
-                    break
-                a += 1
-            out.append(a + 1)
-            pos += a + 1
-        return out
-    for i, (model, name, col) in enumerate((("iid", "자리마다 독립 · α 고정 0.75", SERIES[0]),
-                                            ("mk", "출력 위치마다 쉬운 · 어려운 구간이 정해져 있다 (토큰마다 전환 4%)", SERIES[1]))):
-        seq = run(model)
-        ty = 150 + i * 200
-        f.text(bx, ty, name, 14, "start", 700)
-        base = ty + 140
-        for t, v in enumerate(seq):
-            hh = v * 22
-            f.rect(bx + t * 15, base - hh, 11, hh, col, "none", 2)
-        f.line(bx, base, bx + 48 * 15, base, "#8b90a3", 1.2)
-        f.text(bx + 48 * 15, base + 18, "사이클 →", 12, "end", color=MUTED)
-        f.text(bx - 8, base - 5 * 22 + 4, "5", 11, "end", color=MUTED, mono=True)
-        f.text(bx - 8, base - 22 + 4, "1", 11, "end", color=MUTED, mono=True)
-    f.rect(40, 616, 1480, 88, "#f6f5fd", "#d9d2f3", 10, 1.5)
-    f.text(64, 650, "같은 평균 τ라도, 요청 사이의 차이와 출력 구간의 뭉침이 토큰 간격의 분산(p99)과 배치의 줄 수를 바꾼다.", 17, "start", 700)
-    f.text(64, 680, "시뮬레이터는 α를 상수 하나가 아니라 '자리별 · 요청별 · 출력 구간에 따라 변하는 값'으로 뽑는다.", 15, "start", color=MUTED)
-    return f
-
-
 # ---------------------------------------------------------------- 30. e2e 시뮬레이터 루프에 넣을 것
 def fig_sim_loop():
     f = Fig("30-sim-loop", 1560, 800)
@@ -1158,6 +1075,418 @@ def fig_e2e_timeline():
         f.text(96, y, s_, 15, "start")
     f.text(64, 1136, f"설명용 예시 — γ 3 (배치 4 이상이면 2) · k번째 칸 α × {E2E['rho']}^(k−1) · 어려운 구간 α × {E2E['hard']} · "
                      "난수는 요청 · 출력 위치마다 미리 뽑아 둔 값 · 스텝 시간은 가정한 비용식", 12, "start", color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 33 ~ 40. 06의 구현 포인트 — 항목마다 "무엇인가"
+def _chip(f, x, y, w, kind, s, fs=13, h=26):
+    fill, stroke = KINDS[kind]
+    f.rect(x, y, w, h, fill, stroke, 13, 1.5)
+    f.text(x + w / 2, y + h / 2 + fs * 0.36, s, fs, weight=700, color=stroke)
+
+
+def fig_sim_accept():
+    f = Fig("33-sim-accept", 1560, 600)
+    f.title(40, 44, "① 채택 모형 — 칸마다 '맞을 확률' α를 두고, 앞 칸부터 판정해 처음 틀린 칸에서 멈춘다")
+
+    # 왼쪽: 판정
+    f.text(40, 100, "판정 — 난수 u가 α보다 작으면 통과", 17, "start", 700)
+    alpha, u = [.9, .8, .6, .5], [.31, .55, .72, None]
+    verdict = [("통과", "ok"), ("통과", "ok"), ("틀림 → 멈춤", "no"), ("보지 않음", "n")]
+    top, hh = 140, 220
+    for j in range(4):
+        x = 90 + j * 160
+        f.rect(x, top, 70, hh, "#f4f5f9", "#c9cddb", 6, 1.5)
+        h = alpha[j] * hh
+        f.rect(x, top + hh - h, 70, h, KINDS["d"][0], KINDS["d"][1], 6, 1.5)
+        f.text(x + 35, top + hh - h + 22, f"α {alpha[j]}", 14, weight=700, color=KINDS["d"][1], mono=True)
+        if u[j] is not None:
+            yu = top + hh - u[j] * hh
+            col = KINDS["ok"][1] if u[j] < alpha[j] else KINDS["no"][1]
+            f.line(x - 12, yu, x + 82, yu, col, 3)
+            f.text(x + 88, yu + 5, f"u {u[j]}", 13, "start", 700, col, mono=True)
+        f.text(x + 35, top + hh + 26, f"T{j + 1}", 16, weight=700, mono=True)
+        lab, kind = verdict[j]
+        _chip(f, x - 20, top + hh + 40, 110, kind, lab, 12)
+    f.text(40, top + hh + 112, "→ 채택 a = 2, 확정 n = 3  (T1 · T2 + target이 T3 자리에 고른 토큰 1개)", 16, "start", 700)
+
+    # 오른쪽: α 만들기
+    rx = 780
+    f.line(rx - 30, 86, rx - 30, 520, "#e3e5ee", 2, "6 6")
+    f.text(rx, 100, "α 만들기 — 요청 기준 × 자리 감쇠 × 출력 위치 난이도", 17, "start", 700)
+    # 출력 위치 띠
+    f.text(rx, 134, "요청 R1의 출력 위치 (1 ~ 30)", 13, "start", color=MUTED)
+    cw = 23
+    for p in range(1, 31):
+        x = rx + (p - 1) * cw
+        hard = 13 <= p <= 19
+        done = p <= 11
+        slot = 12 <= p <= 14
+        fill = KINDS["ok"][0] if done else ("#fbe3ef" if hard else "#ffffff")
+        stroke = KINDS["d"][1] if slot else ("#e7a6c8" if hard else "#d6d9e3")
+        f.rect(x, 144, cw - 3, 22, fill, stroke, 3, 2.4 if slot else 1)
+    f.text(rx, 186, "초록 = 이미 생성 11개", 12, "start", color=KINDS["ok"][1])
+    f.text(rx + 165, 186, "파랑 테두리 = 이번 초안 3칸", 12, "start", color=KINDS["d"][1])
+    f.text(rx + 365, 186, "분홍 = 어려운 구간 13 ~ 19", 12, "start", color=KINDS["no"][1])
+    # 곱셈 표
+    cols = ["칸 1 (12번째)", "칸 2 (13번째)", "칸 3 (14번째)"]
+    rows = [("요청 기준", ["0.92", "0.92", "0.92"], INK),
+            ("× 자리 감쇠 0.93^(k−1)", ["× 1", "× 0.93", "× 0.86"], INK),
+            ("× 출력 위치 난이도", ["× 1 (쉬움)", "× 0.45 (어려움)", "× 0.45 (어려움)"], KINDS["no"][1]),
+            ("= 이 칸의 α", ["0.92", "0.39", "0.36"], KINDS["d"][1])]
+    tx, ty = rx, 220
+    for j, c in enumerate(cols):
+        f.text(tx + 250 + j * 150, ty, c, 13, weight=700, color=MUTED)
+    for i, (lab, vals, col) in enumerate(rows):
+        y = ty + 40 + i * 44
+        if i == 3:
+            f.line(tx, y - 28, tx + 700, y - 28, "#c9cddb", 1.5)
+        f.text(tx, y, lab, 15, "start", 700 if i == 3 else 400)
+        for j, v in enumerate(vals):
+            f.text(tx + 250 + j * 150, y, v, 15, weight=700 if i == 3 else 400, color=col, mono=True)
+    f.text(rx, 450, "기준 α · 어려운 구간은 요청이 도착할 때 정한다. 자리 감쇠는 drafter 종류로 정한 고정 규칙이다", 13, "start", color=MUTED)
+
+    summary(f, 40, 510, 1480, "α는 매 스텝 무작위로 바뀌지 않는다 — 정해진 확률 프로필에서 '이번에 판정할 출력 위치'의 값을 쓰고, 난수와 비교해 a가 정해진다")
+    return f
+
+
+def fig_sim_verify():
+    f = Fig("34-sim-verify", 1560, 660)
+    f.title(40, 44, "② verify 비용 — target forward 한 번에 요청마다 K줄 (decode는 1줄)")
+
+    def stack(x, y, per):
+        for r in range(3):
+            for k in range(per):
+                yy = y + (r * per + k) * 20
+                if k == 0:
+                    f.rect(x, yy, 120, 16, "#ffffff", "#7b8196", 3, 1.2, "4 3")
+                else:
+                    f.rect(x, yy, 120, 16, KINDS["d"][0], KINDS["d"][1], 3, 1.2)
+                f.text(x + 60, yy + 12, f"R{r + 1} · {'직전 토큰' if k == 0 else f'초안 {k}'}", 10, color=INK)
+        return y + 3 * per * 20
+    f.text(40, 100, "decode — 요청 3개 × 1줄 = 3줄", 16, "start", 700)
+    stack(40, 130, 1)
+    f.box(200, 120, 100, 80, "t", "target", fs=15)
+    f.arrow(164, 160, 196, 160)
+    f.text(380, 100, "verify — 요청 3개 × 4줄 = 12줄", 16, "start", 700)
+    stack(380, 130, 4)
+    f.box(540, 190, 110, 120, "t", "target", fs=15)
+    f.arrow(504, 250, 536, 250)
+    f.text(595, 334, "forward 1번", 13, color=MUTED)
+    notes = [("가중치 읽기", "1번 — decode와 같다"), ("곱셈 · KV 쓰기", "줄 수만큼 (× K)"), ("attention", "요청마다 K × (S + K)"),
+             ("MoE", "12줄 모두 라우팅 (버릴 줄 포함)"), ("출력", "로짓 12 × 어휘 + 거부 샘플링")]
+    for i, (a, b) in enumerate(notes):
+        y = 420 + i * 28
+        f.text(40, y, a, 14, "start", 700)
+        f.text(190, y, b, 14, "start", color=MUTED)
+
+    # 오른쪽: 배치에 따라 verify ÷ decode
+    cx = 900
+    f.line(cx - 50, 86, cx - 50, 560, "#e3e5ee", 2, "6 6")
+    f.text(cx - 20, 100, "verify 시간 ÷ decode 시간 — 배치에 따라 (K = 4)", 17, "start", 700)
+    X, Y = axes(f, cx + 40, 150, 520, 280, (0, 8), (1, 4), list(range(0, 9)), [1, 2, 3, 4],
+                "배치 (요청 수, 로그 축)", "배수", xfmt=lambda v: str(2 ** v), yfmt=lambda v: f"{v}×")
+    pts = []
+    for i in range(81):
+        b = 2 ** (i / 10)
+        pts.append((X(i / 10), Y((1 + 4 * b / 64) / (1 + b / 64))))
+    f.poly(pts, SERIES[1], 3)
+    f.text(X(0.2), Y(1.42), "작은 배치 → 거의 같다", 14, "start", 700, KINDS["ok"][1])
+    f.text(X(4.4), Y(3.75), "큰 배치 → K배에 가까워진다", 14, "start", 700, KINDS["no"][1])
+    f.text(cx - 20, 520, "작은 배치는 가중치 읽기, 큰 배치는 곱셈이 스텝 시간의 대부분이다", 13, "start", color=MUTED)
+    f.text(cx - 20, 542, "설명용 가정: 스텝 시간 = 가중치 읽기(고정) + 곱셈(줄 수에 비례), 줄 64개에서 둘이 같다", 12, "start", color=MUTED)
+    summary(f, 40, 580, 1480, "verify는 decode의 '새 토큰 줄'을 1 → K로 바꾼 것 — 작은 배치에서는 싸고, 큰 배치 · MoE · 긴 문맥에서는 비싸진다")
+    return f
+
+
+def fig_sim_draft():
+    f = Fig("35-sim-draft", 1560, 520)
+    f.title(40, 44, "③ draft 비용 — 갱신 패스(직전 a + 1줄) + 직렬 초안, 그래서 스텝마다 바뀐다")
+    x0 = 330
+    rows = [("EAGLE-3 · MTP (γ = 3)", "직전 a = 0 → 갱신 1줄", 1, "seq"),
+            ("EAGLE-3 · MTP (γ = 3)", "직전 a = 3 → 갱신 4줄", 4, "seq"),
+            ("DSpark (블록 5칸)", "직전 a = 2 → 투영 3줄", 3, "blk")]
+    for i, (name, sub, nrow, mode) in enumerate(rows):
+        y = 110 + i * 100
+        f.text(40, y + 22, name, 16, "start", 700)
+        f.text(40, y + 44, sub, 13, "start", color=MUTED)
+        w_up = 50 + 26 * nrow
+        f.rect(x0, y, w_up, 50, KINDS["a"][0], KINDS["a"][1], 6, 1.5)
+        f.text(x0 + w_up / 2, y + 22, "갱신" if mode == "seq" else "투영", 13, weight=700, color=KINDS["a"][1])
+        f.text(x0 + w_up / 2, y + 40, f"{nrow}줄", 12, color=KINDS["a"][1], mono=True)
+        x = x0 + w_up + 6
+        if mode == "seq":
+            for k in (1, 2, 3):
+                f.box(x, y, 70, 50, "d", f"초안 {k}", fs=13)
+                x += 76
+        else:
+            f.box(x, y, 150, 50, "d", "블록 1번 → 5칸", fs=13)
+            x += 156
+            f.box(x, y, 60, 50, "d", "보정", fs=12)
+            x += 66
+        f.rect(x + 6, y, 360, 50, KINDS["t"][0], KINDS["t"][1], 6, 1.5)
+        f.text(x + 186, y + 31, "verify (target)", 14, weight=700, color=KINDS["t"][1])
+    f.text(x0, 96, "draft 시간 ─────────────▶", 12, "start", color=MUTED)
+    f.text(1180, 140, "draft 시간을 바꾸는 것", 15, "start", 700)
+    for i, s in enumerate(["배치 B", "γ (트리는 깊이 · topk)", "직전 채택 수 a", "drafter 문맥 길이"]):
+        f.text(1190, 170 + i * 26, "• " + s, 14, "start")
+    f.text(1180, 300, "갱신 · 투영 패스가 첫 초안도 낸다", 12, "start", color=MUTED)
+    summary(f, 40, 420, 1480, "draft 시간은 상수가 아니다 — 갱신 패스의 줄 수가 직전 스텝의 채택 수를 따라 바뀐다",
+            "ET에 drafter op로 넣거나, 루프라인으로 계산해 ET 앞에 노드 하나로 넣는다 (GPU 시간으로, 커널 바닥 시간 · 통신 포함)")
+    return f
+
+
+def fig_sim_resource():
+    f = Fig("36-sim-resource", 1560, 620)
+    f.title(40, 44, "④ 자원 — 한 스텝에서 speculation이 더 쓰는 몫 (파랑)")
+    # 토큰 예산
+    f.text(40, 100, "토큰 예산 — 스텝당 512토큰, 배치 64 · K 4", 16, "start", 700)
+    bx, bw = 40, 1200
+    f.rect(bx, 120, bw * 256 / 512, 40, KINDS["d"][0], KINDS["d"][1], 4, 1.5)
+    f.text(bx + bw * 128 / 512, 146, "verify Σ K = 64 × 4 = 256 (먼저 뗀다)", 14, weight=700, color=KINDS["d"][1])
+    f.rect(bx + bw * 256 / 512, 120, bw * 256 / 512, 40, KINDS["t"][0], KINDS["t"][1], 4, 1.5)
+    f.text(bx + bw * 384 / 512, 146, "남은 256 → prefill 청크", 14, weight=700, color=KINDS["t"][1])
+    f.text(bx + bw + 16, 146, "모자라면 초안을 자른다 (vLLM)", 13, "start", color=MUTED)
+
+    # KV 블록
+    f.text(40, 214, "KV — 요청 하나의 마지막 블록들 (블록 16토큰, S = 302, K = 4)", 16, "start", 700)
+    cw, y1 = 22, 240
+
+    def blockrow(y, cells, label):
+        f.text(40, y + 30, label, 13, "start", color=MUTED)
+        x = 300
+        for bi, blk in enumerate(cells):
+            for ci, kind in enumerate(blk):
+                fill = {"S": "#a493e0", "K": KINDS["d"][0], "e": "#ffffff", "x": "#f1d5e4"}[kind]
+                stroke = {"S": "#7c69c9", "K": KINDS["d"][1], "e": "#d6d9e3", "x": "#e7a6c8"}[kind]
+                f.rect(x + ci * cw, y, cw - 3, 34, fill, stroke, 3, 1.2)
+            f.text(x + 8 * cw, y + 52, f"블록 {19 + bi}", 12, color=MUTED)
+            x += 16 * cw + 18
+    blk19 = ["S"] * 14 + ["K"] * 2
+    blk20 = ["K"] * 2 + ["e"] * 14
+    blockrow(y1, [blk19, blk20], "스텝 전 — S + K = 306줄 예약")
+    blk19b = ["S"] * 15 + ["x"]
+    blk20b = ["x"] * 2 + ["e"] * 14
+    blockrow(y1 + 84, [blk19b, blk20b], "채택 0 → S = 303")
+    f.text(1100, y1 + 22, "파랑 = 검증할 K줄", 13, "start", 700, KINDS["d"][1])
+    f.text(1100, y1 + 106, "분홍 = 버린 줄 (다음 스텝이 덮어쓴다)", 13, "start", 700, KINDS["no"][1])
+    f.text(1100, y1 + 130, "블록 20은 비었지만 끝날 때까지 보유 (vLLM)", 13, "start", color=MUTED)
+
+    # GPU 메모리
+    f.text(40, 452, "GPU 메모리", 16, "start", 700)
+    parts = [("target 가중치", 430, "n"), ("drafter 가중치", 90, "d"), ("KV 블록 (target)", 520, "c"),
+             ("drafter KV", 80, "d"), ("로짓 · 버퍼", 84, "d"), ("graph", 60, "d"), ("여유", 136, "e")]
+    x = 40
+    for lab, w, kind in parts:
+        fill, stroke = (("#ffffff", "#d6d9e3") if kind == "e" else KINDS[kind])
+        f.rect(x, 468, w, 40, fill, stroke, 3, 1.5)
+        f.text(x + w / 2, 493, lab, 12, weight=700, color=stroke if kind != "n" else INK)
+        x += w + 4
+    summary(f, 40, 536, 1480, "speculation이 더 쓰는 것: 토큰 예산의 Σ K · KV의 K줄 예약과 보유 블록 · drafter의 가중치 · 캐시 · 버퍼",
+            None)
+    return f
+
+
+def fig_sim_kpolicy():
+    f = Fig("37-sim-kpolicy", 1560, 560)
+    f.title(40, 44, "⑤ K 정책 — 몇 줄을 검증할지 무엇을 보고 정하나")
+    W, H, y0 = 300, 200, 150
+    xs = [60, 440, 820, 1200]
+    names = [("고정", "설정값 그대로"), ("vLLM Dynamic SD", "동시 요청 수 구간별"), ("SGLang adaptive", "채택 길이의 이동 평균 + 1"),
+             ("DSpark", "요청마다 · 스텝마다 다르게")]
+    for (n, sub), x in zip(names, xs):
+        f.text(x, 100, n, 17, "start", 700)
+        f.text(x, 124, sub, 13, "start", color=MUTED)
+        f.line(x, y0 + H, x + W, y0 + H, "#8b90a3", 1.5)
+        f.line(x, y0, x, y0 + H, "#8b90a3", 1.5)
+        f.text(x - 8, y0 + 10, "K", 13, "end", 700, color=MUTED)
+
+    def KY(k):
+        return y0 + H - k / 5 * H
+    # 고정
+    x = xs[0]
+    f.line(x, KY(4), x + W, KY(4), SERIES[0], 3)
+    f.text(x + W / 2, KY(4) - 10, "K = 4", 13, weight=700, color=SERIES[0])
+    f.text(x + W, y0 + H + 20, "시간 →", 12, "end", color=MUTED)
+    # Dynamic SD
+    x = xs[1]
+    segs = [(0, .3, 4), (.3, .6, 2), (.6, 1, 1)]
+    for a, b, k in segs:
+        f.line(x + a * W, KY(k), x + b * W, KY(k), SERIES[0], 3)
+    for lab, p in (("1", 0), ("64", .3), ("128", .6), ("512", 1)):
+        f.text(x + p * W, y0 + H + 20, lab, 12, color=MUTED, mono=True)
+    f.text(x + W, y0 + H + 40, "동시 요청 수 →", 12, "end", color=MUTED)
+    # adaptive
+    x = xs[2]
+    acc = [3.5, 3.6, 3.4, 3.5, 1.4, 1.3, 1.5, 1.2, 1.4, 3.2, 3.4, 3.5, 3.3, 3.6]
+    ema, ks, e = [], [], 3.0
+    for v in acc:
+        e = 0.8 * e + 0.2 * v
+        ema.append(e)
+        ks.append(min(4, max(2, round(e) + 1)))
+    n = len(acc)
+    f.poly([(x + i / (n - 1) * W, KY(v)) for i, v in enumerate(acc)], "#c9cddb", 2)
+    f.poly([(x + i / (n - 1) * W, KY(v)) for i, v in enumerate(ema)], SERIES[2], 2, "5 4")
+    pts = []
+    for i, k in enumerate(ks):
+        xa = x + i / (n - 1) * W
+        pts += [(xa, KY(k)), (x + min(i + 1, n - 1) / (n - 1) * W, KY(k))]
+    f.poly(pts, SERIES[0], 3)
+    f.text(x + 4, y0 + H + 20, "회색 = 실제 채택 길이 · 점선 = 이동 평균", 11, "start", color=MUTED)
+    f.text(x + W, y0 + H + 40, "스텝 →", 12, "end", color=MUTED)
+    f.text(x + 0.55 * W, KY(4.6), "한발 늦게 따라간다", 12, weight=700, color=KINDS["no"][1])
+    # DSpark
+    x = xs[3]
+    for i, (r, k) in enumerate((("A", 3), ("B", 2), ("C", 5))):
+        bx = x + 30 + i * 90
+        f.rect(bx, KY(k), 56, y0 + H - KY(k), KINDS["d"][0], KINDS["d"][1], 4, 1.5)
+        f.text(bx + 28, KY(k) - 8, f"K {k}", 13, weight=700, color=KINDS["d"][1])
+        f.text(bx + 28, y0 + H + 20, f"요청 {r}", 12, color=MUTED)
+    f.text(x + W, y0 + H + 40, "confidence + 부하 (그림 32)", 12, "end", color=MUTED)
+    f.text(60, KY(4) - 10, "", 10)
+    for x in xs:
+        f.line(x + W, y0 + H, x + W, y0 + H, "#8b90a3", 1)
+    f.blue = SERIES[0]
+    f.line(60, 430, 100, 430, SERIES[0], 3)
+    f.text(108, 435, "파랑 = 그 스텝의 K", 13, "start", color=MUTED)
+    summary(f, 40, 460, 1480, "시뮬레이터에서는 이상적인 K가 아니라 엔진의 정책을 그대로 돌린다 — 반응이 늦는 손해까지 나온다",
+            "비동기 스케줄링이면 다음 스텝을 a를 모른 채 짠다 → '다 맞았다'고 가정하고 예약 · 예산을 잡은 뒤 나중에 고친다 (vLLM)")
+    return f
+
+
+def fig_sim_commit():
+    f = Fig("38-sim-commit", 1560, 500)
+    f.title(40, 44, "⑥ 확정 처리 — 스텝 끝에 n = min(a + 1, 남은 수)개를 한꺼번에 내보낸다")
+    x0 = 300
+
+    def tok(x, y, kind):
+        f.rect(x, y, 14, 14, KINDS[kind][0], KINDS[kind][1], 3, 1.2)
+    # decode only
+    y = 130
+    f.text(40, y + 4, "speculation 없음", 16, "start", 700)
+    f.text(40, y + 26, "스텝마다 1개 → 11개에 11스텝", 13, "start", color=MUTED)
+    for i in range(11):
+        xa = x0 + i * 62
+        f.rect(xa, y - 14, 58, 30, "#f4f5f9", "#c9cddb", 4, 1)
+        tok(xa + 44, y - 36, "ok")
+    # speculation
+    y = 260
+    f.text(40, y + 4, "speculation (γ 3, 출력 11개)", 16, "start", 700)
+    f.text(40, y + 26, "스텝마다 n개가 한꺼번에 → 5스텝", 13, "start", color=MUTED)
+    ns = [(2, 3), (0, 1), (3, 4), (0, 1)]   # (a, n)
+    xa = x0
+    left = 11
+    for a, n in ns:
+        f.rect(xa, y - 14, 110, 30, "#f4f5f9", "#c9cddb", 4, 1)
+        for j in range(n):
+            tok(xa + 92, y - 36 - j * 17, "ok")
+        f.text(xa + 50, y + 6, f"a {a} → n {n}", 12, weight=700, mono=True)
+        left -= n
+        xa += 116
+    # 마지막: 남은 수에서 자른다
+    f.rect(xa, y - 14, 110, 30, "#f4f5f9", "#c9cddb", 4, 1)
+    for j in range(4):
+        if j < left:
+            tok(xa + 92, y - 36 - j * 17, "ok")
+        else:
+            f.rect(xa + 92, y - 36 - j * 17, 14, 14, "#ffffff", KINDS["no"][1], 3, 1.2, "3 2")
+    f.text(xa + 50, y + 6, f"a 3 → n {left}", 12, weight=700, mono=True)
+    f.text(xa + 120, y - 50, f"남은 수 {left}개만 — 나머지는 버린다", 13, "start", 700, KINDS["no"][1])
+    f.text(xa + 120, y - 30, "(출력 길이 L에 닿아 끝)", 12, "start", color=MUTED)
+    f.text(x0, y + 40, "시간 →", 12, "start", color=MUTED)
+    f.text(40, 350, "스텝 끝에 같이 하는 일", 15, "start", 700)
+    for i, s in enumerate(["S += n · 생성 수 += n", "a를 다음 스텝으로 — 다음 draft의 갱신 줄 수",
+                           "ITL은 묶음 단위 / 토큰 단위 중 비교할 벤치마크와 같은 정의로"]):
+        f.text(60, 378 + i * 26, "• " + s, 14, "start")
+    summary(f, 800, 352, 720, "출력 길이 L은 워크로드 값 그대로", "출력 분포를 지키는 검증이면 EOS를 따로 뽑지 않는다")
+    return f
+
+
+def fig_sim_drafter_state():
+    f = Fig("39-sim-drafter-state", 1560, 480)
+    f.title(40, 44, "⑦ drafter 상태 — drafter의 문맥(KV · hidden)을 만들거나 옮겨야 하는 네 순간")
+    W, H, y0 = 350, 290, 90
+    xs = [40, 410, 780, 1150]
+    heads = ["처음 들어올 때", "P/D로 나눠 돌릴 때", "prefix 캐시가 적중할 때", "선점됐다 돌아올 때"]
+    for x, h in zip(xs, heads):
+        f.rect(x, y0, W, H, "#ffffff", "#c9cddb", 10, 1.5)
+        f.text(x + 20, y0 + 32, h, 17, "start", 700)
+    # 1 처음
+    x = xs[0] + 20
+    f.text(x, y0 + 70, "prefill 스텝", 13, "start", color=MUTED)
+    f.box(x, y0 + 82, 300, 40, "t", "target prefill", fs=14)
+    f.box(x, y0 + 130, 300, 40, "d", "drafter prefill", fs=14)
+    f.text(x, y0 + 210, "→ target KV와 drafter KV가", 14, "start")
+    f.text(x, y0 + 234, "    함께 생긴다", 14, "start")
+    # 2 P/D
+    x = xs[1] + 20
+    f.rect(x, y0 + 70, 130, 110, KINDS["t"][0], KINDS["t"][1], 8, 1.5)
+    f.text(x + 65, y0 + 96, "P", 18, weight=700, color=KINDS["t"][1])
+    f.text(x + 65, y0 + 122, "target prefill", 12)
+    f.text(x + 65, y0 + 142, "+ drafter prefill", 12, weight=700, color=KINDS["d"][1])
+    f.rect(x + 180, y0 + 70, 130, 110, KINDS["d"][0], KINDS["d"][1], 8, 1.5)
+    f.text(x + 245, y0 + 96, "D", 18, weight=700, color=KINDS["d"][1])
+    f.text(x + 245, y0 + 130, "draft · verify", 12)
+    f.arrow(x + 132, y0 + 125, x + 176, y0 + 125)
+    for i, s in enumerate(["보내는 것: target KV", "+ drafter KV + 마지막 hidden", "DSpark는 최근 128토큰만"]):
+        f.text(x, y0 + 214 + i * 24, s, 13, "start", 700 if i == 1 else 400, KINDS["d"][1] if i == 1 else INK)
+    # 3 prefix
+    x = xs[2] + 20
+    f.text(x, y0 + 70, "프롬프트 블록", 13, "start", color=MUTED)
+    for i in range(6):
+        kind = "c" if i < 5 else "t"
+        f.rect(x + i * 50, y0 + 82, 44, 30, KINDS[kind][0], KINDS[kind][1], 4, 1.5)
+    f.text(x + 5 * 50 + 22, y0 + 132, "다시 계산", 12, weight=700, color=KINDS["t"][1])
+    f.text(x, y0 + 132, "적중", 12, "start", 700, KINDS["c"][1])
+    for i, s in enumerate(["drafter KV도 적중했나?", "아니면 그 구간 drafter prefill", "vLLM EAGLE: 적중을 블록 하나 줄여", "다시 계산한다",
+                           "버린 초안 줄은 등록하지 않는다"]):
+        f.text(x, y0 + 176 + i * 24, s, 13, "start", 700 if i == 0 else 400)
+    # 4 선점
+    x = xs[3] + 20
+    f.rect(x, y0 + 82, 90, 30, KINDS["ok"][0], KINDS["ok"][1], 4, 1.2)
+    f.text(x + 45, y0 + 102, "decode", 12)
+    f.text(x + 100, y0 + 104, "✕", 18, weight=700, color=KINDS["no"][1])
+    f.line(x + 112, y0 + 97, x + 190, y0 + 97, KINDS["no"][1], 2, "5 4")
+    f.text(x + 151, y0 + 88, "대기", 12, weight=700, color=KINDS["no"][1])
+    f.rect(x + 196, y0 + 82, 110, 30, KINDS["t"][0], KINDS["t"][1], 4, 1.2)
+    f.text(x + 251, y0 + 102, "다시 prefill", 12, weight=700, color=KINDS["t"][1])
+    for i, s in enumerate(["프롬프트 + 이미 생성한 토큰을", "다시 prefill한다", "drafter prefill도 다시"]):
+        f.text(x, y0 + 176 + i * 24, s, 13, "start", 700 if i == 2 else 400, KINDS["d"][1] if i == 2 else INK)
+    summary(f, 40, 404, 1480, "target KV만 생각하면 drafter 쪽 비용이 빠진다 — 네 순간마다 drafter 문맥을 만들 비용과 옮길 양을 더한다")
+    return f
+
+
+def fig_sim_records():
+    f = Fig("40-sim-records", 1560, 500)
+    f.title(40, 44, "⑧ 기록과 검증 — 값을 나눠 남겨야 오차가 어디서 났는지 찾는다")
+    fields = [("제안 수", "draft 비용", "d"), ("검증 수 K", "verify 비용 · 토큰 예산", "t"), ("실행 줄 수 (패딩 포함)", "verify 비용", "t"),
+              ("채택 수 a", "채택 모형", "ok"), ("출력 수 n", "지표", "ok"), ("유효 길이 S", "attention 비용", "c"),
+              ("할당 블록 수", "메모리 · 선점", "c")]
+    f.text(40, 100, "스텝마다 요청별로 남길 값", 16, "start", 700)
+    for i, (a, b, kind) in enumerate(fields):
+        y = 120 + i * 44
+        f.box(40, y, 230, 34, kind, a, fs=14)
+        f.arrow(276, y + 17, 320, y + 17)
+        f.text(330, y + 23, b, 14, "start", color=MUTED)
+    rx = 640
+    f.line(rx - 30, 90, rx - 30, 440, "#e3e5ee", 2, "6 6")
+    f.text(rx, 100, "맞추는 순서", 16, "start", 700)
+    steps = [("1  비용", "vLLM synthetic으로 채택을 고정", "→ 같은 배치 · 같은 K에서 스텝 시간 비교"),
+             ("2  채택", "고정 길이 실행의 기록으로 α 곡선", "→ 길이가 바뀌는 기록은 검증한 자리만 센다"),
+             ("3  e2e", "같은 워크로드를 엔진과 시뮬레이터에서", "→ TTFT · TPOT · 처리량의 분포 비교")]
+    for i, (h, a, b) in enumerate(steps):
+        y = 124 + i * 92
+        f.rect(rx, y, 860, 76, "#f6f5fd", "#d9d2f3", 8, 1.5)
+        f.text(rx + 20, y + 32, h, 17, "start", 700, PURPLE)
+        f.text(rx + 130, y + 32, a, 15, "start", 700)
+        f.text(rx + 130, y + 58, b, 14, "start", color=MUTED)
+    f.text(40, 470, "확인", 15, "start", 700)
+    checks = ["drafter 없는 설정 = 기존 결과", "α = 1 → 매 스텝 최대 채택", "α = 0 → 스텝당 1토큰", "n ≤ a + 1 ≤ K"]
+    x = 100
+    for c in checks:
+        w = 26 + len(c) * 12
+        _chip(f, x, 452, w, "ok", c, 13, 28)
+        x += w + 16
     return f
 
 
@@ -2166,7 +2495,7 @@ def fig_sim():
     return f
 
 
-FIGS = [fig_three_methods, fig_eagle_tree, fig_fixed_vs_dspark, fig_dspark_schedule, fig_accept_dynamics, fig_sim_loop, fig_e2e_timeline, fig_pipeline, fig_verify_ops, fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
+FIGS = [fig_three_methods, fig_eagle_tree, fig_fixed_vs_dspark, fig_dspark_schedule, fig_sim_loop, fig_e2e_timeline, fig_sim_accept, fig_sim_verify, fig_sim_draft, fig_sim_resource, fig_sim_kpolicy, fig_sim_commit, fig_sim_drafter_state, fig_sim_records, fig_pipeline, fig_verify_ops, fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
         fig_weights_once, fig_cycle, fig_accept_rule, fig_tau, fig_map, fig_timeline, fig_thin_ar, fig_parallel,
         fig_verify_shapes, fig_kv_lifecycle, fig_tree, fig_drafter_caches, fig_cycle_time, fig_batch, fig_sim]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
