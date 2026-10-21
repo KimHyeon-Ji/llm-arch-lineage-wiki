@@ -702,7 +702,7 @@ def fig_dspark_schedule():
 def fig_accept_dynamics():
     import random
     f = Fig("28-accept-dynamics", 1560, 720)
-    f.title(40, 44, "채택은 평균이 아니라 분포다 — 사이클마다, 요청마다, 시간에 따라 다르다 (초안 4개)")
+    f.title(40, 44, "채택은 평균이 아니라 분포다 — 사이클마다, 요청마다, 출력 구간마다 다르다 (초안 4개)")
     g = 4
 
     def dist(alpha):
@@ -745,21 +745,25 @@ def fig_accept_dynamics():
     f.text(bx, 100, "② 요청 하나를 시간 순으로 — 사이클마다 확정된 토큰 수", 16, "start", 700)
 
     def run(model, n=48):
-        out, state = [], 0
+        # mk: 출력 위치마다 난이도 구간을 미리 정해 둔다 (토큰마다 4%로 전환) — γ 정책이 바뀌어도 워크로드는 같다
+        hard, state = [], 0
+        for _ in range(n * (g + 1)):
+            if random.random() < 0.04:
+                state = 1 - state
+            hard.append(state)
+        out, pos = [], 0
         for _ in range(n):
-            if model == "iid":
-                al = 0.75
-            else:
-                if random.random() < 0.12:
-                    state = 1 - state
-                al = 0.93 if state == 0 else 0.45
             a = 0
-            while a < g and random.random() < al:
+            while a < g:
+                al = 0.75 if model == "iid" else (0.45 if hard[pos + a] else 0.93)
+                if random.random() >= al:
+                    break
                 a += 1
             out.append(a + 1)
+            pos += a + 1
         return out
     for i, (model, name, col) in enumerate((("iid", "자리마다 독립 · α 고정 0.75", SERIES[0]),
-                                            ("mk", "쉬운 구간 · 어려운 구간이 이어진다 (상태 전환 12%)", SERIES[1]))):
+                                            ("mk", "출력 위치마다 쉬운 · 어려운 구간이 정해져 있다 (토큰마다 전환 4%)", SERIES[1]))):
         seq = run(model)
         ty = 150 + i * 200
         f.text(bx, ty, name, 14, "start", 700)
@@ -772,74 +776,76 @@ def fig_accept_dynamics():
         f.text(bx - 8, base - 5 * 22 + 4, "5", 11, "end", color=MUTED, mono=True)
         f.text(bx - 8, base - 22 + 4, "1", 11, "end", color=MUTED, mono=True)
     f.rect(40, 616, 1480, 88, "#f6f5fd", "#d9d2f3", 10, 1.5)
-    f.text(64, 650, "같은 평균 τ라도, 요청 사이의 차이와 시간 속의 뭉침이 토큰 간격의 분산(p99)과 배치의 줄 수를 바꾼다.", 17, "start", 700)
-    f.text(64, 680, "시뮬레이터는 α를 상수 하나가 아니라 '자리별 · 요청별 · 시간에 따라 변하는 값'으로 뽑는다.", 15, "start", color=MUTED)
+    f.text(64, 650, "같은 평균 τ라도, 요청 사이의 차이와 출력 구간의 뭉침이 토큰 간격의 분산(p99)과 배치의 줄 수를 바꾼다.", 17, "start", 700)
+    f.text(64, 680, "시뮬레이터는 α를 상수 하나가 아니라 '자리별 · 요청별 · 출력 구간에 따라 변하는 값'으로 뽑는다.", 15, "start", color=MUTED)
     return f
 
 
-# ---------------------------------------------------------------- 29. verify 때의 MoE 라우팅
-def fig_moe_verify():
-    import random
-    f = Fig("29-moe-verify", 1560, 720)
-    f.title(40, 44, "verify 때의 MoE — 토큰이 K배가 되면, 불리는 expert 수와 GPU 사이의 쏠림이 함께 변한다 (DeepSeek-V3: 256개 중 8개)")
-    E, k, G = 256, 8, 32
+# ---------------------------------------------------------------- 30. e2e 시뮬레이터 루프에 넣을 것
+def fig_sim_loop():
+    f = Fig("30-sim-loop", 1560, 800)
+    f.title(40, 44, "e2e 서빙 시뮬레이터의 한 스텝 — speculation이 더하는 것 (파랑)")
+    W, H, Y0 = 340, 340, 92
+    boxes = [
+        (40, "① 워크로드", ["LMBenchmark 세션 · InferenceX", "closed loop · JSONL trace"],
+         ["요청마다 채택 프로필", "  (작업 종류 · 온도 · 배율)", "세션의 뒤 턴 = 긴 문맥", "  → α가 S에 따라 변한다",
+          "closed loop: 빨라지면", "  다음 요청도 빨리 온다"]),
+        (420, "② 스케줄러 (Python)", ["continuous batching · 토큰 예산", "KV 블록 · 선점 · prefix cache · P/D"],
+         ["γ 정책 → 요청마다 K", "토큰 예산에서 Σ K를 먼저 뗀다", "KV: S + K줄 예약 · 버린 줄의 블록", "prefix 적중: drafter 상태 복원",
+          "P/D: drafter 상태도 넘긴다", "drafter 가중치 · 캐시 · 버퍼"]),
+        (800, "③ STAGE — ET 생성", ["배치의 연산을 그래프로"],
+         ["drafter 문맥 갱신 (직전 a + 1줄)", "초안 op (스텝마다 직렬)", "verify Σ K줄 · 트리는 조상 마스크", "MoE 라우팅에 Σ K줄 (버릴 줄 포함)",
+          "로짓 K × 어휘 · 거부 샘플링", "graph 크기: 요청당 1 + γ줄 단위"]),
+        (1180, "④ ASTRA-sim", ["ET → 스텝 시간 (연산 + 통신)"],
+         ["drafter 갱신 → 초안 → verify", "  직렬 의존 그대로", "drafter TP는 따로", "채택 처리의 host 직렬 몫"]),
+    ]
+    for x, name, subs, adds in boxes:
+        f.rect(x, Y0, W, H, "#ffffff", "#c9cddb", 10, 1.8)
+        f.text(x + 20, Y0 + 34, name, 19, "start", 700)
+        for i, s in enumerate(subs):
+            f.text(x + 20, Y0 + 60 + i * 20, s, 13, "start", color=MUTED)
+        f.rect(x + 14, Y0 + 106, W - 28, H - 120, KINDS["d"][0], "none", 8)
+        for i, s in enumerate(adds):
+            f.text(x + 30, Y0 + 138 + i * 28, ("+ " if not s.startswith(" ") else "") + s, 14, "start",
+                   600 if not s.startswith(" ") else 400, KINDS["d"][1] if not s.startswith(" ") else INK)
+    for x in (380, 760, 1140):
+        f.arrow(x + 2, Y0 + 170, x + 38, Y0 + 170)
+    for x, lab in ((380, "도착"), (760, "배치"), (1140, "ET")):
+        f.text(x + 20, Y0 + 156, lab, 12, color=MUTED)
 
-    def union(n):
-        return E * (1 - (1 - k / E) ** n)
+    # ⑤ 스텝 끝
+    ex, ey, ew, eh = 800, 500, 720, 168
+    f.rect(ex, ey, ew, eh, KINDS["ok"][0], KINDS["ok"][1], 10, 2)
+    f.text(ex + 20, ey + 34, "⑤ 스텝 끝 — 채택을 뽑고 확정한다 (새로 넣는 단계)", 19, "start", 700)
+    for i, s in enumerate(["요청마다 채택 수 a를 분포에서 뽑는다 (자리 · 요청 · 출력 구간에 따라)",
+                           "a + 1개 확정 — EOS · max_tokens가 끼면 거기서 자른다",
+                           "유효 길이 S += 출력 수 · 버린 줄은 prefix cache에 넣지 않는다",
+                           "확정 토큰을 스텝 끝 시각에 한꺼번에 내보낸다"]):
+        f.text(ex + 30, ey + 66 + i * 26, "• " + s, 14, "start")
+    f.arrow(1350, Y0 + H + 2, 1350, ey - 2)
+    f.text(1362, 474, "Δt → 시계 전진", 13, "start", color=MUTED)
+    # ⑤ → ② 다음 스텝
+    f.line(ex, 560, 590, 560, "#5d6377", 2.2)
+    f.arrow(590, 560, 590, Y0 + H + 4)
+    f.text(700, 550, "다음 스텝", 13, color=MUTED)
 
-    # ① expert 합집합
-    f.text(40, 96, "① 한 층에서 불리는 expert 수 — 토큰 n개가 각자 8개를 고른다", 16, "start", 700)
-    X, Y = axes(f, 110, 150, 560, 320, (0, 10), (0, 256), list(range(0, 11, 2)), [0, 64, 128, 192, 256],
-                "이번 forward에서 라우팅되는 토큰 수 n = Σ K (로그 축)", "불린 expert", xfmt=lambda v: str(2 ** v))
-    pts = [(X(i / 10), Y(union(2 ** (i / 10)))) for i in range(101)]
-    f.poly(pts, SERIES[0], 2.5)
-    import math
-    # 배치 1의 두 점은 곡선 아래로 끌어낸 레이블
-    for n, lab, ly in ((2, "MTP-1 verify · 배치 1", 436), (1, "decode · 배치 1", 460)):
-        x, y = X(math.log2(n)), Y(union(n))
-        f.line(x + 6, y, X(3.2) - 6, ly, "#b9bdcc", 1.2)
-        f.text(X(3.2), ly + 5, f"{lab}: {union(n):.0f}개", 13, "start", 700)
-    for n, lab, dx, dy in ((32, "decode · 배치 32", 10, 22), (64, "MTP-1 verify · 배치 32", 12, 22)):
-        x, y = X(math.log2(n)), Y(union(n))
-        f.text(x + dx, y + dy, f"{lab}: {union(n):.0f}개", 13, "start", 700)
-    for n in (1, 2, 32, 64):
-        f.dot(X(math.log2(n)), Y(union(n)), 6, SERIES[1])
-    f.text(X(0.2), 174, "배치 1: 토큰 ×2 → expert ×2.0 (가중치 읽기도 ×2)", 13, "start", 700, KINDS["no"][1])
-    f.text(X(0.2), 196, "배치 32: 토큰 ×2 → expert ×1.36 (이미 많이 읽는 중)", 13, "start", 700, KINDS["ok"][1])
+    # ⑥ 지표
+    mx, my, mw, mh = 40, 500, 340, 168
+    f.rect(mx, my, mw, mh, "#ffffff", "#c9cddb", 10, 1.8)
+    f.text(mx + 20, my + 34, "⑥ 지표", 19, "start", 700)
+    f.text(mx + 20, my + 60, "TTFT · TPOT · ITL · 처리량", 13, "start", color=MUTED)
+    f.rect(mx + 14, my + 76, mw - 28, 78, KINDS["d"][0], "none", 8)
+    f.text(mx + 30, my + 106, "+ τ · 채택 히스토그램", 14, "start", 600, KINDS["d"][1])
+    f.text(mx + 30, my + 136, "+ 버린 줄 · 사용자당 속도 분포", 14, "start", 600, KINDS["d"][1])
+    f.line(ex, 640, mx + mw + 4, 640, "#5d6377", 2.2, arrow=True)
+    f.text(600, 630, "토큰 · 시각", 13, color=MUTED)
+    f.arrow(210, my - 2, 210, Y0 + H + 4)
+    f.text(222, 474, "완료 → 다음 요청 (closed loop)", 13, "start", color=MUTED)
 
-    # ② EP 쏠림
-    random.seed(3)
-    ns = [8, 16, 32, 64, 128, 256, 512, 1024]
-    ratio = {}
-    for n in ns:
-        rs = []
-        for _ in range(200):
-            load = [0] * G
-            for _t in range(n):
-                for e in random.sample(range(E), k):
-                    load[e // (E // G)] += 1
-            rs.append(max(load) / (n * k / G))
-        ratio[n] = sum(rs) / len(rs)
-    bx = 860
-    f.line(bx - 40, 86, bx - 40, 560, "#e3e5ee", 2, "6 6")
-    f.text(bx - 20, 96, "② expert를 GPU 32장에 나눠 둘 때 — 가장 바쁜 GPU ÷ 평균", 16, "start", 700)
-    X2, Y2 = axes(f, bx + 50, 150, 560, 320, (3, 10), (1.0, 3.0), list(range(3, 11)), [1.0, 1.5, 2.0, 2.5, 3.0],
-                  "라우팅되는 토큰 수 n (로그 축)", "쏠림 배수", xfmt=lambda v: str(2 ** v), yfmt=lambda v: f"{v:.1f}")
-    f.poly([(X2(math.log2(n)), Y2(ratio[n])) for n in ns], SERIES[0], 2.5)
-    for n in ns:
-        f.dot(X2(math.log2(n)), Y2(ratio[n]), 4.5, SERIES[0])
-    for n, lab, dy in ((32, "decode · 배치 32", -14), (64, "verify K=2 · 배치 32", -14)):
-        x, y = X2(math.log2(n)), Y2(ratio[n])
-        f.dot(x, y, 6, SERIES[1])
-        f.text(x + 10, y + dy, f"{lab}: {ratio[n]:.2f}", 13, "start", 700)
-    busy32, busy64 = 32 * k / G * ratio[32], 64 * k / G * ratio[64]
-    f.text(X2(5.6), Y2(2.55), f"가장 바쁜 GPU의 일: {busy32:.1f} → {busy64:.1f}", 13, "start", 700, KINDS["ok"][1])
-    f.text(X2(5.6), Y2(2.36), f"(×{busy64 / busy32:.2f} — 토큰은 ×2인데)", 13, "start", color=MUTED)
-
-    f.rect(40, 590, 1480, 112, "#f6f5fd", "#d9d2f3", 10, 1.5)
-    f.text(64, 624, "verify의 MoE 비용 = 불린 expert의 가중치 읽기 + 토큰 × 8의 곱셈 + GPU 간 주고받기(토큰 × 8) + 가장 바쁜 GPU 기다리기", 16, "start", 700)
-    f.text(64, 652, "버려질 초안도 라우팅된다 — 버린 줄만큼 expert 곱셈과 통신을 헛쓴다", 15, "start", color=MUTED)
-    f.text(64, 678, "그림은 '고르고 서로 독립인 라우팅'을 가정했다. 실제로는 인기 expert가 있고 이웃 토큰이 같은 expert를 자주 고른다 → 합집합은 더 작고, 쏠림은 더 크다", 14,
+    f.rect(40, 700, 1480, 84, "#f6f5fd", "#d9d2f3", 10, 1.5)
+    f.text(64, 732, "결정은 ②(이번 스텝에 무엇을 넣나)와 ⑤(스텝 끝에 무엇을 확정하나)에서 일어난다. ③ · ④는 그 결과를 연산 · 통신으로 센다.", 16,
+           "start", 700)
+    f.text(64, 762, "e2e라서 보이는 것: 큐 대기 · K줄 예약에 따른 메모리 압박과 선점 · 토큰 예산 경쟁 · closed loop의 되먹임 · 앞뒤 요청의 간섭", 14,
            "start", color=MUTED)
     return f
 
@@ -1849,7 +1855,7 @@ def fig_sim():
     return f
 
 
-FIGS = [fig_three_methods, fig_eagle_tree, fig_dspark_schedule, fig_accept_dynamics, fig_moe_verify, fig_pipeline, fig_verify_ops, fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
+FIGS = [fig_three_methods, fig_eagle_tree, fig_dspark_schedule, fig_accept_dynamics, fig_sim_loop, fig_pipeline, fig_verify_ops, fig_anatomy, fig_time_flow, fig_shift, fig_hidden_token, fig_serial_parallel, fig_context_paths, fig_cycle_tokens,
         fig_weights_once, fig_cycle, fig_accept_rule, fig_tau, fig_map, fig_timeline, fig_thin_ar, fig_parallel,
         fig_verify_shapes, fig_kv_lifecycle, fig_tree, fig_drafter_caches, fig_cycle_time, fig_batch, fig_sim]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
