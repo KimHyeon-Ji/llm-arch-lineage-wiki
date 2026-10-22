@@ -169,7 +169,7 @@
 | 고정 · 트리 | — | 설정값 그대로 |
 | vLLM Dynamic SD | 동시 요청 수 | 구간별 `γ` 표 |
 | SGLang adaptive | 채택 길이의 이동 평균 | `γ` ≈ 평균 + 1 |
-| DSpark | 요청별 confidence + 부하 | 총 줄 수는 2스텝 전 confidence로, 요청별 배분은 이번 confidence로. confidence는 채택 확률과 따로 만든다 ([05](05-eagle3-mtp-dspark.md#4-dspark--블록을-한-번에-뽑고-요청마다-검증-길이를-고른다)) |
+| DSpark | 요청별 confidence + 부하 | 총 줄 수는 2스텝 전 confidence로, 요청별 배분은 이번 confidence로. confidence는 채택 확률과 따로 만든다 ([05](05-eagle3-mtp-dspark.md#6-dspark--블록을-한-번에-뽑고-요청마다-검증-길이를-고른다)) |
 | 비동기 스케줄링 | `a`를 모른 채 다음 스텝을 짠다 | "다 맞았다"고 가정하고 예약 · 예산을 잡은 뒤 나중에 고친다(vLLM) |
 
 ---
