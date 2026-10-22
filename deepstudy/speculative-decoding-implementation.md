@@ -9,8 +9,11 @@
 ![구현할 부분](speculative-decoding/figures/42-impl-structure.png)
 
 - 한 사이클 = **draft**(초안을 만든다) → **verify**(target이 한 번에 확인한다) → **accept**(어디까지 받을지 정한다). 확정된 마지막 토큰부터 다음 사이클을 돈다
-- 갈래가 갈리는 곳은 **draft뿐**이다 — 별도 draft 모델부터 DFlash 2까지
-- verify는 갈래마다 같고, 검증 모양(일렬 · 트리 · 요청마다 다른 길이)만 다르다
+- 갈래가 크게 갈리는 곳은 **draft**다 — 별도 draft 모델부터 DFlash 2까지
+- verify는 **연산**이 갈래마다 같다 — target forward 한 번에 초안 줄을 넣는다. 다른 것은 **넣는 모양**이고, 갈래와 설정이 정한다
+  - 일렬 — MTP · EAGLE-3(`topk = 1`) · DFlash
+  - 트리 — EAGLE-3(`topk > 1`). 각 노드가 자기 조상만 보게 attention을 가린다
+  - 요청마다 다른 길이 — DSpark. 배치 안에서 요청마다 넣는 줄 수가 다르다
 - accept도 갈래마다 같다 — 앞에서부터 비교하고 처음 틀린 곳에서 멈춘다. 채택 규칙은 알고리즘이 아니라 **엔진 설정**으로 고른다 (토큰별 거부 샘플링이 기본, vLLM · SGLang은 block verification도, vLLM은 손실 허용 `fly`도 있다) → 엔진별 정리는 [4절](#엔진은-채택-규칙을-어떻게-제공하나--구현할-때-참고)
 
 **메모 — 어떻게 구현할지**

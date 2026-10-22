@@ -1537,7 +1537,7 @@ def fig_impl_structure():
     f.title(40, 44, "구현할 부분 — 한 사이클은 draft → verify → accept")
     W, H, y0 = 440, 360, 90
     cols = [(40, "d", "① Draft", "초안을 만든다", "갈래마다 다르다"),
-            (560, "t", "② Verify", "target이 초안을 한 번에 확인한다", "갈래마다 같다"),
+            (560, "t", "② Verify", "target이 초안을 한 번에 확인한다", "연산은 같다"),
             (1080, "ok", "③ Accept", "어디까지 받을지 정한다", "갈래마다 같다")]
     for x, kind, name, role, chip in cols:
         fill, stroke = KINDS[kind]
@@ -1567,9 +1567,14 @@ def fig_impl_structure():
         x += w + 14
     # Verify
     vx = 588
-    f.text(vx, y0 + 150, "검증 모양만 다르다", 16, "start", 700)
-    for i, s in enumerate(["일렬", "트리", "요청마다 다른 길이"]):
-        pill(vx, y0 + 170 + i * 50, 260, s, "t")
+    f.text(vx, y0 + 136, "연산 = target forward 1번 (갈래마다 같다)", 15, "start", 700)
+    f.text(vx, y0 + 172, "넣는 모양 — 갈래 · 설정마다 다르다", 14, "start", 700, MUTED)
+    for i, (sx, eng) in enumerate([("일렬", "MTP · EAGLE-3 topk 1 · DFlash"), ("트리", "EAGLE-3 topk > 1"),
+                                   ("요청마다 다른 길이", "DSpark")]):
+        y = y0 + 186 + i * 50
+        f.rect(vx, y, 384, 38, "#ffffff", KINDS["t"][1], 19, 2)
+        f.text(vx + 18, y + 25, sx, 15, "start", 700)
+        f.text(vx + 368, y + 25, eng, 13, "end", 700, KINDS["t"][1])
     # Accept
     ax = 1108
     f.text(ax, y0 + 136, "앞에서부터 비교하고, 처음 틀린 곳에서 멈춘다", 15, "start", 700)
