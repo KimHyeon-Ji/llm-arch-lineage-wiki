@@ -1,0 +1,180 @@
+{
+ "retrieved": "2026-10-27",
+ "note": "index_total_size = model.safetensors.index.json metadata.total_size; usedStorage는 모든 revision 합계라 여러 revision이 있으면 체크포인트보다 크다",
+ "models": {
+  "Qwen_Qwen3-Next-80B-A3B-Instruct": {
+   "index_total_size": 162649725440,
+   "sha": "9c7f2fbe84465e40164a94cc16cd30b6999b0cc7",
+   "createdAt": "2025-09-09T15:40:56.000Z",
+   "lastModified": "2025-09-17T06:57:40.000Z",
+   "usedStorage": 162670584182,
+   "safetensors_parameters": {
+    "BF16": 81324862720
+   }
+  },
+  "Qwen_Qwen3.8-2.4T-A95B-FP8": {
+   "index_total_size": 2496066252544,
+   "sha": "d2dc35658bcf77e66643428cb52e774cc3b5bd29",
+   "createdAt": "2026-08-08T01:49:49.000Z",
+   "lastModified": "2026-08-12T10:23:42.000Z",
+   "usedStorage": 2496144198227,
+   "safetensors_parameters": {
+    "BF16": 49590974336,
+    "F8_E4M3": 2396591751168
+   }
+  },
+  "Qwen_Qwen3.8-2.4T-A95B": {
+   "index_total_size": 4892365451008.0,
+   "sha": "207bd685a7e3696cfaff12ded7c6a7ea0f88c996",
+   "createdAt": "2026-08-08T01:50:52.000Z",
+   "lastModified": "2026-08-12T10:24:04.000Z",
+   "usedStorage": 4892378458656,
+   "safetensors_parameters": {
+    "BF16": 2446182725504
+   }
+  },
+  "Qwen_Qwen3.8-27B": {
+   "index_total_size": 55562855904.0,
+   "sha": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+   "createdAt": "2026-08-05T08:22:59.000Z",
+   "lastModified": "2026-08-14T15:00:01.000Z",
+   "usedStorage": 55615875685,
+   "safetensors_parameters": {
+    "BF16": 27781427952
+   }
+  },
+  "Qwen_Qwen3.8-Flash-Next": {
+   "index_total_size": 359999963128.0,
+   "sha": "de4b8e4d43b917e7706784d8bb445c9af86a3540",
+   "createdAt": "2026-08-24T08:24:59.000Z",
+   "lastModified": "2026-08-27T05:03:36.000Z",
+   "usedStorage": 360065103050,
+   "safetensors_parameters": {
+    "BF16": 179999981424,
+    "I64": 35
+   }
+  },
+  "deepseek-ai_DeepSeek-V3.2": {
+   "index_total_size": 1370793842752,
+   "sha": "a7e62ac04ecb2c0a54d736dc46601c5606cf10a6",
+   "createdAt": "2025-12-01T02:34:49.000Z",
+   "lastModified": "2025-12-01T11:04:59.000Z",
+   "usedStorage": 689484423011,
+   "safetensors_parameters": {
+    "BF16": 3946184704,
+    "F8_E4M3": 681408069632,
+    "F32": 1075456
+   }
+  },
+  "deepseek-ai_DeepSeek-V3": {
+   "index_total_size": 1369062772000,
+   "sha": "e815299b0bcbac849fa540c768ef21845365c9eb",
+   "createdAt": "2024-12-25T12:52:23.000Z",
+   "lastModified": "2025-03-27T04:01:45.000Z",
+   "usedStorage": 688727648088,
+   "safetensors_parameters": {
+    "BF16": 3918786560,
+    "F8_E4M3": 680571043840,
+    "F32": 15104
+   }
+  },
+  "deepseek-ai_DeepSeek-V4-Pro": {
+   "index_total_size": 864704792696,
+   "sha": "b5968e9190ef611bbf34a7229255be88a0e937c1",
+   "createdAt": "2026-04-22T06:04:45.000Z",
+   "lastModified": "2026-06-22T12:12:50.000Z",
+   "usedStorage": 864761623612,
+   "safetensors_parameters": {
+    "BF16": 2816899328,
+    "I64": 2327040,
+    "F32": 87776414,
+    "F8_E4M3": 23169335296,
+    "I8": 1572763336704
+   }
+  },
+  "deepseek-ai_DeepSeek-V4.1-Flash": {
+   "index_total_size": 510286023000,
+   "sha": "314113f8a7dadb388215396ba5fbee2c610a04d6",
+   "createdAt": "2026-09-10T02:17:58.000Z",
+   "lastModified": "2026-10-16T09:27:28.000Z",
+   "usedStorage": 510311613821,
+   "safetensors_parameters": {
+    "BF16": 1976441856,
+    "F32": 42307282,
+    "F8_E4M3": 204015223296,
+    "I8": 557171343360
+   }
+  },
+  "moonshotai_Kimi-K3": {
+   "index_total_size": 1560860324864,
+   "sha": "f831ab66814297da540d832a5235f8e904f29d06",
+   "createdAt": "2026-06-13T06:42:57.000Z",
+   "lastModified": "2026-09-02T02:22:41.000Z",
+   "usedStorage": 1561018243668,
+   "safetensors_parameters": {
+    "F32": 11122432,
+    "BF16": 57179884544,
+    "U8": 2722740830208
+   }
+  },
+  "moonshotai_Kimi-Linear-48B-A3B-Instruct": {
+   "index_total_size": 98245528576,
+   "sha": "e1df551a447157d4658b573f9a695d57658590e9",
+   "createdAt": "2025-10-30T12:37:31.000Z",
+   "lastModified": "2025-12-16T14:50:08.000Z",
+   "usedStorage": 98270961861,
+   "safetensors_parameters": {
+    "BF16": 49122599168,
+    "F32": 82560
+   }
+  },
+  "nvidia_NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16": {
+   "index_total_size": 1121049257984,
+   "sha": "77df655d5e9f8362164ed14dd8b48f8bce657498",
+   "createdAt": "2026-06-03T14:50:04.000Z",
+   "lastModified": "2026-08-24T23:47:18.000Z",
+   "usedStorage": 2242147855302,
+   "safetensors_parameters": {
+    "BF16": 560524578816,
+    "F32": 25088
+   }
+  },
+  "nvidia_NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4": {
+   "index_total_size": 352284061280,
+   "sha": "02462641f13d3af838b904f48195b9bb8a1e4ebc",
+   "createdAt": "2026-06-03T14:54:33.000Z",
+   "lastModified": "2026-08-24T23:46:57.000Z",
+   "usedStorage": 704721918479,
+   "safetensors_parameters": {
+    "BF16": 16640790528,
+    "F8_E4M3": 28286386176,
+    "F32": 201351704,
+    "U8": 257698037760
+   }
+  },
+  "unsloth_Meta-Llama-3.1-70B-Instruct": {
+   "index_total_size": 141107412992
+  },
+  "unsloth_gemma-3-27b-it": {
+   "index_total_size": 54864813280
+  },
+  "google_gemma-3-27b-it": {
+   "sha": "005ad3404e59d6023443cb575daa05336842228a",
+   "createdAt": "2025-03-01T19:10:19.000Z",
+   "lastModified": "2025-03-21T20:29:02.000Z",
+   "usedStorage": 179818970042,
+   "safetensors_parameters": {
+    "BF16": 27432406640
+   }
+  },
+  "meta-llama_Llama-3.1-70B-Instruct": {
+   "sha": "1605565b47bb9346c5515c34102e054115b4f98b",
+   "createdAt": "2024-07-16T16:07:46.000Z",
+   "lastModified": "2024-12-15T01:55:33.000Z",
+   "usedStorage": 282237450046,
+   "safetensors_parameters": {
+    "BF16": 70553706496
+   }
+  }
+ }
+}
