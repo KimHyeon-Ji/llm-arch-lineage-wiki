@@ -797,7 +797,240 @@ def fig_kv():
     return f
 
 
-FIGS = [fig_layers, fig_block, fig_m25_attn, fig_m3_msa, fig_moe, fig_kv, fig_msa_concept, fig_msa_tensor, fig_msa_heads]
+# ---------------------------------------------------------------- 10. EAGLE-3 draft 모듈
+# Inferact/MiniMax-M3-EAGLE3 config.json · safetensors 헤더, vLLM llama_eagle3.py (fc_norm, norm_output)
+AUX = (2, 30, 57)  # eagle_config가 없어 vLLM 기본값
+
+
+def fig_eagle_draft():
+    f = Fig("10-eagle3-draft", 1560, 1390)
+    f.title(40, 44, "EAGLE-3 draft 모듈 — decoder 층 1개 (Inferact/MiniMax-M3-EAGLE3, BF16)")
+    cx, w = 820, 420
+    x0 = cx - w / 2
+
+    # ---- aux 입력 (pass 1만)
+    f.text(1100, 100, "pass 1만 — target의 중간 hidden 3개", 16, "start", 700)
+    f.text(1122, 136, "target", 13, "end", color=MUTED)
+    for L in range(60):
+        f.rect(1130 + L * 6, 116, 5, 26, SOLID["q"] if L in AUX else "#d3d6e2", "none", 1)
+    for i, L in enumerate(AUX):
+        bx, c = 1132.5 + L * 6, 1160 + i * 152
+        f.arrow(bx, 146, c, 172)
+        _box(f, c - 56, 174, 112, 28, "i", f"h_L{L}", fs=14)
+        f.arrow(c, 202, c, 222)
+        _box(f, c - 56, 224, 112, 26, "n", "fc_norm", fs=13)
+        t = 1312 + (i - 1) * 60
+        f.path(f"M{c},252 C{c},272 {t},268 {t},288")
+    _box(f, 1192, 290, 240, 34, "n", "concat  1 × 18,432", fs=14)
+    f.arrow(1312, 324, 1312, 344)
+    _box(f, 1192, 346, 240, 36, "i", "fc  18,432 → 6,144", solid=True, fs=14)
+    f.text(1312, 404, "ReplicatedLinear — TP로 안 나눈다", 13, color=MUTED)
+    f.path("M1190,364 C1110,364 1110,396 1024,396")
+
+    # ---- 입력 두 개
+    _box(f, 620, 250, 160, 36, "c", "token", fs=15)
+    f.arrow(700, 286, 700, 318)
+    _box(f, 590, 320, 220, 36, "c", "embed_tokens", fs=14)
+    f.arrow(700, 356, 700, 438)
+    f.text(560, 330, "embed_tokens 200,064 × 6,144", 14, "end", color=MUTED, mono=True)
+    f.text(560, 352, "target과 값이 같다 → vLLM이 공유", 14, "end", color=MUTED)
+    f.text(940, 346, "pass 1: fc 출력", 13, color=MUTED)
+    f.text(940, 366, "pass 2~: 이전 pass의 층 출력", 13, color=MUTED)
+    _box(f, 860, 378, 160, 36, "i", "g  1 × 6,144", fs=14)
+    f.arrow(940, 414, 940, 438)
+    _box(f, 600, 440, 200, 32, "n", "input_layernorm", fs=14)
+    _box(f, 840, 440, 200, 32, "n", "hidden_norm", fs=14)
+    f.path("M700,472 C700,492 760,488 760,508")
+    f.path("M940,472 C940,492 880,488 880,508")
+    _box(f, x0, 510, w, 40, "n", "concat  [ê ; ĝ]  1 × 12,288", fs=15)
+    f.text(560, 526, "토큰과 hidden을 따로 norm 하고", 14, "end", color=MUTED)
+    f.text(560, 548, "이어 붙인다 — 폭이 2H", 14, "end", color=MUTED)
+
+    # ---- attention
+    f.arrow(cx, 550, cx, 588)
+    f.rect(x0, 590, w, 130, KINDS["q"][0], KINDS["q"][1], 6, 2)
+    f.text(cx, 620, "self-attention  (draft 자체 KV 캐시)", 18, weight=700)
+    f.text(cx, 648, "q 12,288 → 64 × 128", 14, mono=True)
+    f.text(cx, 670, "k, v 12,288 → 64 × 128  (GQA판 4 × 128)", 14, mono=True)
+    f.text(cx, 696, "causal · RoPE θ 5M · o 8,192 → 6,144", 14, color=MUTED)
+    f.text(1100, 620, "sparse가 아니다 — context 전체를 읽는다", 15, "start", 700)
+    f.text(1100, 644, "MHA: KV 헤드 64 · 토큰당 KV 32 KiB", 15, "start", color=MUTED)
+    f.text(1100, 668, "GQA: KV 헤드 4 · 토큰당 KV 2 KiB", 15, "start", color=MUTED)
+    f.text(1100, 692, "target의 MSA · 색인 키는 쓰지 않는다", 15, "start", color=MUTED)
+
+    def add(y):
+        f.raw(f'<circle cx="{cx}" cy="{y}" r="14" fill="#fff" stroke="#5d6377" stroke-width="2"/>')
+        f.text(cx, y + 7, "+", 22, weight=700)
+
+    f.arrow(cx, 720, cx, 738)
+    add(754)
+    f.path(f"M940,426 L1060,426 L1060,754 L{cx + 16},754", dash="5 5")
+    f.text(1068, 742, "residual = g", 13, "start", color=MUTED)
+    f.arrow(cx, 768, cx, 798)
+    _box(f, cx - 110, 800, 220, 32, "n", "RMSNorm", fs=14)
+
+    # ---- MLP
+    f.arrow(cx, 832, cx, 858)
+    f.rect(x0, 860, w, 110, KINDS["v"][0], KINDS["v"][1], 6, 2)
+    f.text(cx, 890, "MLP — SwiGLU (dense 하나)", 18, weight=700)
+    f.text(cx, 918, "gate, up 6,144 → 18,432", 14, mono=True)
+    f.text(cx, 942, "down 18,432 → 6,144", 14, mono=True)
+    f.text(1100, 900, "target의 MoE가 아니다", 15, "start", 700)
+    f.text(1100, 924, "expert · 라우터 없이 18,432 폭 하나", 15, "start", color=MUTED)
+    f.arrow(cx, 970, cx, 998)
+    add(1014)
+    f.path(f"M{cx},784 L1080,784 L1080,1014 L{cx + 16},1014", dash="5 5")
+    f.arrow(cx, 1028, cx, 1058)
+    _box(f, cx - 110, 1060, 220, 32, "n", "norm", fs=14)
+
+    # ---- 출력
+    f.path(f"M{cx + 110},1076 L1150,1076", dash="5 5")
+    f.rect(1158, 1056, 340, 40, "#fff", SOLID["i"], 6, 1.8, "5 4")
+    f.text(1328, 1082, "→ 다음 pass의 g  (norm_output)", 14, color=SOLID["i"], weight=700)
+    f.arrow(cx, 1092, cx, 1128)
+    _box(f, x0, 1130, w, 40, "c", "lm_head  6,144 → 200,064", fs=15)
+    f.text(560, 1146, "draft 자기 lm_head — target과 값이 다르다", 14, "end", color=MUTED)
+    f.text(560, 1168, "어휘 축소 없음 · 매 pass 200,064 전부", 14, "end", color=MUTED)
+    f.arrow(cx, 1170, cx, 1198)
+    f.rect(cx - 110, 1200, 220, 36, "#fff", SOLID["k"], 6, 2)
+    f.text(cx, 1224, "argmax → draft 토큰", 15, weight=700)
+    f.path(f"M{cx + 110},1218 L1150,1218", dash="5 5")
+    f.rect(1158, 1198, 340, 40, "#fff", SOLID["c"], 6, 1.8, "5 4")
+    f.text(1328, 1224, "→ 다음 pass의 token", 14, color="#b5741a", weight=700)
+    _summary(f, 1270, "target 층 3개를 이어 붙여 6,144로 줄이고(fc), 토큰 embedding과 합쳐 일반 Llama 층 하나를 지난다.",
+             "draft 고유 파라미터 805M (MHA) · 616M (GQA) + 자기 lm_head 1.23B — 체크포인트 합 3.26B · 3.07B", 76)
+    return f
+
+
+# ---------------------------------------------------------------- 11. EAGLE-3 한 step과 비용
+GOLDEN_AL = {"thinking off": [1.84, 2.52, 2.93, 3.41, 3.59, 3.57, 3.85, 4.06],
+             "thinking on": [1.78, 2.38, 2.83, 3.11, 3.35, 3.45, 3.53, 3.74]}
+# TP8 GPU 한 장이 pass마다 읽는 가중치 (BF16, GB)
+EG_FC = 6144 * 18432 * 2 / 1e9                              # 0.226 — 복제, pass 1만
+EG_LAYER = (8192 * 12288 * 3 + 6144 * 8192 + 3 * 6144 * 18432) * 2 / 8 / 1e9   # 0.173
+EG_HEAD = 200064 * 6144 * 2 / 8 / 1e9                       # 0.307
+
+
+def fig_eagle_step():
+    f = Fig("11-eagle3-step", 1560, 1190)
+    f.title(40, 44, "EAGLE-3 decode 한 step (K = 3) — 흐름, GPU당 읽는 양, 수락 길이")
+
+    # ---- ① 흐름
+    _section(f, 100, "① 흐름", "draft는 K번 차례로", "target은 한 번에")
+    xs = [200, 470, 700, 930]
+    _box(f, 200, 120, 200, 70, "n")
+    f.text(300, 150, "target verify", 16, weight=700)
+    f.text(300, 174, "(이전 step)", 14, color=MUTED)
+    for i, x in enumerate(xs[1:]):
+        f.rect(x, 120, 180, 70, KINDS["c"][0], KINDS["c"][1], 6, 2)
+        f.text(x + 90, 150, f"draft pass {i + 1}", 16, weight=700)
+        f.text(x + 90, 174, "fc + 층 + lm_head" if i == 0 else "층 + lm_head", 14, color=MUTED)
+        f.rect(x + 60, 214, 60, 30, "#fff", SOLID["c"], 5, 2)
+        f.text(x + 90, 235, f"t{i + 1}", 15, mono=True, weight=700)
+        f.arrow(x + 90, 190, x + 90, 212)
+    f.arrow(400, 155, 468, 155)
+    f.text(434, 112, "aux × 3", 13, color=MUTED, mono=True)
+    f.arrow(650, 155, 698, 155)
+    f.arrow(880, 155, 928, 155)
+    for x in (674, 904):
+        f.text(x, 112, "g, t", 13, color=MUTED, mono=True)
+    f.rect(1180, 120, 260, 70, SOLID["q"], "none", 6)
+    f.text(1310, 150, "target verify", 16, weight=700, color="#ffffff")
+    f.text(1310, 174, "1 + 3 토큰을 한 번에", 14, color="#ffffff")
+    f.path("M1050,229 L1150,229 L1150,170 L1178,170")
+    for x in (560, 790):
+        f.path(f"M{x + 30},244 L{x + 30},262 L1150,262 L1150,229", arrow=False)
+    f.text(1310, 222, "수락 길이(AL) ≈ 2.9", 15, weight=700)
+    f.text(1310, 244, "+ 다음 step의 aux · 마지막 토큰", 13, color=MUTED)
+    f.text(200, 300, "pass 1만 target의 hidden 3개를 fc로 받는다. pass 2부터는 직전 pass의 층 출력(g)과 토큰을 다시 넣는다.", 15, "start", color=MUTED)
+    f.text(200, 324, "draft 토큰은 K개가 차례로 나온다 — pass끼리 병렬이 안 된다. lm_head는 pass마다 요청당 1행만 계산한다.", 15, "start", color=MUTED)
+    _divider(f, 356)
+
+    # ---- ② GPU당 가중치 읽기
+    y = 392
+    _section(f, y + 4, "② 가중치")
+    f.text(200, y + 4, "TP8 GPU 한 장이 step마다 읽는 가중치 (BF16, MHA draft)", 16, "start", 700)
+    sc = 1100 / 8.0
+    parts = [("fc", EG_FC, SOLID["i"]), ("층", EG_LAYER, SOLID["c"]), ("lm_head", EG_HEAD, SOLID["k"])]
+    x = 200
+    for p in range(3):
+        for lbl, b, col in parts:
+            if lbl == "fc" and p:
+                continue
+            wb = b * sc
+            f.rect(x, y + 24, wb, 40, col, "none", 3)
+            if wb > 30:
+                f.text(x + wb / 2, y + 49, lbl if wb > 50 else "", 13, color="#ffffff", weight=700)
+            x += wb + 1
+        f.text((x - (EG_LAYER + EG_HEAD) * sc / 2 - (EG_FC * sc / 2 if p == 0 else 0)), y + 84, f"pass {p + 1}", 13, color=MUTED)
+        x += 6
+    tot = EG_FC + 3 * (EG_LAYER + EG_HEAD)
+    f.text(x + 10, y + 50, f"{tot:.2f} GB", 16, "start", 700)
+    f.rect(200, y + 104, 7.5 * sc, 40, "#e6e2f8", "none", 3)
+    f.rect(200, y + 104, 7.0 * sc, 40, "#d9d2f3", "none", 3)
+    f.text(200 + 3.5 * sc, y + 129, "target verify (batch 1, 추정 7~8 GB — 깨어난 expert 가중치)", 14, weight=700)
+    f.text(200 + 7.5 * sc + 12, y + 130, "7~8 GB", 16, "start", 700)
+    f.text(200, y + 176, f"pass 1 = fc {EG_FC:.2f} + 층 {EG_LAYER:.2f} + lm_head {EG_HEAD:.2f} GB · pass 2~3 = {EG_LAYER + EG_HEAD:.2f} GB"
+           " — lm_head가 절반 이상이다", 15, "start", color=MUTED)
+    f.text(200, y + 200, "pass마다 AllReduce 3번 (embed 뒤 · o_proj 뒤 · down 뒤) + logits gather — 작은 batch에서는 호출 횟수가 지연을 만든다",
+           15, "start", color=MUTED)
+    _divider(f, 626)
+
+    # ---- ③ draft KV 읽기 vs batch
+    y = 662
+    _section(f, y + 4, "③ draft KV", "batch에 비례")
+    f.text(200, y + 4, "TP8 GPU 한 장이 pass마다 읽는 것 — context 8K, BF16", 16, "start", 700)
+    w_pass = EG_LAYER + EG_HEAD
+    sc2 = 520 / 2.7
+    rows = [(1, "batch 1"), (16, "batch 16"), (64, "batch 64")]
+    for r, (B, name) in enumerate(rows):
+        yy = y + 30 + r * 54
+        f.text(200, yy + 24, name, 15, "start", 700)
+        for c, (lbl, perTok, col) in enumerate((("MHA", 4096, SOLID["k"]), ("GQA", 512, SOLID["v"]))):
+            bx = 300 + c * 620
+            kv = B * 8192 * perTok / 1e9
+            f.rect(bx, yy + 6, w_pass * sc2, 26, "#d3d6e2", "none", 3)
+            f.rect(bx + w_pass * sc2 + 1, yy + 6, max(kv * sc2, 2), 26, col, "none", 3)
+            f.text(bx + w_pass * sc2 + kv * sc2 + 10, yy + 25, f"KV {_gb(kv * 1e9)}", 14, "start", 700 if kv > w_pass else 400)
+    f.text(300 + w_pass * sc2 / 2, y + 196, f"가중치 {w_pass:.2f} GB", 13, color=MUTED)
+    f.text(300, y + 224, "MHA draft (GPU당 KV 헤드 8)", 15, "start", 700, SOLID["k"])
+    f.text(920, y + 224, "GQA draft (GPU당 KV 헤드 1, 복제)", 15, "start", 700, SOLID["v"])
+    f.text(300, y + 248, "batch 14쯤부터 KV가 가중치보다 커진다", 14, "start", color=MUTED)
+    f.text(920, y + 248, "같은 조건에서 KV가 1/8 — 장문맥 · 대배치용", 14, "start", color=MUTED)
+    _divider(f, 930)
+
+    # ---- ④ 수락 길이
+    y = 966
+    _section(f, y + 4, "④ 수락 길이", "InferenceX", "golden AL")
+    px0, py0, pw, ph = 300, y + 150, 560, 150
+    f.line(px0, py0, px0 + pw, py0, "#9aa0b4", 1.5)
+    for v in (1, 2, 3, 4):
+        yy = py0 - (v - 1) / 3.2 * ph
+        f.line(px0, yy, px0 + pw, yy, "#eceef4", 1)
+        f.text(px0 - 10, yy + 5, str(v), 13, "end", color=MUTED, mono=True)
+    for k in range(1, 9):
+        f.text(px0 + (k - 1) / 7 * pw, py0 + 22, str(k), 13, color=MUTED, mono=True)
+    f.text(px0 + pw / 2, py0 + 44, "K (num_speculative_tokens)", 13, color=MUTED)
+    for name, col in (("thinking off", SOLID["q"]), ("thinking on", SOLID["c"])):
+        pts = [(px0 + i / 7 * pw, py0 - (a - 1) / 3.2 * ph) for i, a in enumerate(GOLDEN_AL[name])]
+        f.raw(f'<polyline points="{" ".join(f"{a:.1f},{b:.1f}" for a, b in pts)}" fill="none" stroke="{col}" stroke-width="2.5"/>')
+        for a, b in pts:
+            f.raw(f'<circle cx="{a:.1f}" cy="{b:.1f}" r="4" fill="{col}"/>')
+        f.text(pts[-1][0] + 10, pts[-1][1] + 5, f"{name} {GOLDEN_AL[name][-1]}", 13, "start", 700, col)
+    kx = px0 + 2 / 7 * pw
+    f.line(kx, py0, kx, py0 - ph, "#c2479c", 1.5, "4 4")
+    f.text(kx + 6, py0 - ph + 10, "K = 3: 2.93 · 2.83", 13, "start", 700, "#c2479c")
+    f.text(1000, y + 30, "B300 · vLLM · SPEED-Bench coding · temperature 1.0", 15, "start", color=MUTED)
+    f.text(1000, y + 60, "AL은 K를 늘려도 빠르게 포화한다", 15, "start", 700)
+    f.text(1000, y + 84, "draft 비용은 K에 비례 — 최적 K가 있다", 15, "start", color=MUTED)
+    f.text(1000, y + 116, "모델 카드 (TP4, K=3): MT-Bench 2.70", 15, "start", color=MUTED)
+    f.text(1000, y + 140, "GSM8K · HumanEval · MATH500 약 3.5", 15, "start", color=MUTED)
+    f.text(1000, y + 164, "수락률 56.6 ~ 83.9% — 데이터셋에 크게 좌우", 15, "start", color=MUTED)
+    return f
+
+
+FIGS = [fig_layers, fig_block, fig_m25_attn, fig_m3_msa, fig_moe, fig_kv, fig_msa_concept, fig_msa_tensor, fig_msa_heads,
+        fig_eagle_draft, fig_eagle_step]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 

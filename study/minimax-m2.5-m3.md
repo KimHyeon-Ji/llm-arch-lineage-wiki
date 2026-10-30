@@ -12,6 +12,7 @@
 | 5 | MoE — 두 모델 공통 골격과 차이 |
 | 6 | KV cache — 저장과 읽기 |
 | 7 | 정리 |
+| 8 | 부록 — M3용 EAGLE-3 draft 모델 |
 
 ---
 
@@ -321,10 +322,154 @@ TP로 KV 헤드를 나누면 GPU마다 일부만 갖는다. KV 헤드 수가 TP�
 
 ---
 
+## 8. 부록 — M3용 EAGLE-3 draft 모델
+
+> M3를 speculative decoding으로 돌릴 때 붙이는 draft는 **NVIDIA가 아니라 Inferact가 만든 `Inferact/MiniMax-M3-EAGLE3`**가 표준이다. InferenceX의 vLLM spec decode 레시피(`minimaxm3_*_mtp.sh`)와 vLLM 공식 레시피가 모두 이것을 쓴다.
+> NVIDIA는 target 양자화 체크포인트(`nvidia/MiniMax-M3-NVFP4`)를 냈고, 레시피는 그 target에도 Inferact draft를 붙인다. 그래서 헷갈리기 쉽다.
+
+| 모델 | 만든 곳 | attention | 용도 |
+|---|---|---|---|
+| `Inferact/MiniMax-M3-EAGLE3` | Inferact (TorchSpec으로 학습) | **MHA** (KV 헤드 64) | 기본. InferenceX 고정 길이 벤치마크 |
+| `Inferact/MiniMax-M3-EAGLE3-GQA` | Inferact | **GQA** (KV 헤드 4) | vLLM 레시피가 장문맥 · 대배치에 권장 (AgentX preset, opt-in). InferenceX 레시피에는 없다 |
+| `amd/MiniMax-M3-EAGLE3.1` | AMD (MI350X에서 학습) | MHA | `amd/MiniMax-M3-MXFP4` 대상. config 수치는 Inferact MHA와 같다 |
+
+### draft 모듈
+
+![EAGLE-3 draft 모듈](figures/10-eagle3-draft.png)
+
+`LlamaForCausalLMEagle3` · decoder 층 **1개** · hidden 6,144 · MLP 18,432 · 쿼리 64 / KV 64 (GQA판 4) · 헤드 128 · RoPE θ 5M · vocab 200,064
+
+- **입력이 두 개다.** 토큰 embedding `ê`와 hidden `ĝ`를 따로 norm 하고 이어 붙여 `1 × 12,288`로 attention에 넣는다
+  - 그래서 `q_proj` 등의 입력 폭이 2H(12,288)이다
+  - residual은 `g`(6,144)만 이어진다 — `hidden_norm` 앞의 값이다
+- **`g`는 pass마다 출처가 다르다.**
+  - pass 1: target의 층 2 · 30 · 57 출력(aux hidden 3개)을 `fc_norm`으로 각각 norm → 이어 붙여 18,432 → `fc`로 6,144
+  - pass 2부터: 직전 pass의 층 출력. `norm_output: true`라서 **final norm을 지난 값**을 넘긴다 (vLLM `llama_eagle3.py`)
+  - 층 번호는 config에 `eagle_config`가 없어서 쓰는 vLLM 기본값이다
+- **층은 target과 다른 평범한 Llama 층이다.** MSA, 색인 키, MoE가 없다. attention은 causal에 context 전체를 읽고, MLP는 dense 하나다
+- **어휘 축소가 없다.** `draft_vocab_size` = 200,064라서 lm_head 전체를 매 pass 계산한다 (요청당 1행)
+
+<details>
+<summary>자세히 — 체크포인트 가중치와 embed · lm_head 공유</summary>
+
+| 가중치 | MHA | GQA |
+|---|---|---|
+| `fc` | 6144 × 18432 | 같음 |
+| `fc_norm.{0,1,2}`, `hidden_norm`, `input_layernorm`, `post_attention_layernorm`, `norm` | 6144 | 같음 |
+| `q_proj` | 8192 × 12288 | 같음 |
+| `k_proj`, `v_proj` | 8192 × 12288 | **512 × 12288** |
+| `o_proj` | 6144 × 8192 | 같음 |
+| `gate_proj`, `up_proj` / `down_proj` | 18432 × 6144 / 6144 × 18432 | 같음 |
+| `embed_tokens`, `lm_head` | 200064 × 6144 각각 | 같음 |
+| **체크포인트 합** | **3.264B** | **3.075B** |
+
+- draft 체크포인트에는 `embed_tokens`와 `lm_head`가 **둘 다** 들어 있다
+- target(`MiniMaxAI/MiniMax-M3`)과 첫 행 · 10만 번째 행을 비교했다
+  - `embed_tokens`: target과 같다 → vLLM이 target 것을 공유한다 (`_maybe_share_embeddings`, 값이 같으면 공유)
+  - `lm_head`: target과 **다르다** → vLLM이 draft 것을 따로 올린다 (`_maybe_share_lm_head`). EAGLE-3 학습에서 lm_head도 학습한 것으로 보인다
+- 그래서 "embedding · lm_head는 target과 공유"라고 잡으면 **lm_head 1.23B(BF16 2.46 GB)를 빼먹는다**
+
+</details>
+
+### 파라미터와 GPU당 메모리
+
+| 부분 | MHA draft | GQA draft |
+|---|---|---|
+| `fc` (3H → H) | 113M | 113M |
+| QKV (2H → …) | 302M | 113M |
+| `o_proj` | 50M | 50M |
+| MLP | 340M | 340M |
+| **draft 층 합계** | **805M** (BF16 1.61 GB) | **616M** (1.23 GB) |
+| draft 자기 lm_head | 1.23B (2.46 GB) | 같음 |
+| embed (target과 공유) | 1.23B — 추가 메모리 없음 | 같음 |
+| **GPU당 추가 메모리** (BF16, `fc`는 복제, 나머지는 TP 분할) | TP8 **0.71 GB** · TP4 1.19 GB | TP8 0.66 GB · TP4 1.09 GB |
+
+- `fc`는 `ReplicatedLinear`라 GPU마다 113M(0.23 GB)을 전부 갖는다. pass 1에서만 쓴다
+- GQA판의 KV 헤드 4개는 TP8에서 GPU당 1개로 **복제**된다 (target과 같은 사정)
+- lm_head를 공유한다고 가정하면 MHA TP8은 0.40 GB가 된다 — 실제로는 위 값이다
+
+### decode 한 step의 흐름과 비용
+
+![EAGLE-3 한 step](figures/11-eagle3-step.png)
+
+**가중치 읽기** (TP8 GPU 한 장, BF16, MHA, K = 3)
+
+| | pass 1 | pass 2 · 3 | step 합 |
+|---|---|---|---|
+| `fc` (복제) | 0.23 GB | — | 0.23 GB |
+| draft 층 (TP 분할) | 0.17 GB | 0.17 GB | 0.52 GB |
+| lm_head (TP 분할) | 0.31 GB | 0.31 GB | 0.92 GB |
+| **합** | 0.71 GB | 0.48 GB | **1.67 GB** |
+
+- 참고로 target verify가 GPU당 읽는 가중치는 batch 1에서 약 7~8 GB다 (깨어나는 expert가 많다, 추정). draft 비용은 그 1/5쯤이다
+- **draft 비용의 절반 이상이 lm_head다.** 어휘를 줄이지 않았기 때문이다
+- pass마다 TP 집합통신이 4번 있다
+  - embed 뒤 AllReduce (VocabParallel), `o_proj` 뒤 AllReduce, `down_proj` 뒤 AllReduce, lm_head 뒤 logits gather (요청당 200,064 × 2 B)
+  - 작은 batch에서는 크기보다 **호출 횟수(고정 지연)**가 문제다. K = 3이면 step당 12번이다
+
+**draft KV 읽기** — draft attention은 sparse가 아니라서 context 길이 × batch에 비례한다
+
+| context 8K, TP8 GPU 한 장, pass 하나 | MHA (GPU당 KV 헤드 8) | GQA (GPU당 KV 헤드 1) |
+|---|---|---|
+| 요청 하나 | 34 MB | 4 MB |
+| batch 16 | 537 MB | 67 MB |
+| batch 64 | **2.1 GB** | 268 MB |
+
+- MHA는 batch 14쯤부터 KV 읽기가 draft 가중치 읽기(0.48 GB)보다 커진다. 전체 GPU 합으로는 요청 하나에 pass당 268 MB다
+- **vLLM 레시피가 장문맥 · 대배치에 GQA판을 권하는 이유다**
+
+### draft KV 캐시 — 토큰당 저장
+
+| | 전체 | TP4 GPU당 | TP8 GPU당 |
+|---|---|---|---|
+| MHA, BF16 | 2 × 64 × 128 × 2 B = 32,768 B | 8,192 B | 4,096 B |
+| GQA, BF16 | 2 × 4 × 128 × 2 B = 2,048 B | 512 B | 512 B (헤드 1개 복제) |
+
+- draft KV dtype은 따로 지정하지 않으면 target을 따른다 (FP8이면 위 값의 절반)
+- target KV(GPU당 BF16 45,312 B · FP8 29,952 B, [6절](#6-kv-cache--저장과-읽기))와 같은 dtype끼리 비교하면
+  - MHA draft: BF16에서 **+9% (TP8) ~ +18% (TP4)**, FP8에서 +7% ~ +14%
+  - GQA draft: 1~2%
+- InferenceX 설정 주석도 "the draft weights + draft KV shave headroom"이라고 적어 두었다
+
+### 수락 길이 (공개값)
+
+InferenceX `golden_al_distribution/minimaxm3_eagle3.yaml` — B300 · vLLM · SPEED-Bench coding · temperature 1.0 (K = `num_speculative_tokens`)
+
+| K | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+|---|---|---|---|---|---|---|---|---|
+| thinking on | 1.78 | 2.38 | **2.83** | 3.11 | 3.35 | 3.45 | 3.53 | 3.74 |
+| thinking off | 1.84 | 2.52 | **2.93** | 3.41 | 3.59 | 3.57 | 3.85 | 4.06 |
+
+| 출처 | 조건 | 수락 길이(AL) | 수락률 |
+|---|---|---|---|
+| 모델 카드 (Inferact) | TP4, K = 3, enforce-eager | MT-Bench 2.70 · GSM8K 3.52 · HumanEval 3.50 · MATH500 3.52 · AIME 3.29 · speed-bench 16K 2.78 | 56.6 ~ 83.9% |
+| vLLM 블로그 | B300, Sonnet | 약 3.0 | 약 67% |
+
+- **AL은 K를 늘리면 커지지만 빠르게 포화한다.** draft 비용은 K에 비례하므로 최적 K가 있다
+- **수락률은 데이터셋에 크게 좌우된다.** 수학 · 코드 약 84%, 대화 약 57%
+- golden AL은 AgentX 제출에서 `rejection_sample_method: "synthetic"`의 목표값으로 쓰는 표준값이다 (temperature 1.0, top_p 0.95, top_k 40, 출력 4096)
+- **고정 길이 벤치마크의 AL은 다르다.** random 토큰 + `--use-chat-template` + temperature 0 + `--ignore-eos` 조건이고, synthetic acceptance를 쓰지 않는다
+  - 그 실행의 실측 AL은 `server.log`의 `SpecDecoding metrics` 줄에 있다 (InferenceX `server_logs_*` artifact)
+
+<details>
+<summary>자세히 — 학습 (모델 카드)</summary>
+
+- 대화 약 45.7만 개 (SWE-bench, OpenCodeInstruct 등). 응답은 M3로 다시 생성했다
+- `ttt_length` = 7, 최대 길이 32K, 1 epoch, GB300 5노드
+
+</details>
+
+> **draft는 target 층 3개를 받아 평범한 Llama 층 하나를 도는 작은 모델이다. 비용의 절반은 줄이지 않은 lm_head이고, 장문맥 · 대배치에서는 MHA draft의 KV 읽기가 가중치보다 커진다.**
+
+---
+
 ## 출처
 
 - [MiniMaxAI/MiniMax-M2.5](https://huggingface.co/MiniMaxAI/MiniMax-M2.5) — `config.json`, `modeling_minimax_m2.py`, safetensors 헤더
 - [MiniMaxAI/MiniMax-M3](https://huggingface.co/MiniMaxAI/MiniMax-M3) — `config.json`, 모델 카드, safetensors 헤더
 - transformers `models/minimax_m3_vl/modular_minimax_m3_vl.py` — `MiniMaxM3VLIndexer`, `MiniMaxM3VLSparseMoeBlock`
 - [MiniMax-M3 기술 보고서](https://arxiv.org/abs/2606.13392) · [MSA 커널](https://github.com/MiniMax-AI/MSA)
+- [Inferact/MiniMax-M3-EAGLE3](https://huggingface.co/Inferact/MiniMax-M3-EAGLE3) · [-GQA](https://huggingface.co/Inferact/MiniMax-M3-EAGLE3-GQA) — `config.json`, 모델 카드, safetensors 헤더
+- vLLM `model_executor/models/llama_eagle3.py` (`fc_norm`, `norm_output`), `v1/spec_decode/llm_base_proposer.py` (embed · lm_head 공유 판단)
+- InferenceX `golden_al_distribution/minimaxm3_eagle3.yaml` · `README.md`, `minimaxm3_*_mtp.sh`
 - 그림 생성: [figures/make_figures.py](figures/make_figures.py) — `python make_figures.py`
