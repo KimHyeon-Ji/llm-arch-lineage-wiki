@@ -152,6 +152,174 @@ def kv_part(m, t):
     return s
 
 
+# ---------------------------------------------------------------- 시리즈별 계보 (6절) — 같은 기준으로 비교한다
+# 모든 KV · indexer key는 BF16, recurrent state는 config의 state dtype(없으면 FP32로 가정)으로 센다.
+# MTP 층의 KV는 넣지 않는다. 공개일은 공식 HF 저장소 생성일이다 (자료 기준일 2026-11-02).
+T1M = 1024 * K
+CKPT = 4096                                   # prefix 재사용 지점 — 이 토큰 수마다 state 사본 하나
+CAT_LABEL = {"full": "Full attention만", "sparse": "Sparse attention (+ full)",
+             "swa": "Sliding window + full", "state": "State + full/sparse"}
+CAT_COLOR = {"full": SERIES[0], "sparse": SERIES[1], "swa": SERIES[2], "state": SERIES[4]}
+CAT_LIGHT = {"full": "#b9d3f2", "sparse": "#f6c4ae", "swa": "#a9e0cb", "state": "#d3c8f1"}
+
+
+def gqa(layers, kv_heads, k_dim, v_dim=None):
+    return layers * kv_heads * (k_dim + (v_dim or k_dim)) * 2
+
+
+def mla(layers, rope=64):
+    return layers * (512 + rope) * 2
+
+
+def idx(layers, ratio=1):
+    return layers * 128 * 2 // ratio
+
+
+def _cfg(name):
+    import json
+    with open(os.path.join(DATA, "raw", f"cfg_{name}.json"), encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def v4(name):
+    """DeepSeek-V4 계열: CSA(1/4 압축 + indexer) · HCA(1/128 압축) · SWA 128 (모든 층). entry 512차원, K = V."""
+    c = _cfg(name)
+    r = c["compress_ratios"][:c["num_hidden_layers"]]          # 끝의 항목은 MTP 층
+    csa, hca, swa = r.count(4), r.count(128), r.count(0)
+    kv = csa * (1024 // 4 + 256 // 4) + hca * 1024 // 128
+    return dict(kv=kv, win=[(len(r), 128, 1024)], csa=csa, hca=hca, swa=swa)
+
+
+_V4F, _V4P = v4("deepseek-ai_DeepSeek-V4-Flash"), v4("deepseek-ai_DeepSeek-V4-Pro")
+
+
+def L(series, co, name, short, date, cat, arch, kv, win=(), fixed=0, ctx="", note=""):
+    return dict(series=series, co=co, name=name, short=short, date=date, cat=cat, arch=arch, kv=kv, win=list(win),
+                fixed=fixed, ctx=ctx, note=note)
+
+
+LINEAGE = [
+    # GLM — Z.ai
+    L("GLM", "Z.ai", "GLM-4.5", "4.5", "2025-07-20", "full", "GQA 92층 (KV 8 × 128)", gqa(92, 8, 128), ctx="128K"),
+    L("GLM", "Z.ai", "GLM-4.6", "4.6", "2025-09-29", "full", "GQA 92층 (KV 8 × 128)", gqa(92, 8, 128), ctx="200K"),
+    L("GLM", "Z.ai", "GLM-4.7", "4.7", "2025-12-22", "full", "GQA 92층 (KV 8 × 128)", gqa(92, 8, 128), ctx="200K"),
+    L("GLM", "Z.ai", "GLM-4.7-Flash", "4.7-Flash", "2026-01-19", "full", "MLA 47층", mla(47), ctx="200K"),
+    L("GLM", "Z.ai", "GLM-5", "5", "2026-02-11", "sparse", "MLA + DSA 78층 (indexer 78층)", mla(78) + idx(78), ctx="200K"),
+    L("GLM", "Z.ai", "GLM-5.1", "5.1", "2026-04-03", "sparse", "MLA + DSA 78층 (indexer 78층)", mla(78) + idx(78), ctx="200K"),
+    L("GLM", "Z.ai", "GLM-5.2", "5.2", "2026-06-16", "sparse", "MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유)",
+      mla(78) + idx(21), ctx="1M"),
+    L("GLM", "Z.ai", "GLM-5.3", "5.3", "2026-08-25", "sparse", "MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유)",
+      mla(78) + idx(21), ctx="1M"),
+    L("GLM", "Z.ai", "GLM-5.3-Flash", "5.3-Flash", "2026-08-25", "state", "KDA 34층 + MLA·DSA 11층 (RoPE 없음, indexer 1/4 압축)",
+      mla(11, 0) + idx(11, 4), fixed=gdn_state(34, 64, 64, 128, 128), ctx="1M"),
+    # DeepSeek
+    L("DeepSeek", "DeepSeek", "DeepSeek-V3", "V3", "2024-12-25", "full", "MLA 61층", mla(61), ctx="128K"),
+    L("DeepSeek", "DeepSeek", "DeepSeek-V3.1", "V3.1", "2025-08-21", "full", "MLA 61층", mla(61), ctx="128K"),
+    L("DeepSeek", "DeepSeek", "DeepSeek-V3.2-Exp", "V3.2-Exp", "2025-09-29", "sparse", "MLA + DSA 61층 (indexer 61층)",
+      mla(61) + idx(61), ctx="128K"),
+    L("DeepSeek", "DeepSeek", "DeepSeek-V3.2", "V3.2", "2025-12-01", "sparse", "MLA + DSA 61층 (indexer 61층)",
+      mla(61) + idx(61), ctx="128K"),
+    L("DeepSeek", "DeepSeek", "DeepSeek-V4-Flash", "V4-Flash", "2026-04-22", "sparse",
+      f"CSA {_V4F['csa']}층 + HCA {_V4F['hca']}층 + SWA만 {_V4F['swa']}층 (모든 층 SWA 128)", _V4F["kv"], _V4F["win"], ctx="1M"),
+    L("DeepSeek", "DeepSeek", "DeepSeek-V4-Pro", "V4-Pro", "2026-04-22", "sparse",
+      f"CSA {_V4P['csa']}층 + HCA {_V4P['hca']}층 + SWA만 {_V4P['swa']}층 (모든 층 SWA 128)", _V4P["kv"], _V4P["win"], ctx="1M"),
+    L("DeepSeek", "DeepSeek", "DeepSeek-V4.1-Flash", "V4.1-Flash", "2026-09-10", "sparse",
+      "압축 global KV + 층 간 공유 + SWA 128 (40층)", 3200, [(40, 128, 1024)], ctx="1M",
+      note="global KV는 기술 보고서의 BF16 환산값"),
+    # Hy — Tencent
+    L("Hy", "Tencent", "Hunyuan-A13B", "A13B", "2025-06-25", "full", "GQA 32층 (KV 8 × 128)", gqa(32, 8, 128), ctx="32K"),
+    L("Hy", "Tencent", "Hy3", "Hy3", "2026-07-02", "full", "GQA 80층 (KV 8 × 128)", gqa(80, 8, 128), ctx="256K"),
+    L("Hy", "Tencent", "Hy4-preview", "Hy4", "2026-08-27", "sparse", "MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유)",
+      mla(78) + idx(21), ctx="1M"),
+    # MiniMax
+    L("MiniMax", "MiniMax", "MiniMax-Text-01", "Text-01", "2025-01-12", "state", "lightning attention 70층 + GQA 10층 (KV 8 × 128)",
+      gqa(10, 8, 128), fixed=70 * 64 * 128 * 128 * 4, ctx="1M", note="lightning state는 FP32로 가정"),
+    L("MiniMax", "MiniMax", "MiniMax-M1", "M1", "2025-06-13", "state", "lightning attention 70층 + GQA 10층 (KV 8 × 128)",
+      gqa(10, 8, 128), fixed=70 * 64 * 128 * 128 * 4, ctx="1M", note="lightning state는 FP32로 가정"),
+    L("MiniMax", "MiniMax", "MiniMax-M2", "M2", "2025-10-22", "full", "GQA 62층 (KV 8 × 128)", gqa(62, 8, 128), ctx="196K"),
+    L("MiniMax", "MiniMax", "MiniMax-M2.1", "M2.1", "2025-12-20", "full", "GQA 62층 (KV 8 × 128)", gqa(62, 8, 128), ctx="196K"),
+    L("MiniMax", "MiniMax", "MiniMax-M2.5", "M2.5", "2026-02-12", "full", "GQA 62층 (KV 8 × 128)", gqa(62, 8, 128), ctx="196K"),
+    L("MiniMax", "MiniMax", "MiniMax-M2.7", "M2.7", "2026-04-09", "full", "GQA 62층 (KV 8 × 128)", gqa(62, 8, 128), ctx="200K"),
+    L("MiniMax", "MiniMax", "MiniMax-M3", "M3", "2026-06-02", "sparse", "GQA 60층 (KV 4 × 128) · MSA 57층 + full 3층",
+      gqa(60, 4, 128) + idx(57), ctx="1M"),
+    L("MiniMax", "MiniMax", "MiniMax-M3.1-Flash", "M3.1-Flash", "2026-10-17", "sparse", "GQA 60층 (KV 4 × 128) · MSA 60층",
+      gqa(60, 4, 128) + idx(60), ctx="1M"),
+    # Qwen — Alibaba
+    L("Qwen", "Alibaba", "Qwen3-235B-A22B", "3-235B", "2025-04-27", "full", "GQA 94층 (KV 4 × 128)", gqa(94, 4, 128), ctx="40K"),
+    L("Qwen", "Alibaba", "Qwen3-Next 80B-A3B", "3-Next", "2025-09-09", "state", "Gated DeltaNet 36층 + GQA 12층 (KV 2 × 256)",
+      gqa(12, 2, 256), fixed=gdn_state(36, 32, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.5-397B-A17B", "3.5-397B", "2026-02-16", "state", "Gated DeltaNet 45층 + GQA 15층 (KV 2 × 256)",
+      gqa(15, 2, 256), fixed=gdn_state(45, 64, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.5-27B", "3.5-27B", "2026-02-24", "state", "Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256)",
+      gqa(16, 4, 256), fixed=gdn_state(48, 48, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.6-35B-A3B", "3.6-35B", "2026-04-15", "state", "Gated DeltaNet 30층 + GQA 10층 (KV 2 × 256)",
+      gqa(10, 2, 256), fixed=gdn_state(30, 32, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.6-27B", "3.6-27B", "2026-04-21", "state", "Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256)",
+      gqa(16, 4, 256), fixed=gdn_state(48, 48, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.8-27B", "3.8-27B", "2026-08-05", "state", "Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256)",
+      gqa(16, 4, 256), fixed=gdn_state(48, 48, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.8-2.4T-A95B", "3.8-2.4T", "2026-08-08", "state", "Gated DeltaNet 69층 + GQA 23층 (KV 4 × 256)",
+      gqa(23, 4, 256), fixed=gdn_state(69, 128, 16, 128, 128), ctx="262K"),
+    L("Qwen", "Alibaba", "Qwen3.8-Flash-Next", "3.8-Flash-Next", "2026-08-24", "state",
+      "Gated DeltaNet 36층 + sparse GQA 12층 (indexer 1/4 압축)", gqa(12, 2, 256) + idx(12, 4),
+      fixed=gdn_state(36, 48, 16, 128, 128), ctx="262K"),
+    # Nemotron — NVIDIA
+    L("Nemotron", "NVIDIA", "Nemotron-H-56B", "H-56B", "2025-04-08", "state", "Mamba-2 54층 + GQA 10층 (KV 8 × 128)",
+      gqa(10, 8, 128), fixed=mamba2_state(54, 256, 64, 256, 16384, 8), ctx="8K", note="SSM state는 FP32로 가정"),
+    L("Nemotron", "NVIDIA", "Nemotron Nano 9B v2", "Nano-9B-v2", "2025-08-12", "state", "Mamba-2 27층 + GQA 4층 (KV 8 × 128)",
+      gqa(4, 8, 128), fixed=mamba2_state(27, 128, 80, 128, 10240, 8), ctx="128K", note="SSM state는 FP32로 가정"),
+    L("Nemotron", "NVIDIA", "Nemotron 3 Nano 30B-A3B", "3-Nano", "2025-12-04", "state", "Mamba-2 23층 + GQA 6층 (KV 2 × 128)",
+      gqa(6, 2, 128), fixed=mamba2_state(23, 64, 64, 128, 4096, 8), ctx="262K"),
+    L("Nemotron", "NVIDIA", "Nemotron 3 Super 120B-A12B", "3-Super", "2026-03-10", "state", "Mamba-2 40층 + GQA 8층 (KV 2 × 128)",
+      gqa(8, 2, 128), fixed=mamba2_state(40, 128, 64, 128, 8192, 8), ctx="262K"),
+    L("Nemotron", "NVIDIA", "Nemotron 3 Ultra 550B-A55B", "3-Ultra", "2026-06-03", "state", "Mamba-2 48층 + GQA 12층 (KV 2 × 128)",
+      gqa(12, 2, 128), fixed=mamba2_state(48, 256, 64, 128, 16384, 8), ctx="262K"),
+    L("Nemotron", "NVIDIA", "Nemotron 3.5 Lightning 30B-A3B", "3.5-Lightning", "2026-08-01", "state",
+      "Mamba-2 23층 + GQA 6층 (KV 2 × 128)", gqa(6, 2, 128), fixed=mamba2_state(23, 64, 64, 128, 4096, 8), ctx="262K"),
+    L("Nemotron", "NVIDIA", "Nemotron 3.5 Bolt 74B-A9B", "3.5-Bolt", "2026-10-09", "state",
+      "Mamba-2 40층 + GQA 8층 (KV 2 × 128)", gqa(8, 2, 128), fixed=mamba2_state(40, 128, 64, 128, 8192, 8), ctx="262K"),
+    # Kimi — Moonshot AI
+    L("Kimi", "Moonshot AI", "Kimi K2", "K2", "2025-07-11", "full", "MLA 61층", mla(61), ctx="128K"),
+    L("Kimi", "Moonshot AI", "Kimi Linear 48B-A3B", "Linear", "2025-10-30", "state", "KDA 20층 + MLA 7층",
+      mla(7), fixed=gdn_state(20, 32, 32, 128, 128), ctx="1M", note="KDA state는 FP32로 가정"),
+    L("Kimi", "Moonshot AI", "Kimi K2.5", "K2.5", "2026-01-01", "full", "MLA 61층", mla(61), ctx="256K"),
+    L("Kimi", "Moonshot AI", "Kimi K2.6", "K2.6", "2026-04-14", "full", "MLA 61층", mla(61), ctx="256K"),
+    L("Kimi", "Moonshot AI", "Kimi K3", "K3", "2026-06-13", "state", "KDA 69층 + MLA 24층",
+      mla(24), fixed=gdn_state(69, 96, 96, 128, 128), ctx="1M", note="KDA state는 FP32로 가정"),
+    # Muse — Meta
+    L("Muse", "Meta", "Muse Glimmer 30B", "Glimmer-30B", "2026-08-09", "swa", "SWA 39층 (window 2048) + full 13층 (KV 2 × 128)",
+      gqa(13, 2, 128), [(39, 2048, gqa(1, 2, 128))], ctx="128K"),
+    L("Muse", "Meta", "Muse Spark Open 816B-A42B", "Spark-Open", "2026-09-15", "swa",
+      "SWA 46층 (window 2048) + full 16층 (KV 16 × 64)", gqa(16, 16, 64), [(46, 2048, gqa(1, 16, 64))], ctx="1M"),
+    # MiMo — Xiaomi
+    L("MiMo", "Xiaomi", "MiMo-V2-Flash", "V2-Flash", "2025-12-16", "swa", "SWA 39층 (window 128, KV 8) + full 9층 (KV 4)",
+      gqa(9, 4, 192, 128), [(39, 128, gqa(1, 8, 192, 128))], ctx="256K"),
+    L("MiMo", "Xiaomi", "MiMo-V2.5", "V2.5", "2026-04-27", "swa", "SWA 39층 (window 128, KV 8) + full 9층 (KV 4)",
+      gqa(9, 4, 192, 128), [(39, 128, gqa(1, 8, 192, 128))], ctx="1M"),
+    L("MiMo", "Xiaomi", "MiMo-V2.5-Pro", "V2.5-Pro", "2026-04-27", "swa", "SWA 60층 (window 128, KV 8) + full 10층 (KV 8)",
+      gqa(10, 8, 192, 128), [(60, 128, gqa(1, 8, 192, 128))], ctx="1M"),
+    L("MiMo", "Xiaomi", "MiMo-V2.6-Flash", "V2.6-Flash", "2026-09-21", "swa", "SWA 39층 (window 128, KV 8) + full 9층 (KV 4)",
+      gqa(9, 4, 192, 128), [(39, 128, gqa(1, 8, 192, 128))], ctx="1M"),
+    L("MiMo", "Xiaomi", "MiMo-V2.6-Pro", "V2.6-Pro", "2026-09-21", "swa", "SWA 60층 (window 128, KV 8) + full 10층 (KV 8)",
+      gqa(10, 8, 192, 128), [(60, 128, gqa(1, 8, 192, 128))], ctx="1M"),
+]
+LINEAGE.sort(key=lambda m: (m["date"], m["name"]))
+SERIES_ORDER = ["GLM", "DeepSeek", "Hy", "MiniMax", "Qwen", "Nemotron", "Kimi", "Muse", "MiMo"]
+
+
+def kv1m(m, t=T1M):
+    """1M 토큰을 보유한 요청 하나 — state 사본 1개. (KV, window, state) 바이트."""
+    win = sum(layers * min(t, w) * per for layers, w, per in m["win"])
+    return m["kv"] * t, win, m["fixed"]
+
+
+def kv1m_ckpt(m, t=T1M):
+    """같은 요청을 4096 토큰마다 재개할 수 있게 저장 — state 사본 t/4096개, window KV도 지점마다 하나."""
+    n = t // CKPT
+    win = sum(layers * min(t, n * w) * per for layers, w, per in m["win"])
+    return m["kv"] * t, win, n * m["fixed"]
+
+
 # ---------------------------------------------------------------- SVG 도우미 (deepstudy와 같은 양식)
 def esc(s):
     s = str(s)
@@ -497,6 +665,136 @@ def fig_per_token():
     return f
 
 
+# ---------------------------------------------------------------- 4. 시리즈별 attention 계보
+def _months(d):
+    y, m, dd = map(int, d.split("-"))
+    return (y - 2024) * 12 + (m - 1) + (dd - 1) / 31
+
+
+def _half(d):
+    y, m = int(d[:4]), int(d[5:7])
+    return f"{y} H{1 if m <= 6 else 2}"
+
+
+HALVES = ["2024 H2", "2025 H1", "2025 H2", "2026 H1", "2026 H2"]
+
+
+def _cat_legend(f, x, y):
+    for c in ("full", "sparse", "swa", "state"):
+        f.dot(x + 8, y - 5, 7, CAT_COLOR[c])
+        f.text(x + 24, y, CAT_LABEL[c], 15, "start", color=MUTED)
+        x += 60 + text_w(CAT_LABEL[c], 15)
+
+
+def fig_lineage():
+    f = Fig("04-lineage-timeline", 1560, 1160)
+    f.title(40, 44, "9개 시리즈의 attention 구성 — 공개일 순 (HF 저장소 생성일)")
+    _cat_legend(f, 40, 84)
+    x0, x1, m0, m1 = 250, 1500, 11, 35           # 2024-12 ~ 2026-11
+    X = lambda d: x0 + (_months(d) - m0) / (m1 - m0) * (x1 - x0)  # noqa: E731
+    top, pitch = 120, 74
+    bot = top + pitch * len(SERIES_ORDER)
+    for mo in range(m0, m1 + 1):
+        x = x0 + (mo - m0) / (m1 - m0) * (x1 - x0)
+        major = mo % 6 == 0
+        f.line(x, top, x, bot, "#d3d6e2" if major else GRID, 1.2 if major else 1)
+        if mo % 3 == 0:
+            f.text(x, bot + 24, f"{2024 + mo // 12}-{mo % 12 + 1:02d}", 13, color=MUTED, mono=True)
+    for r, s in enumerate(SERIES_ORDER):
+        cy = top + pitch * r + pitch / 2
+        ms = [m for m in LINEAGE if m["series"] == s]
+        f.text(40, cy + 1, s, 18, "start", 700)
+        f.text(40, cy + 21, ms[0]["co"], 13, "start", color=MUTED)
+        f.line(X(ms[0]["date"]), cy, X(ms[-1]["date"]), cy, "#c9cddb", 2)
+        clusters = []
+        for m in ms:
+            if clusters and _months(m["date"]) - _months(clusters[-1][-1]["date"]) < 0.34:
+                clusters[-1].append(m)
+            else:
+                clusters.append([m])
+        for i, cl in enumerate(clusters):
+            cx = X(cl[0]["date"])
+            n = len(cl)
+            for j, m in enumerate(cl):
+                f.dot(cx + (j - (n - 1) / 2) * 17, cy, 8, CAT_COLOR[m["cat"]])
+            lab = " · ".join(m["short"] for m in cl)
+            f.text(cx, cy - 16 if i % 2 == 0 else cy + 28, lab, 13, weight=600, halo=True)
+    f.line(x0, bot, x1, bot, AXIS, 1.5)
+
+    # ---- 반기별 구성
+    y = bot + 70
+    f.text(40, y, "반기별로 세면", 18, "start", 700)
+    f.text(40, y + 24, "공개 모델 수 · 같은 날 나온 크기 변형도 하나씩 센다", 14, "start", color=MUTED)
+    bw = 26
+    for i, h in enumerate(HALVES):
+        yy = y + 50 + i * (bw + 12)
+        ms = [m for m in LINEAGE if _half(m["date"]) == h]
+        f.text(230, yy + 19, h, 15, "end", 600, mono=True)
+        x = 250
+        for c in ("full", "sparse", "swa", "state"):
+            k = sum(m["cat"] == c for m in ms)
+            if k:
+                f.rect(x, yy, k * 34 - 2, bw, CAT_COLOR[c], "none", 3)
+                f.text(x + (k * 34 - 2) / 2, yy + 19, str(k), 14, weight=700, color="#ffffff")
+                x += k * 34
+        f.text(x + 10, yy + 19, f"{len(ms)}개", 14, "start", color=MUTED)
+    box(f, 1000, y - 24, 520, 250)
+    f.text(1024, y + 12, "읽는 법", 17, "start", 700)
+    f.lines(1024, y + 46, ["• 2025년까지는 full attention이 주류였다",
+                           "• 2026 H2 공개분에 full만 쓰는 모델은 Hy3 하나다",
+                           "• 회사마다 다른 길로 갔다 — sparse (DeepSeek · GLM ·",
+                           "  MiniMax · Hy4), state (Qwen · Nemotron · Kimi K3),",
+                           "  sliding window (MiMo · Muse)",
+                           "• MiniMax는 state → full → sparse로 두 번 바꿨다",
+                           "• GLM-5.3-Flash는 같은 세대 안에서 state를 섞었다"], 15, 27)
+    f.text(40, 1140, "분류: 층 하나라도 recurrent state를 쓰면 State, 아니면 선택 · 압축 attention이 있으면 Sparse, window 층이 있으면 Sliding window.",
+           14, "start", color=MUTED)
+    return f
+
+
+# ---------------------------------------------------------------- 5. 공개일 순 KV@1M
+def fig_lineage_kv():
+    ms = LINEAGE
+    n = len(ms)
+    f = Fig("05-lineage-kv1m", 1560, 900)
+    f.title(40, 44, "1M 토큰 요청 하나의 KV · state — 공개일 순 (BF16 KV, 같은 기준)")
+    _cat_legend(f, 40, 84)
+    f.rect(1000, 71, 16, 16, "#c9cddb", "none", 3)
+    f.text(1024, 84, "4096 토큰마다 재개 지점을 저장하면 늘어나는 양 · 점선 = 반기 중앙값", 15, "start", color=MUTED)
+    x0, x1, top, bot = 120, 1520, 150, 600
+    lo, hi = 1, 1000
+    Y = lambda v: bot - (math.log10(max(v, lo)) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) * (bot - top)  # noqa: E731
+    for v, lab in ((1, "1 GB"), (3, "3"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")):
+        f.line(x0, Y(v), x1, Y(v), GRID, 1)
+        f.text(x0 - 10, Y(v) + 5, lab, 13, "end", color=MUTED, mono=True)
+    step = (x1 - x0) / n
+    xs = [x0 + step * (i + 0.5) for i in range(n)]
+    # 반기 경계와 중앙값
+    for h in HALVES:
+        idx_ = [i for i, m in enumerate(ms) if _half(m["date"]) == h]
+        if not idx_:
+            continue
+        a, b = x0 + step * idx_[0], x0 + step * (idx_[-1] + 1)
+        f.line(a, top - 46, a, bot, "#c9cddb", 1.2, "5 4")
+        f.text((a + b) / 2, top - 28, h, 14, weight=700, color=MUTED)
+        vals = sorted(sum(kv1m(ms[i])) / GB for i in idx_)
+        med = vals[len(vals) // 2] if len(vals) % 2 else (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
+        f.line(a + 4, Y(med), b - 4, Y(med), INK, 2.5, "8 5")
+        f.text((a + b) / 2, top - 8, (f"중앙값 {fmt_gb(med)}" if b - a > 120 else fmt_gb(med)), 13, weight=700)
+    for m, x in zip(ms, xs):
+        s1, s2 = sum(kv1m(m)) / GB, sum(kv1m_ckpt(m)) / GB
+        bw = step * 0.66
+        f.rect(x - bw / 2, Y(s1), bw, bot - Y(s1), CAT_COLOR[m["cat"]], "none", 2)
+        if s2 > s1 * 1.03:
+            f.rect(x - bw / 2, Y(s2), bw, Y(s1) - Y(s2), CAT_LIGHT[m["cat"]], "none", 2)
+        f.raw(f'<text transform="translate({x + 4:.1f},{bot + 12}) rotate(-60)" font-family="{FONT}" font-size="12.5" '
+              f'text-anchor="end" fill="{INK}">{esc(m["name"])}</text>')
+    f.line(x0, bot, x1, bot, AXIS, 1.5)
+    f.text(40, 878, "조건: 1M(1,048,576) 토큰 · KV와 indexer key는 BF16, recurrent state는 config dtype(대부분 FP32) · MTP 층 제외.  "
+           "기본 최대 길이가 1M보다 짧은 모델도 같은 길이로 계산했다.", 14, "start", color=MUTED)
+    return f
+
+
 # ---------------------------------------------------------------- 표 데이터
 def write_csv():
     os.makedirs(DATA, exist_ok=True)
@@ -511,6 +809,14 @@ def write_csv():
                         round(state_bytes(m, T32) / GB, 3), round(state_bytes(m, T128) / GB, 3),
                         round(m["w_gpu"] / state_bytes(m, T32), 1), round(m["w_gpu"] / state_bytes(m, T128), 1),
                         m["ctx_note"]])
+    path2 = os.path.join(DATA, "lineage-kv1m.csv")
+    with open(path2, "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["series", "company", "model", "date", "category", "attention", "kv_bf16_B_per_token", "fixed_state_MB",
+                    "kv1m_state1_GB", "kv1m_ckpt4096_GB", "ctx"])
+        for m in LINEAGE:
+            w.writerow([m["series"], m["co"], m["name"], m["date"], m["cat"], m["arch"], m["kv"], round(m["fixed"] / 1e6, 1),
+                        round(sum(kv1m(m)) / GB, 1), round(sum(kv1m_ckpt(m)) / GB, 1), m["ctx"]])
     return path
 
 
@@ -530,7 +836,7 @@ def print_summary():
             print(f"  {label:20s} {m['name']:22s} {'fits' if left > 0 else 'OVER':5s} {n:10.0f}")
 
 
-FIGS = [fig_overview, fig_context, fig_crossover, fig_per_token]
+FIGS = [fig_overview, fig_context, fig_crossover, fig_per_token, fig_lineage, fig_lineage_kv]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 

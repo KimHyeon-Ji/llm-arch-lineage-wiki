@@ -1,6 +1,6 @@
 # 최신 LLM은 메모리를 얼마나 쓰는가 — 가중치와 대화 상태
 
-- 자료 기준일: **2026-10-27**
+- 자료 기준일: **2026-10-27** (4절 시리즈 비교는 **2026-11-02**)
 - 대상: 공개 가중치 모델의 **추론 · 서빙**. 학습 메모리는 다루지 않는다
 - 모든 수치는 공식 config · 체크포인트 · 기술 보고서에서 가져오거나 계산했다. 자체 GPU 실측은 하지 않았다
 - 용량은 모두 10진 단위다 (1 GB = 10⁹ B). 체크포인트 크기와 GPU 표기가 10진이기 때문이다. 부록 그림 A1만 KiB를 쓴다
@@ -17,11 +17,12 @@ LLM이 GPU에 올리는 메모리는 크게 둘이다.
 
 ---
 
-## 핵심 관측 세 가지
+## 핵심 관측 네 가지
 
 1. **대화 하나만 보면 모델 본체가 압도적이다.** 최신 대형 모델의 가중치는 공식 배포 포맷으로 0.3 ~ 2.5 TB다. 반면 128K 토큰짜리 대화 하나의 상태는 0.1 ~ 13 GB다. H100 8장 노드(640 GB)에는 이 보고서의 대형 MoE 6개 중 4개가 공식 포맷으로 들어가지 않는다.
 2. **토큰 하나가 남기는 KV는 2년 사이 수백 배 줄었다.** Llama 3.1 70B는 토큰당 320 KiB, DeepSeek-V4.1-Flash는 0.9 KiB다. 줄인 방법은 모델마다 다르다 — 구조(MLA · 압축 · 층 간 공유), 정밀도(FP8 → FP4), 일부 층의 recurrent state 대체. hybrid 모델에는 대화마다 **0.15 ~ 0.6 GB의 고정 state**가 새로 생긴다.
 3. **그래도 대화가 길어지고 많아지면 상태가 다시 본체를 따라잡는다.** 128K 대화 기준으로 상태의 합이 본체와 같아지는 동시 대화 수는 Llama 3.1 70B가 3개, V4.1-Flash가 약 2,600개다. Kimi K3는 토큰당 KV가 Llama의 1/12이지만, 1M 토큰을 채우면 대화 하나가 29 GB가 된다.
+4. **9개 시리즈 55개 모델을 공개일 순으로 보면, 2026 H2 공개분에서 full attention만 쓰는 모델은 하나뿐이다.** 대신 sparse · sliding window · recurrent state로 갈라졌고, 1M 토큰 요청 하나의 KV는 3.4 GB부터 344 GB까지 벌어진다(BF16). state를 쓰는 모델은 4096 토큰마다 재개 지점을 저장하면 같은 요청이 최대 약 9배 커진다.
 
 ---
 
@@ -51,7 +52,7 @@ LLM이 GPU에 올리는 메모리는 크게 둘이다.
 **표를 읽을 때 주의할 점 두 가지**
 
 - **"전체 파라미터"의 범위가 모델마다 다르다.** V4.1-Flash는 본체 552B에 Engram 196B와 MTP · 보조 모듈이 따로 있어, HF 메타데이터에는 763B로 잡힌다. Qwen3.8-Flash-Next(부록)는 본체 125B에 n-gram 표 51B와 MTP 4B를 더하면 180B다. 그래서 이 보고서는 파라미터 수 대신 **실제로 GPU에 올리는 바이트**를 기준으로 삼는다.
-- **활성 파라미터는 메모리 용량이 아니다.** MoE는 토큰마다 일부 expert만 쓰지만, 어떤 expert가 뽑힐지 모르므로 전체를 올려 둔다. 활성 파라미터는 4절의 **읽기량**에서만 의미가 있다. V4.1-Flash처럼 prefill(8B)과 decode(16B)의 활성량이 다른 모델도 있다.
+- **활성 파라미터는 메모리 용량이 아니다.** MoE는 토큰마다 일부 expert만 쓰지만, 어떤 expert가 뽑힐지 모르므로 전체를 올려 둔다. 활성 파라미터는 5절의 **읽기량**에서만 의미가 있다. V4.1-Flash처럼 prefill(8B)과 decode(16B)의 활성량이 다른 모델도 있다.
 
 ---
 
@@ -136,7 +137,141 @@ KV를 줄이는 방법은 다섯 갈래로 나뉜다. 중요한 점은 **저장�
 
 ---
 
-## 4. 같은 메모리라도 쓰는 방법이 다르다
+## 4. 9개 시리즈로 넓혀 보면 — attention 구성과 1M 토큰 KV
+
+앞 절은 대표 모델 9개만 봤다. 여기서는 9개 시리즈의 세대별 모델 55개를 같은 기준으로 놓고, **attention을 어떻게 짰는지**와 **1M 토큰 요청 하나가 얼마를 남기는지**를 공개일 순으로 본다. 시리즈는 GLM, DeepSeek, Hy(Tencent), MiniMax, Qwen, Nemotron, Kimi, Muse(Meta), MiMo(Xiaomi)다.
+
+**attention 구성은 넷으로 나눈다.** 위에서부터 먼저 맞는 것을 고른다.
+
+| 분류 | 기준 | 예 |
+|---|---|---|
+| **State + full/sparse** | 층 하나라도 recurrent state(linear attention · SSM)를 쓴다 | Qwen3.5 이후, Nemotron, Kimi K3, MiniMax-M1 |
+| **Sparse attention (+ full)** | 고르거나 압축해서 읽는 attention이 있다 | DeepSeek-V3.2 · V4, GLM-5, MiniMax-M3, Hy4 |
+| **Sliding window + full** | 최근 W 토큰만 보는 층이 있다 | MiMo, Muse |
+| **Full attention만** | 모든 층이 과거 전체를 읽는다 (GQA · MLA) | GLM-4.x, MiniMax-M2.x, Kimi K2.x, Hy3 |
+
+**값 두 개를 계산한다.** 둘 다 요청 하나가 1M(1,048,576) 토큰을 보유한 상태다.
+
+- **KV@1M / State 1개** — 지금 이어서 생성하는 데 필요한 양. KV(+ indexer key) + window KV + 고정 state 한 벌
+- **KV@1M / 4096 단위 저장** — 같은 대화를 4096 토큰마다 **어느 지점에서든 다시 이어 갈 수 있게** 저장할 때의 양 (prefix caching의 재사용 지점)
+  - KV는 줄을 덧붙이기만 하므로 이미 모든 지점이 들어 있다 → 늘지 않는다
+  - recurrent state는 매 스텝 덮어쓰므로 지점마다 사본이 필요하다 → state × 256
+  - window KV도 지점마다 최근 W 토큰이 필요하다 → 층마다 min(1M, 256 × W) 토큰
+  - vLLM · SGLang의 hybrid prefix caching이 블록 경계마다 state 사본을 남기는 것과 같은 계산이다
+
+조건: KV와 indexer key는 **모두 BF16**으로 맞췄다(1절은 공식 dtype). recurrent state는 config의 state dtype(대부분 FP32, 없으면 FP32로 가정). MTP 층은 넣지 않았다. 기본 최대 길이가 1M보다 짧은 모델도 같은 1M으로 계산했다 — 구조끼리 비교하기 위한 값이다.
+
+### 시리즈마다 다른 길로 갔다
+
+![9개 시리즈의 attention 구성](llm-memory-requirements/figures/04-lineage-timeline.png)
+
+- **2025년까지는 full attention이 주류였다.** 2025 H2 공개 14개 중 7개가 full만 쓴다
+- **2026 H2 공개분(15개)에서 full만 쓰는 모델은 Hy3 하나다.** 나머지는 sparse 4 · sliding window 4 · state 6이다
+- **회사마다 고른 방법이 다르다**
+  - sparse: DeepSeek(V3.2 DSA → V4 압축), GLM(GLM-5부터 DSA), MiniMax(M3 MSA), Tencent(Hy4)
+  - state: Qwen(3-Next 이후 전부), Nemotron(처음부터 Mamba), Kimi(Linear → K3)
+  - sliding window: MiMo(window 128), Muse(window 2048)
+- **한 회사가 방향을 바꾸기도 한다.** MiniMax는 lightning attention hybrid(Text-01 · M1) → full GQA(M2.x) → sparse(M3)로 두 번 바꿨다. GLM은 같은 날 GLM-5.3(sparse)과 GLM-5.3-Flash(KDA state + DSA)를 냈다
+- **Hy4-preview의 attention 설정은 GLM-5.2 · 5.3과 거의 같다.** MLA 78층, indexer 32 head × 128, 21층만 indexer를 갖고 57층은 선택을 공유한다. indexer 공유 배치와 dense FFN 층 수는 다르다
+
+### 공개일 순으로 본 KV@1M
+
+![1M 토큰 KV — 공개일 순](llm-memory-requirements/figures/05-lineage-kv1m.png)
+
+| 반기 | 모델 수 | KV@1M / State 1개 중앙값 | KV@1M / 4096 단위 저장 중앙값 |
+|---|---|---|---|
+| 2025 H1 | 5 | 43.9 GB | 137.4 GB |
+| 2025 H2 | 14 | 81.9 GB | 81.9 GB |
+| 2026 H1 | 20 | 62.8 GB | 90.6 GB |
+| 2026 H2 | 15 | 53.7 GB | 63.8 GB |
+
+(2024 H2는 DeepSeek-V3 하나라 뺐다.)
+
+- **중앙값은 2025 H2 이후 조금씩 내려가지만, 같은 반기 안의 차이가 훨씬 크다.** 2026 H2만 봐도 3.4 GB(V4.1-Flash)부터 344 GB(Hy3)까지 100배다. "최신 모델일수록 KV가 작다"보다 **"구조에 따라 갈린다"**가 맞다
+- **full GQA가 가장 크다.** GLM-4.x 395 GB, Hy3 344 GB, MiniMax-M2.x 266 GB. 같은 full이라도 MLA(Kimi K2.x · DeepSeek-V3.x)는 74 GB다
+- **sparse는 대부분 저장을 줄이지 않는다.** DSA · MSA는 KV를 전부 저장하고 고를 뿐이라 GLM-5 115 GB, MiniMax-M3 144 GB, Hy4 100 GB다(3절의 "골라 읽기"). 저장까지 줄인 것은 **압축**을 넣은 DeepSeek-V4 계열뿐이다 — V4-Flash 7 GB, V4.1-Flash 3.4 GB
+- **state hybrid는 지금 상태는 작지만, 재개 지점을 저장하면 커진다.** state 한 벌이 0.05 ~ 0.9 GB라서 256벌이면 차이가 뒤집힌다
+  - Nemotron 3 Ultra 13 → 117 GB (8.8배), Kimi K3 29 → 144 GB, Qwen3.8-2.4T 99 → 249 GB, Nemotron-H-56B 44 → 277 GB
+  - state가 작은 모델(Nemotron 3 Nano · Kimi Linear 약 0.05 GB)은 재개 지점을 저장해도 20 GB 안팎이다
+- **sliding window는 window 크기가 결정한다.** MiMo(W 128)는 재개 지점을 저장해도 24 → 31 GB로 조금 는다. Muse Spark Open(W 2048)은 69 → 168 GB다 — 4096마다 최근 2048 토큰을 남기면 window 층 KV의 절반을 보관하는 셈이다
+
+> **최신 모델의 공통점은 "모든 층이 과거 전체를 저장하고 읽는" 구조를 버렸다는 것이다. 무엇으로 바꿨는지는 회사마다 다르고, 그 선택에 따라 1M 토큰 KV가 수 GB에서 100 GB 이상까지 갈린다. state를 쓰는 모델은 prefix 재사용을 켜는 순간 이점의 상당 부분이 사라진다.**
+
+<details>
+<summary>전체 표 — 55개 모델 (분류별, 공개일 순)</summary>
+
+| Attention 종류 | 모델 | 회사 | 공개일 | Attention 구성 | KV@1M / State 1개 | KV@1M / 4096 단위 저장 | 기본 최대 길이 |
+|---|---|---|---|---|---|---|---|
+| **Full attention만** | DeepSeek-V3 | DeepSeek | 2024-12-25 | MLA 61층 | 73.7 GB | 같음 | 128K |
+|  | Qwen3-235B-A22B | Alibaba | 2025-04-27 | GQA 94층 (KV 4 × 128) | 201.9 GB | 같음 | 40K |
+|  | Hunyuan-A13B | Tencent | 2025-06-25 | GQA 32층 (KV 8 × 128) | 137.4 GB | 같음 | 32K |
+|  | Kimi K2 | Moonshot AI | 2025-07-11 | MLA 61층 | 73.7 GB | 같음 | 128K |
+|  | GLM-4.5 | Z.ai | 2025-07-20 | GQA 92층 (KV 8 × 128) | 395.1 GB | 같음 | 128K |
+|  | DeepSeek-V3.1 | DeepSeek | 2025-08-21 | MLA 61층 | 73.7 GB | 같음 | 128K |
+|  | GLM-4.6 | Z.ai | 2025-09-29 | GQA 92층 (KV 8 × 128) | 395.1 GB | 같음 | 200K |
+|  | MiniMax-M2 | MiniMax | 2025-10-22 | GQA 62층 (KV 8 × 128) | 266.3 GB | 같음 | 196K |
+|  | MiniMax-M2.1 | MiniMax | 2025-12-20 | GQA 62층 (KV 8 × 128) | 266.3 GB | 같음 | 196K |
+|  | GLM-4.7 | Z.ai | 2025-12-22 | GQA 92층 (KV 8 × 128) | 395.1 GB | 같음 | 200K |
+|  | Kimi K2.5 | Moonshot AI | 2026-01-01 | MLA 61층 | 73.7 GB | 같음 | 256K |
+|  | GLM-4.7-Flash | Z.ai | 2026-01-19 | MLA 47층 | 56.8 GB | 같음 | 200K |
+|  | MiniMax-M2.5 | MiniMax | 2026-02-12 | GQA 62층 (KV 8 × 128) | 266.3 GB | 같음 | 196K |
+|  | MiniMax-M2.7 | MiniMax | 2026-04-09 | GQA 62층 (KV 8 × 128) | 266.3 GB | 같음 | 200K |
+|  | Kimi K2.6 | Moonshot AI | 2026-04-14 | MLA 61층 | 73.7 GB | 같음 | 256K |
+|  | Hy3 | Tencent | 2026-07-02 | GQA 80층 (KV 8 × 128) | 343.6 GB | 같음 | 256K |
+| **Sparse attention (+ full)** | DeepSeek-V3.2-Exp | DeepSeek | 2025-09-29 | MLA + DSA 61층 (indexer 61층) | 90.1 GB | 같음 | 128K |
+|  | DeepSeek-V3.2 | DeepSeek | 2025-12-01 | MLA + DSA 61층 (indexer 61층) | 90.1 GB | 같음 | 128K |
+|  | GLM-5 | Z.ai | 2026-02-11 | MLA + DSA 78층 (indexer 78층) | 115.2 GB | 같음 | 200K |
+|  | GLM-5.1 | Z.ai | 2026-04-03 | MLA + DSA 78층 (indexer 78층) | 115.2 GB | 같음 | 200K |
+|  | DeepSeek-V4-Flash | DeepSeek | 2026-04-22 | CSA 21층 + HCA 20층 + SWA만 2층 (모든 층 SWA 128) | 7.2 GB | 8.7 GB | 1M |
+|  | DeepSeek-V4-Pro | DeepSeek | 2026-04-22 | CSA 30층 + HCA 31층 + SWA만 0층 (모든 층 SWA 128) | 10.3 GB | 12.4 GB | 1M |
+|  | MiniMax-M3 | MiniMax | 2026-06-02 | GQA 60층 (KV 4 × 128) · MSA 57층 + full 3층 | 144.1 GB | 같음 | 1M |
+|  | GLM-5.2 | Z.ai | 2026-06-16 | MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유) | 99.9 GB | 같음 | 1M |
+|  | GLM-5.3 | Z.ai | 2026-08-25 | MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유) | 99.9 GB | 같음 | 1M |
+|  | Hy4-preview | Tencent | 2026-08-27 | MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유) | 99.9 GB | 같음 | 1M |
+|  | DeepSeek-V4.1-Flash | DeepSeek | 2026-09-10 | 압축 global KV + 층 간 공유 + SWA 128 (40층) | 3.4 GB | 4.7 GB | 1M |
+|  | MiniMax-M3.1-Flash | MiniMax | 2026-10-17 | GQA 60층 (KV 4 × 128) · MSA 60층 | 145.0 GB | 같음 | 1M |
+| **Sliding window + full** | MiMo-V2-Flash | Xiaomi | 2025-12-16 | SWA 39층 (window 128, KV 8) + full 9층 (KV 4) | 24.2 GB | 30.7 GB | 256K |
+|  | MiMo-V2.5 | Xiaomi | 2026-04-27 | SWA 39층 (window 128, KV 8) + full 9층 (KV 4) | 24.2 GB | 30.7 GB | 1M |
+|  | MiMo-V2.5-Pro | Xiaomi | 2026-04-27 | SWA 60층 (window 128, KV 8) + full 10층 (KV 8) | 53.7 GB | 63.8 GB | 1M |
+|  | Muse Glimmer 30B | Meta | 2026-08-09 | SWA 39층 (window 2048) + full 13층 (KV 2 × 128) | 14.0 GB | 34.9 GB | 128K |
+|  | Muse Spark Open 816B-A42B | Meta | 2026-09-15 | SWA 46층 (window 2048) + full 16층 (KV 16 × 64) | 69.1 GB | 167.5 GB | 1M |
+|  | MiMo-V2.6-Flash | Xiaomi | 2026-09-21 | SWA 39층 (window 128, KV 8) + full 9층 (KV 4) | 24.2 GB | 30.7 GB | 1M |
+|  | MiMo-V2.6-Pro | Xiaomi | 2026-09-21 | SWA 60층 (window 128, KV 8) + full 10층 (KV 8) | 53.7 GB | 63.8 GB | 1M |
+| **State + full/sparse** | MiniMax-Text-01 | MiniMax | 2025-01-12 | lightning attention 70층 + GQA 10층 (KV 8 × 128) | 43.2 GB | 118.1 GB | 1M |
+|  | Nemotron-H-56B | NVIDIA | 2025-04-08 | Mamba-2 54층 + GQA 10층 (KV 8 × 128) | 43.9 GB | 276.6 GB | 8K |
+|  | MiniMax-M1 | MiniMax | 2025-06-13 | lightning attention 70층 + GQA 10층 (KV 8 × 128) | 43.2 GB | 118.1 GB | 1M |
+|  | Nemotron Nano 9B v2 | NVIDIA | 2025-08-12 | Mamba-2 27층 + GQA 4층 (KV 8 × 128) | 17.3 GB | 53.9 GB | 128K |
+|  | Qwen3-Next 80B-A3B | Alibaba | 2025-09-09 | Gated DeltaNet 36층 + GQA 12층 (KV 2 × 256) | 25.8 GB | 45.6 GB | 262K |
+|  | Kimi Linear 48B-A3B | Moonshot AI | 2025-10-30 | KDA 20층 + MLA 7층 | 8.5 GB | 19.6 GB | 1M |
+|  | Nemotron 3 Nano 30B-A3B | NVIDIA | 2025-12-04 | Mamba-2 23층 + GQA 6층 (KV 2 × 128) | 6.5 GB | 19.0 GB | 262K |
+|  | Qwen3.5-397B-A17B | Alibaba | 2026-02-16 | Gated DeltaNet 45층 + GQA 15층 (KV 2 × 256) | 32.4 GB | 81.4 GB | 262K |
+|  | Qwen3.5-27B | Alibaba | 2026-02-24 | Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256) | 68.9 GB | 108.1 GB | 262K |
+|  | Nemotron 3 Super 120B-A12B | NVIDIA | 2026-03-10 | Mamba-2 40층 + GQA 8층 (KV 2 × 128) | 8.8 GB | 52.2 GB | 262K |
+|  | Qwen3.6-35B-A3B | Alibaba | 2026-04-15 | Gated DeltaNet 30층 + GQA 10층 (KV 2 × 256) | 21.5 GB | 38.0 GB | 262K |
+|  | Qwen3.6-27B | Alibaba | 2026-04-21 | Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256) | 68.9 GB | 108.1 GB | 262K |
+|  | Nemotron 3 Ultra 550B-A55B | NVIDIA | 2026-06-03 | Mamba-2 48층 + GQA 12층 (KV 2 × 128) | 13.3 GB | 117.3 GB | 262K |
+|  | Kimi K3 | Moonshot AI | 2026-06-13 | KDA 69층 + MLA 24층 | 29.4 GB | 144.0 GB | 1M |
+|  | Nemotron 3.5 Lightning 30B-A3B | NVIDIA | 2026-08-01 | Mamba-2 23층 + GQA 6층 (KV 2 × 128) | 6.5 GB | 19.0 GB | 262K |
+|  | Qwen3.8-27B | Alibaba | 2026-08-05 | Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256) | 68.9 GB | 108.1 GB | 262K |
+|  | Qwen3.8-2.4T-A95B | Alibaba | 2026-08-08 | Gated DeltaNet 69층 + GQA 23층 (KV 4 × 256) | 99.4 GB | 249.1 GB | 262K |
+|  | Qwen3.8-Flash-Next | Alibaba | 2026-08-24 | Gated DeltaNet 36층 + sparse GQA 12층 (indexer 1/4 압축) | 26.7 GB | 56.1 GB | 262K |
+|  | GLM-5.3-Flash | Z.ai | 2026-08-25 | KDA 34층 + MLA·DSA 11층 (RoPE 없음, indexer 1/4 압축) | 12.7 GB | 50.3 GB | 1M |
+|  | Nemotron 3.5 Bolt 74B-A9B | NVIDIA | 2026-10-09 | Mamba-2 40층 + GQA 8층 (KV 2 × 128) | 8.8 GB | 52.2 GB | 262K |
+
+- "같음"은 재개 지점을 저장해도 늘지 않는다는 뜻이다 (KV만 있는 구조)
+- 공개일은 공식 HF 저장소 생성일이다. 기본 최대 길이는 config의 `max_position_embeddings` 기준이다
+- DeepSeek-V4 · V4-Pro는 config의 `compress_ratios`로 층을 셌다. CSA 층은 4 토큰마다 512차원 entry 하나 + indexer key, HCA 층은 128 토큰마다 하나, 모든 층에 SWA 128이 있다고 계산했다. V4.1-Flash의 global KV(3,200 B/token)는 기술 보고서의 BF16 환산값이다
+- GLM-5.2 · 5.3 · Hy4는 `indexer_types`가 `full`인 21층만 indexer key를 저장한다고 보았다. GLM-5.3-Flash와 Qwen3.8-Flash-Next는 indexer key를 1/4로 압축한다(`index_kpool` · `indexer_compress_ratio` 4)
+- MiniMax-Text-01 · M1의 lightning attention state, Kimi KDA state, Nemotron-H-56B · Nano 9B v2의 SSM state는 config에 dtype이 없어 FP32로 가정했다 (BF16이면 state 부분이 절반)
+- MiniMax-M3.1-Flash는 config상 hidden 6,144 · 60층으로 M3와 크기가 같고, MSA가 60층 전부에 걸려 있다
+- Muse Spark Open은 접근 제한 저장소라 unsloth 미러의 config를 읽었다
+- 전체 수치: [data/lineage-kv1m.csv](llm-memory-requirements/data/lineage-kv1m.csv)
+
+</details>
+
+---
+
+## 5. 같은 메모리라도 쓰는 방법이 다르다
 
 | 대상 | 쓰기 | 읽기 | 수명 | 특징 |
 |---|---|---|---|---|
@@ -163,7 +298,7 @@ KV를 줄이는 방법은 다섯 갈래로 나뉜다. 중요한 점은 **저장�
 
 ---
 
-## 5. 어떻게 해석하면 되는가
+## 6. 어떻게 해석하면 되는가
 
 - **"이 모델이 들어가나?"는 가중치가 정한다.** 공식 배포 포맷의 GPU 상주분을 보라. 파라미터 수 × 2는 FP8 · FP4 시대에 2 ~ 4배 틀린다. Engram처럼 GPU 밖에 두는 부분도 있다
 - **"몇 명을 동시에 받나?"는 토큰당 상태가 정한다.** 그림 3의 숫자가 작은 모델일수록 KV 용량이 서빙 규모를 직접 제한한다
@@ -262,6 +397,8 @@ Mamba-2       state = 층 수 × head × head 차원 × d_state × 4 B(FP32)  + 
 | Nemotron 3 Ultra | [NVFP4](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4) · [BF16](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16) · [연구 페이지](https://research.nvidia.com/labs/nemotron/Nemotron-3-Ultra/) | 02462641f1 · 77df655d5e |
 | Qwen3-Next 80B-A3B | [Qwen/Qwen3-Next-80B-A3B-Instruct](https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct) | 9c7f2fbe84 |
 | Kimi Linear 48B-A3B | [moonshotai/Kimi-Linear-48B-A3B-Instruct](https://huggingface.co/moonshotai/Kimi-Linear-48B-A3B-Instruct) · [arXiv:2510.26692](https://arxiv.org/abs/2510.26692) | e1df551a44 |
+
+**4절 시리즈 비교** — 55개 모델의 config 원본을 `data/raw/cfg_*.json`에 보관했다 (2026-11-02 기준 각 공식 HF 저장소, Muse Spark Open만 unsloth 미러). 계산 결과는 `data/lineage-kv1m.csv`, 계산 코드는 `make_figures.py`의 `LINEAGE`다.
 
 **해설 · 분석 자료**
 
