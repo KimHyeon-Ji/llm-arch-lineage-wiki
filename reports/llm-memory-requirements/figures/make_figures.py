@@ -664,75 +664,14 @@ def fig_lineage_kv():
     return f
 
 
-# ---------------------------------------------------------------- 3b. 실제 서비스 길이별 요청 하나의 KV · state
-CONTEXTS = [   # (보유 토큰, 이름, 근거) — 3절 표와 같다. 1M은 그림 03
-    (8 * K, "8K — 일반 채팅 · API", "OpenRouter 평균 prompt 6K+ (2025-11)"),
-    (128 * K, "128K — 코딩 에이전트 중앙값", "TraceLab Claude Code P50 126K · Codex P50 116K"),
-    (467_082, "467K — 코딩 에이전트 P90", "TraceLab Claude Code P90"),
-]
-
-
-def fig_context_scenarios():
-    ms = LINEAGE
-    x0, x1, ph, gap = 110, 1400, 210, 64
-    top = 196
-    H = int(top + len(CONTEXTS) * (ph + gap) + 200)
-    f = Fig("03b-kv-by-context", 1560, H)
-    f.title(40, 44, "55개 모델의 요청 하나의 KV · state 크기 — 실제 서비스 길이별, 공개일 순")
-    x = _cat_legend(f, 40, 84)
-    f.rect(x + 10, 71, 16, 16, "#c9cddb", "none", 3)
-    f.text(x + 34, 84, "4096 토큰마다 재개 지점을 저장하면 늘어나는 양", 15, "start", color=MUTED)
-    f.text(40, 112, "로그 축 · 세 패널의 축 범위가 같다 (10 MB ~ 1 TB).  점선 = 반기 중앙값 (진한 막대 기준).  1M 기준은 그림 03",
-           14, "start", color=MUTED)
-    step = (x1 - x0) / len(ms)
-    bw = step * 0.66
-    halves = [(h, [i for i, m in enumerate(ms) if _half(m["date"]) == h]) for h in HALVES]
-    for (t, label, src), p in zip(CONTEXTS, range(len(CONTEXTS))):
-        pt = top + p * (ph + gap)
-        pb = pt + ph
-        Y = _log_y(pt, pb, 0.01, 1000)
-        f.text(40, pt - 30, label, 17, "start", 700)
-        f.text(40 + text_w(label, 17) + 16, pt - 30, f"근거: {src}", 14, "start", color=MUTED)
-        for v, lab in ((0.01, "10 MB"), (0.1, "100 MB"), (1, "1 GB"), (10, "10 GB"), (100, "100 GB"), (1000, "1 TB")):
-            f.line(x0, Y(v), x1, Y(v), GRID, 1)
-            f.text(x0 - 10, Y(v) + 5, lab, 13, "end", color=MUTED, mono=True)
-        for h, ii in halves:
-            if not ii:
-                continue
-            a, b = x0 + step * ii[0], x0 + step * (ii[-1] + 1)
-            f.line(a, pt - 6, a, pb, "#c9cddb", 1.2, "5 4")
-            if len(ii) >= 3:
-                med = median(sum(kv1m(ms[i], t)) / GB for i in ii)
-                f.line(a + 4, Y(med), b - 4, Y(med), INK, 2.5, "8 5")
-                f.text((a + b) / 2, pt + 16, f"{h} 중앙값 {fmt_gb(med)}" if b - a > 260 else fmt_gb(med), 13, weight=700,
-                       halo=True)
-        for i, m in enumerate(ms):
-            cx = x0 + step * (i + 0.5)
-            s1, s2 = sum(kv1m(m, t)) / GB, sum(kv1m_ckpt(m, t)) / GB
-            if s2 > s1 * 1.03:
-                f.rect(cx - bw / 2, Y(s2), bw, Y(s1) - Y(s2), CAT_LIGHT[m["cat"]], "none", 2)
-            f.rect(cx - bw / 2, Y(s1), bw, pb - Y(s1), CAT_COLOR[m["cat"]], "none", 2)
-        for (glabel, cap), dy in zip(GPU_LINES[:2], (17, -7)):
-            f.line(x0, Y(cap / GB), x1, Y(cap / GB), GPU_COLOR, 2)
-            f.text(x1 + 10, Y(cap / GB) + dy, f"{glabel} {cap / GB:.0f} GB", 13, "start", 700, GPU_COLOR)
-        f.line(x0, pb, x1, pb, AXIS, 1.5)
-    bot = top + (len(CONTEXTS) - 1) * (ph + gap) + ph
-    for i, m in enumerate(ms):
-        cx = x0 + step * (i + 0.5)
-        f.raw(f'<text transform="translate({cx + 4:.1f},{bot + 12}) rotate(-60)" font-family="{FONT}" font-size="12.5" '
-              f'text-anchor="end" fill="{INK}">{esc(m["name"])}</text>')
-    f.text(40, H - 18, "조건: KV와 indexer key는 BF16, recurrent state는 config dtype · 요청 하나 · 계산값.  기본 최대 길이가 해당 길이보다 짧은 모델도 같은 길이로 계산.",
-           14, "start", color=MUTED)
-    return f
-
-
 # ---------------------------------------------------------------- 4. 서빙 시나리오 — 가중치 + 동시 요청의 KV · state
 KV_FILL, STATE_FILL, CKPT_FILL = SERIES[0], SERIES[3], "#f1d39a"    # KV / 고정 state / 재개 지점 사본
-SCENARIOS = [   # (그림 이름, 시나리오 이름, 동시 요청 수, 요청 하나가 보유한 토큰 수)
-    ("04a-scenario-chat", "대화형 채팅", 256, 8 * K),
-    ("04b-scenario-coding", "코딩 에이전트", 32, 128 * K),
-    ("04c-scenario-long", "장문 · 장기 에이전트", 8, 1024 * K),
+SCENARIOS = [   # (그림 이름, 동시 요청 수, 요청 하나가 보유한 토큰 수) — 동시 요청 수는 가정값
+    ("04a-scenario-1m-x8", 8, 1024 * K),
+    ("04b-scenario-1m-x32", 32, 1024 * K),
+    ("04c-scenario-1m-x128", 128, 1024 * K),
 ]
+RACK_LINES = [("GB200 NVL72", 13.4e12)]                             # 랙 하나의 HBM 합 (72 × 186 GB)
 
 
 def scenario_bytes(m, n, t):
@@ -745,11 +684,11 @@ def _tok(t):
     return f"{t // (1024 * K)}M" if t >= 1024 * K else f"{t // K}K"
 
 
-def fig_scenario(name, label, n, t):
+def fig_scenario(name, n, t):
     ms = LINEAGE
     pitch, head = 22, 34
     totals = [m["w"] + sum(scenario_bytes(m, n, t)) for m in ms]
-    hi = next(v for v in (1000, 1500, 2000, 3000, 4000, 5000, 6000) if v >= max(totals) / GB)
+    hi = next(v for v in (1000, 2000, 3000, 5000, 10000, 20000, 30000, 50000, 60000) if v >= max(totals) / GB)
     x0, x1 = 330, 1290
     X = lambda v: x0 + v / hi * (x1 - x0)  # noqa: E731
     top = 190
@@ -765,19 +704,20 @@ def fig_scenario(name, label, n, t):
     bot = y + 8
     H = int(bot + 110)
     f = Fig(name, 1560, H)
-    f.title(40, 44, f"시나리오 — {label}: 동시 요청 {n}개 × {_tok(t)} 토큰 (총 {_tok(n * t)} 토큰), 55개 모델")
+    f.title(40, 44, f"55개 모델의 가중치 + 동시 {n}개 × {_tok(t)} 토큰 요청의 KV · state (총 {_tok(n * t)} 토큰)")
     legend_items(f, 40, 84, [("bar", WEIGHT_FILL, "가중치"), ("bar", KV_FILL, f"KV — 요청 {n}개 합"),
                              ("bar", STATE_FILL, f"고정 state — 요청 {n}개 합"),
                              ("bar", CKPT_FILL, "4096 토큰마다 재개 지점을 저장하면 늘어나는 양")])
     f.text(40, 112, f"선형 축 (0 ~ {hi / 1000:g} TB) · 막대 길이가 그대로 메모리 크기다.  오른쪽 숫자 = 가중치 + KV + state의 합과 "
            "그 용량에 필요한 GPU 수 (재개 지점 저장분 제외)", 14, "start", color=MUTED)
 
-    step = 500 if hi <= 3000 else 1000
+    step = next(v for v in (500, 1000, 2000, 5000, 10000) if hi / v <= 6)
     for v in range(0, hi + 1, step):
         f.line(X(v), top - 6, X(v), bot, GRID, 1)
         f.text(X(v), bot + 24, "0" if v == 0 else (f"{v / 1000:g} TB" if v >= 1000 else f"{v} GB"), 13, color=MUTED,
                mono=True)
-    for i, (glabel, cap) in enumerate(GPU_LINES):
+    lines = [(g, c) for g, c in GPU_LINES + RACK_LINES if hi * 0.015 * GB < c <= hi * GB]
+    for i, (glabel, cap) in enumerate(lines):
         x = X(cap / GB)
         f.line(x, top - 30 + (i % 2) * 14, x, bot, GPU_COLOR, 1.6)
         f.text(x + 4, top - 34 + (i % 2) * 14, f"{glabel} {fmt_gb(cap / GB).replace('.0 GB', ' GB')}", 12.5, "start",
@@ -804,7 +744,9 @@ def fig_scenario(name, label, n, t):
     f.line(x0, bot, x1, bot, AXIS, 1.5)
     over = sum(v > 640e9 for v in [m["w"] + sum(scenario_bytes(m, n, t)[:2]) for m in ms])
     big = sum(sum(scenario_bytes(m, n, t)[:2]) > m["w"] for m in ms)
-    f.text(40, H - 40, f"가중치 + KV + state가 H100 × 8(640 GB)을 넘는 모델 {over}개.  KV + state가 가중치보다 큰 모델 {big}개 (55개 중).  "
+    rack = sum(v > 13.4e12 for v in [m["w"] + sum(scenario_bytes(m, n, t)[:2]) for m in ms])
+    f.text(40, H - 40, f"가중치 + KV + state가 H100 × 8(640 GB)을 넘는 모델 {over}개, GB200 NVL72(13.4 TB)를 넘는 모델 {rack}개.  "
+           f"KV + state가 가중치보다 큰 모델 {big}개 (55개 중).  "
            "왼쪽 점 색 = attention 분류 (그림 01과 같다).", 14, "start", color=MUTED)
     f.text(40, H - 18, "조건: KV는 BF16, state는 config dtype · 모든 요청이 같은 길이 · prefix 공유 없음 · 계산값.  GPU 수는 용량 ÷ 장당 용량의 올림이며 "
            "병렬화 복제 · 엔진 여유분은 넣지 않았다.", 14, "start", color=MUTED)
@@ -902,7 +844,7 @@ def print_summary():
             print(f"  {label:20s} {m['name']:22s} {'fits' if left > 0 else 'OVER':5s} {n:10.0f}")
 
 
-FIGS = [fig_paths, fig_weights, fig_lineage_kv, fig_context_scenarios] + [
+FIGS = [fig_paths, fig_weights, fig_lineage_kv] + [
     (lambda sc=sc: fig_scenario(*sc)) for sc in SCENARIOS] + [fig_per_token]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]

@@ -126,84 +126,44 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 
 ### 실제 서비스의 요청 길이
 
-1M은 구조를 비교하기 위한 기준이다. 실제 서비스에서 요청 하나가 보유하는 토큰 수는 다음과 같이 보고되었다.
-
-| 출처 | 대상 · 기간 | 보고된 길이 |
+| 출처 | 대상 · 기간 | 요청 하나가 보유한 토큰 |
 |---|---|---|
-| OpenRouter *State of AI* | 100조 토큰, 2024-01 ~ 2025-11 | 요청당 평균 prompt 약 1.5K → 6K 이상(4배). 프로그래밍 prompt는 일반 prompt의 3 ~ 4배 |
-| *A Year in LLM Serving* (CompanyX trace) | 61억 요청, 2025-04 ~ 2026-04 | 요청당 평균 입력 약 5.9K (전체 합계로 계산). 월별 중앙값은 수천 토큰, 10⁵ 토큰 이상의 긴 꼬리 |
-| TraceLab | Claude Code · Codex 약 4,300 세션, 2025-09 ~ 2026-06 | 한 스텝의 보유 토큰(prefix) — Claude Code P50 126K · P90 467K · P99 918K, Codex P50 116K · P90 202K · P99 231K. 스텝의 약 90%가 32K 이상, 약 45%가 128K 이상 |
+| OpenRouter *State of AI* | 100조 토큰, 2024-01 ~ 2025-11 | 평균 prompt 1.5K → 6K 이상 |
+| TraceLab | Claude Code · Codex 약 4,300 세션, 2025-09 ~ 2026-06 | 코딩 에이전트 한 스텝: Claude Code P50 126K · P90 467K · P99 918K |
 
-일반 채팅 · API 요청은 수천 토큰이지만, 코딩 에이전트는 대화 이력과 도구 결과가 계속 쌓여 중앙값이 100K를 넘는다. 이를 바탕으로 세 길이를 더 계산했다. 1M은 Claude Code의 P99(918K)와 비슷하다.
-
-| 길이 | 대표하는 경우 |
-|---|---|
-| 8K | 일반 채팅 · API 요청 (평균 6K 안팎) |
-| 128K | 코딩 에이전트 한 스텝의 중앙값 |
-| 467K | 코딩 에이전트 한 스텝의 P90 (Claude Code) |
-| 1M | 위의 기준 그림 (코딩 에이전트 P99 수준) |
-
-![길이별 KV · state](llm-memory-requirements/figures/03b-kv-by-context.png)
-
-| 분류 | 8K | 128K | 467K | 1M |
-|---|---|---|---|---|
-| Full attention만 | 1.8 GB | 29 GB | 104 GB | 234 GB |
-| Sparse (+ full) | 0.78 GB | 12 GB | 44 GB | 100 GB |
-| Sliding window + full | 0.21 GB | 3.1 GB | 11 GB | 24 GB |
-| State + full/sparse | 0.38 GB | 3.4 GB | 12 GB | 26 GB |
-| State + full/sparse, 4096 단위 저장 | 0.54 GB | 8.6 GB | 31 GB | 69 GB |
-
-(요청 하나, 분류별 중앙값.)
-
-- 8K에서는 모든 모델이 3 GB 이하다 (최대 GLM-4.5 3.1 GB, 최소 DeepSeek-V4.1-Flash 31 MB)
-- 8K에서는 state hybrid의 고정 state가 KV보다 크다. Kimi K3는 0.68 GB 중 0.45 GB, Nemotron 3 Ultra는 0.51 GB 중 0.41 GB가 고정 state다
-- 128K에서 가장 큰 모델은 GLM-4.x 49 GB, Hy3 43 GB다. GPU 한 장(80 GB)을 넘는 모델은 없다
-- 코딩 에이전트 P90인 467K에서는 9개 모델이 요청 하나로 H100 1장(80 GB)을 넘는다. GLM-4.x 176 GB, Hy3 153 GB다
-- KV는 길이에 비례하므로 467K는 1M의 약 45%, 128K는 약 12%다. state hybrid는 고정 state 때문에 짧은 길이에서 이 비율보다 크다
+- 일반 채팅 · API는 수천 토큰이고, 코딩 에이전트는 대화 이력과 도구 결과가 쌓여 수십만 토큰이다. 긴 에이전트 세션은 1M에 가까워진다
+- 이 보고서의 55개 모델은 기본 최대 길이가 모두 1M 이하라, 요청 하나는 1M이 상한이다. 공개 가중치 중 1M을 넘는 모델은 Llama 4 Scout(10M, 2025-04) 정도다
+- 그래서 요청 하나는 1M을 기준으로 두고, 4절에서는 1M 요청을 동시에 여러 개 보유하는 경우를 본다
 
 ---
 
 ## 4. 가중치와 KV cache · state 비교
 
-### 서빙 시나리오별 전체 메모리
+### 1M 요청을 동시에 보유할 때
 
-실제 서빙에서는 여러 요청을 동시에 보유하므로, 요청 하나보다 동시 요청 전체의 KV · state를 봐야 한다. 요청 길이는 3절의 조사(채팅 8K, 코딩 에이전트 중앙값 128K, 1M)를 따랐고, 동시 요청 수는 가정값이다.
+서버는 요청을 여러 개 동시에 보유하고, 끝난 세션의 KV를 재사용하려고 보관하기도 한다. 1M 요청의 동시 보유 수를 8 · 32 · 128개로 가정해 가중치와 합쳤다. 동시 보유 수는 가정값이다.
 
-| 시나리오 | 동시 요청 × 보유 토큰 | 총 보유 토큰 | 가중치 + KV + state가 H100 × 8을 넘는 모델 | B200 × 8을 넘는 모델 | KV + state가 가중치보다 큰 모델 | H100 수 중앙값 |
+| 동시 1M 요청 | 총 보유 토큰 | H100 × 8(640 GB)을 넘는 모델 | B200 × 8(1.44 TB)을 넘는 모델 | GB200 NVL72(13.4 TB)를 넘는 모델 | KV + state가 가중치보다 큰 모델 | 합계 중앙값 |
 |---|---|---|---|---|---|---|
-| 대화형 채팅 | 256 × 8K | 2M | 30개 | 2개 | 20개 | 10장 |
-| 코딩 에이전트 | 32 × 128K | 4M | 31개 | 6개 | 21개 | 12장 |
-| 장문 · 장기 에이전트 | 8 × 1M | 8M | 33개 | 19개 | 32개 | 15장 |
+| 8개 | 8M | 33개 | 19개 | 0개 | 32개 | 1.2 TB |
+| 32개 | 32M | 46개 | 37개 | 0개 | 52개 | 2.5 TB |
+| 128개 | 128M | 55개 | 48개 | 18개 | 55개 | 8.8 TB |
 
 (55개 중. 가중치만으로는 H100 × 8을 넘는 모델이 17개, B200 × 8을 넘는 모델이 2개다.)
 
-각 그림은 모델마다 가중치(진한 회색), 동시 요청 전체의 KV(파랑), 고정 state(주황), 4096 토큰마다 재개 지점을 저장하면 늘어나는 양(옅은 주황)을 한 막대에 이어 붙였다. 선형 축이며, 시나리오마다 축 범위가 다르다. 오른쪽 숫자는 가중치 + KV + state의 합과 그 용량에 필요한 GPU 수다 (재개 지점 저장분 제외).
+각 그림은 모델마다 가중치(진한 회색), KV(파랑), 고정 state(주황), 4096 토큰마다 재개 지점을 저장하면 늘어나는 양(옅은 주황)을 한 막대에 이어 붙였다. 선형 축이며 그림마다 축 범위가 다르다. 오른쪽 숫자는 가중치 + KV + state의 합과 그 용량에 필요한 GPU 수다 (재개 지점 저장분 제외).
 
-**대화형 채팅 — 동시 256개 × 8K**
+![동시 1M 요청 8개](llm-memory-requirements/figures/04a-scenario-1m-x8.png)
 
-![시나리오 — 대화형 채팅](llm-memory-requirements/figures/04a-scenario-chat.png)
+![동시 1M 요청 32개](llm-memory-requirements/figures/04b-scenario-1m-x32.png)
 
-- full GQA 모델은 KV가 가중치의 2배 이상이다: GLM-4.7 가중치 362 GB + KV 790 GB, Hy3 300 GB + 687 GB
-- 짧은 요청이 많으면 state hybrid는 고정 state가 KV보다 커진다: Kimi K3 KV 58 GB + state 115 GB, Nemotron 3 Ultra KV 26 GB + state 104 GB. 재개 지점을 저장하면 state만큼 더 늘어난다
-- DeepSeek-V4.1-Flash는 KV가 8 GB로 가중치(308 GB)의 약 3%다
+![동시 1M 요청 128개](llm-memory-requirements/figures/04c-scenario-1m-x128.png)
 
-**코딩 에이전트 — 동시 32개 × 128K**
-
-![시나리오 — 코딩 에이전트](llm-memory-requirements/figures/04b-scenario-coding.png)
-
-- GLM-4.x · MiniMax-M2.x · Hy3는 합계가 1.3 ~ 1.9 TB로 H100 × 8을 넘고, GLM-4.x와 Hy3는 B200 × 8(1.44 TB)도 넘는다
-- 가중치가 작은 27B급 hybrid(Qwen3.5 · 3.6 · 3.8-27B)도 KV + state가 280 GB로, 가중치(31 GB)의 9배다
-- MLA · sparse 모델(DeepSeek-V3.x, Kimi K2.x, GLM-5.x)은 KV가 가중치의 30 ~ 60% 수준이다
-
-**장문 · 장기 에이전트 — 동시 8개 × 1M**
-
-![시나리오 — 장문 · 장기 에이전트](llm-memory-requirements/figures/04c-scenario-long.png)
-
-- 55개 중 32개에서 KV + state가 가중치보다 크다
-- GLM-4.x와 Hy3는 KV만 2.7 ~ 3.2 TB다 (GLM-4.7 3.16 TB, Hy3 2.75 TB)
-- KV + state가 가중치보다 작은 모델은 대형 MoE에 압축 KV · state를 쓴 경우다: DeepSeek-V4.1-Flash(KV 27 GB), Kimi K3(236 GB, 재개 지점 저장 시 +917 GB), Nemotron 3 Ultra(106 GB, +832 GB)
-
-가정: 모든 요청이 같은 길이이고 prefix를 공유하지 않는다. 실제 서빙에서는 요청 길이가 섞여 있고, 공통 system prompt는 prefix caching으로 한 번만 저장된다. KV를 FP8로 저장하면 KV 부분이 절반이 된다.
+- 동시 8개에서 이미 55개 중 32개 모델의 KV + state가 가중치보다 크다. 32개부터는 거의 모든 모델이 그렇다
+- full GQA 모델은 동시 32개에서 GLM-4.7 13.0 TB, Hy3 11.3 TB로 랙 하나(13.4 TB)에 가깝다. 128개에서는 51 TB, 44 TB다
+- 압축 KV인 DeepSeek-V4.1-Flash는 동시 128개에서도 738 GB다
+- state hybrid는 KV + state 자체는 작지만, 재개 지점을 저장하면 크게 늘어난다. 동시 32개에서 Kimi K3 2.5 TB → +3.7 TB, Nemotron 3 Ultra 0.78 TB → +3.3 TB
+- 이 규모는 GPU 메모리에 모두 둘 수 없어, 실제로는 KV를 CPU 메모리 · SSD로 내려 보관하고 필요할 때 다시 올린다
 
 ### 반기별 추이
 
@@ -442,7 +402,6 @@ Raschka KV 노트의 값과 일치한다 — DeepSeek-V3 68.6 KiB, Qwen3-Next 24
 - Coleman Hooper, [Memory-Efficient LLM Inference Algorithms](https://www2.eecs.berkeley.edu/Pubs/TechRpts/2026/EECS-2026-175.html), UC Berkeley, 2026-05 — 2장: 문맥이 길어지면 주된 트래픽이 가중치에서 KV로 이동
 - T. Singh, [The KV Cache Is the New Memory Wall](https://arxiv.org/abs/2609.30854), 2026-09 프리프린트 — GPU별 교차 길이. paging과 prefix 공유는 대역폭이 아니라 용량을 줄인다
 - OpenRouter, [State of AI: An Empirical 100 Trillion Token Study](https://openrouter.ai/state-of-ai) ([arXiv:2601.10088](https://arxiv.org/abs/2601.10088)) — 요청당 평균 prompt 길이의 증가 (2024-01 ~ 2025-11)
-- [A Year in LLM Serving: Workload Evolution, Caching and Load-Balancing](https://arxiv.org/abs/2608.13573) — 1년치 production trace의 입력 길이 (2025-04 ~ 2026-04)
 - [TraceLab: Characterizing Coding Agent Workloads for LLM Serving](https://arxiv.org/abs/2606.30560) — Claude Code · Codex 세션의 스텝별 prefix 길이 분포
 - [FlashMLA](https://github.com/deepseek-ai/FlashMLA) — V3.2 FP8 KV 형식(656 B)
 - [vLLM Hybrid KV Cache Manager](https://docs.vllm.ai/en/latest/design/hybrid_kv_cache_manager/) — window 회수, Mamba state padding, prefix caching
