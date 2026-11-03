@@ -1,0 +1,1032 @@
+{
+ "MiniMaxAI/MiniMax-M1-80k-hf": {
+  "createdAt": "2025-07-01T16:52:58.000Z",
+  "usedStorage": 912211851456,
+  "index_total_size": 914820161536,
+  "sha": null,
+  "safetensors": {
+   "BF16": 456073926656,
+   "F32": 15728640
+  }
+ },
+ "MiniMaxAI/MiniMax-M2": {
+  "createdAt": "2025-10-22T13:45:10.000Z",
+  "usedStorage": 230135473737,
+  "index_total_size": 480836588544,
+  "sha": null,
+  "safetensors": {
+   "F32": 48774656,
+   "BF16": 1230021632,
+   "F8_E4M3": 227410968576
+  }
+ },
+ "MiniMaxAI/MiniMax-M2.1": {
+  "createdAt": "2025-12-20T05:45:05.000Z",
+  "usedStorage": 230136371123,
+  "index_total_size": 480836588544,
+  "sha": null,
+  "safetensors": {
+   "F32": 48774656,
+   "BF16": 1230021632,
+   "F8_E4M3": 227410968576
+  }
+ },
+ "MiniMaxAI/MiniMax-M2.5": {
+  "createdAt": "2026-02-12T06:05:24.000Z",
+  "usedStorage": 230136082747,
+  "index_total_size": 466083044352,
+  "sha": null,
+  "safetensors": {
+   "F32": 48774656,
+   "BF16": 1230021632,
+   "F8_E4M3": 227410968576
+  }
+ },
+ "MiniMaxAI/MiniMax-M2.7": {
+  "createdAt": "2026-04-09T03:37:12.000Z",
+  "usedStorage": 230142259486,
+  "index_total_size": 480836588544,
+  "sha": null,
+  "safetensors": {
+   "F32": 48774656,
+   "BF16": 1230021632,
+   "F8_E4M3": 227410968576
+  }
+ },
+ "MiniMaxAI/MiniMax-M3": {
+  "createdAt": "2026-06-02T07:49:31.000Z",
+  "usedStorage": 1708357470332,
+  "index_total_size": 869157697024,
+  "sha": null,
+  "safetensors": {
+   "BF16": 426993800960,
+   "F32": 46339200
+  }
+ },
+ "MiniMaxAI/MiniMax-M3.1-Flash": {
+  "createdAt": "2026-10-17T06:37:50.000Z",
+  "usedStorage": 252429151663,
+  "index_total_size": 250103411200,
+  "sha": null,
+  "safetensors": {
+   "F32": 46339200,
+   "BF16": 3323222528,
+   "F8_E4M3": 10560208896,
+   "U8": 206561083392
+  }
+ },
+ "MiniMaxAI/MiniMax-Text-01-hf": {
+  "createdAt": "2025-06-03T09:38:42.000Z",
+  "usedStorage": 914673107365,
+  "index_total_size": 912178524160,
+  "sha": null,
+  "safetensors": {
+   "F32": 1244921856,
+   "BF16": 454844733440
+  }
+ },
+ "Qwen/Qwen3-235B-A22B": {
+  "createdAt": "2025-04-27T03:53:46.000Z",
+  "usedStorage": 470203304443,
+  "index_total_size": 470187269120,
+  "sha": null,
+  "safetensors": {
+   "BF16": 235093634560
+  }
+ },
+ "Qwen/Qwen3-235B-A22B-FP8": {
+  "createdAt": "2025-04-28T14:36:08.000Z",
+  "usedStorage": 239055571958,
+  "index_total_size": 239034937344,
+  "sha": null,
+  "safetensors": {
+   "F32": 1294740992,
+   "F8_E4M3": 233798893568
+  }
+ },
+ "Qwen/Qwen3-Next-80B-A3B-Instruct": {
+  "createdAt": "2025-09-09T15:40:56.000Z",
+  "usedStorage": 162670584182,
+  "index_total_size": 162649725440,
+  "sha": null,
+  "safetensors": {
+   "BF16": 81324862720
+  }
+ },
+ "Qwen/Qwen3-Next-80B-A3B-Instruct-FP8": {
+  "createdAt": "2025-09-22T03:48:53.000Z",
+  "usedStorage": 82077791006,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "F32": 4921664,
+   "BF16": 688319744,
+   "F8_E4M3": 80636542976
+  }
+ },
+ "Qwen/Qwen3.5-27B": {
+  "createdAt": "2026-02-24T09:41:56.000Z",
+  "usedStorage": 55575830414,
+  "index_total_size": 55562872800,
+  "sha": null,
+  "safetensors": {
+   "BF16": 27781419504,
+   "F32": 8448
+  }
+ },
+ "Qwen/Qwen3.5-27B-FP8": {
+  "createdAt": "2026-02-25T13:20:07.000Z",
+  "usedStorage": 30879690294,
+  "index_total_size": 30866680160,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3082211824,
+   "F8_E4M3": 24699207680,
+   "F32": 8448
+  }
+ },
+ "Qwen/Qwen3.5-397B-A17B": {
+  "createdAt": "2026-02-16T04:55:12.000Z",
+  "usedStorage": 806815637532,
+  "index_total_size": 806795875168,
+  "sha": null,
+  "safetensors": {
+   "BF16": 403397920304,
+   "F32": 8640
+  }
+ },
+ "Qwen/Qwen3.5-397B-A17B-FP8": {
+  "createdAt": "2026-02-18T13:01:57.000Z",
+  "usedStorage": 406188403831,
+  "index_total_size": 406125181280,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2678310448,
+   "F8_E4M3": 400719609856,
+   "F32": 8640
+  }
+ },
+ "Qwen/Qwen3.6-27B": {
+  "createdAt": "2026-04-21T07:50:43.000Z",
+  "usedStorage": 55576522126,
+  "index_total_size": 55562855904.0,
+  "sha": null,
+  "safetensors": {
+   "BF16": 27781427952
+  }
+ },
+ "Qwen/Qwen3.6-27B-FP8": {
+  "createdAt": "2026-04-21T07:51:33.000Z",
+  "usedStorage": 30879674910,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3083727792,
+   "F8_E4M3": 24699207680
+  }
+ },
+ "Qwen/Qwen3.6-35B-A3B": {
+  "createdAt": "2026-04-15T05:59:19.000Z",
+  "usedStorage": 71921347477,
+  "index_total_size": 71903645408.0,
+  "sha": null,
+  "safetensors": {
+   "BF16": 35951822704
+  }
+ },
+ "Qwen/Qwen3.6-35B-A3B-FP8": {
+  "createdAt": "2026-04-15T06:05:13.000Z",
+  "usedStorage": 37476648812,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 1500863920,
+   "F8_E4M3": 34453061632
+  }
+ },
+ "Qwen/Qwen3.8-2.4T-A95B": {
+  "createdAt": "2026-08-08T01:50:52.000Z",
+  "usedStorage": 4892378458656,
+  "index_total_size": 4892365451008.0,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2446182725504
+  }
+ },
+ "Qwen/Qwen3.8-2.4T-A95B-FP8": {
+  "createdAt": "2026-08-08T01:49:49.000Z",
+  "usedStorage": 2496144198227,
+  "index_total_size": 2496066252544,
+  "sha": null,
+  "safetensors": {
+   "BF16": 49590974336,
+   "F8_E4M3": 2396591751168
+  }
+ },
+ "Qwen/Qwen3.8-27B": {
+  "createdAt": "2026-08-05T08:22:59.000Z",
+  "usedStorage": 55618036073,
+  "index_total_size": 55562855904.0,
+  "sha": null,
+  "safetensors": {
+   "BF16": 27781427952
+  }
+ },
+ "Qwen/Qwen3.8-27B-FP8": {
+  "createdAt": "2026-08-13T08:01:58.000Z",
+  "usedStorage": 30879676248,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3082220272,
+   "F8_E4M3": 24699207680
+  }
+ },
+ "Qwen/Qwen3.8-Flash-Next": {
+  "createdAt": "2026-08-24T08:24:59.000Z",
+  "usedStorage": 360065103050,
+  "index_total_size": 359999963128.0,
+  "sha": null,
+  "safetensors": {
+   "BF16": 179999981424,
+   "I64": 35
+  }
+ },
+ "Qwen/Qwen3.8-Flash-Next-FP8": {
+  "createdAt": "2026-08-24T08:25:23.000Z",
+  "usedStorage": 185553536918,
+  "index_total_size": 185502232570,
+  "sha": null,
+  "safetensors": {
+   "BF16": 5487198064,
+   "F8_E4M3": 174512783360,
+   "I64": 35
+  }
+ },
+ "XiaomiMiMo/MiMo-V2-Flash": {
+  "createdAt": "2025-12-16T08:47:02.000Z",
+  "usedStorage": 313072197486,
+  "index_total_size": 313051659008,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3062303360,
+   "F8_E4M3": 306655002624,
+   "F32": 49295104
+  }
+ },
+ "XiaomiMiMo/MiMo-V2-Flash-Base": {
+  "createdAt": "2025-12-16T09:08:24.000Z",
+  "usedStorage": 313060755584,
+  "index_total_size": 313051659008,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3062303360,
+   "F8_E4M3": 306655002624,
+   "F32": 49295104
+  }
+ },
+ "XiaomiMiMo/MiMo-V2.5": {
+  "createdAt": "2026-04-27T13:37:38.000Z",
+  "usedStorage": 315693598475,
+  "index_total_size": 315031102208,
+  "sha": null,
+  "safetensors": {
+   "F32": 49295104,
+   "BF16": 4052024960,
+   "F8_E4M3": 306655002624
+  }
+ },
+ "XiaomiMiMo/MiMo-V2.5-Base": {
+  "createdAt": "2026-04-27T12:49:45.000Z",
+  "usedStorage": 315693598475,
+  "index_total_size": 315031102208,
+  "sha": null,
+  "safetensors": {
+   "F32": 49295104,
+   "BF16": 4052024960,
+   "F8_E4M3": 306655002624
+  }
+ },
+ "XiaomiMiMo/MiMo-V2.5-Pro": {
+  "createdAt": "2026-04-27T12:52:53.000Z",
+  "usedStorage": 1033418613038,
+  "index_total_size": 1033369538304,
+  "sha": null,
+  "safetensors": {
+   "F32": 162817920,
+   "BF16": 9450733440,
+   "F8_E4M3": 1013569290240
+  }
+ },
+ "XiaomiMiMo/MiMo-V2.5-Pro-Base": {
+  "createdAt": "2026-04-27T11:32:54.000Z",
+  "usedStorage": 1033418613038,
+  "index_total_size": 1033369538304,
+  "sha": null,
+  "safetensors": {
+   "F32": 162817920,
+   "BF16": 9450733440,
+   "F8_E4M3": 1013569290240
+  }
+ },
+ "XiaomiMiMo/MiMo-V2.6-Flash-RL": {
+  "createdAt": "2026-09-21T15:39:51.000Z",
+  "usedStorage": 177759177245,
+  "index_total_size": 172923364096,
+  "sha": null,
+  "safetensors": {
+   "F32": 12032,
+   "BF16": 4101308032,
+   "F8_E4M3": 3859808256,
+   "U8": 302795194368
+  }
+ },
+ "XiaomiMiMo/MiMo-V2.6-Pro-RL": {
+  "createdAt": "2026-09-21T15:39:33.000Z",
+  "usedStorage": 573490499319,
+  "index_total_size": 566027990784,
+  "sha": null,
+  "safetensors": {
+   "BF16": 10647286656,
+   "F32": 26496,
+   "F8_E4M3": 13378781184,
+   "U8": 1000190509056
+  }
+ },
+ "deepseek-ai/DeepSeek-V3": {
+  "createdAt": "2024-12-25T12:52:23.000Z",
+  "usedStorage": 688727648088,
+  "index_total_size": 1369062772000,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3918786560,
+   "F8_E4M3": 680571043840,
+   "F32": 15104
+  }
+ },
+ "deepseek-ai/DeepSeek-V3-Base": {
+  "createdAt": "2024-12-25T12:52:06.000Z",
+  "usedStorage": 688591926227,
+  "index_total_size": 1369062772000,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3918786560,
+   "F8_E4M3": 680571043840,
+   "F32": 15104
+  }
+ },
+ "deepseek-ai/DeepSeek-V3.1": {
+  "createdAt": "2025-08-21T02:37:52.000Z",
+  "usedStorage": 688595361908,
+  "index_total_size": 1369062772000,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3918786560,
+   "F8_E4M3": 680571043840,
+   "F32": 41555600
+  }
+ },
+ "deepseek-ai/DeepSeek-V3.1-Base": {
+  "createdAt": "2025-08-19T10:01:00.000Z",
+  "usedStorage": 688587108667,
+  "index_total_size": 1369062772000,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3918786560,
+   "F8_E4M3": 680571043840,
+   "F32": 41555600
+  }
+ },
+ "deepseek-ai/DeepSeek-V3.2": {
+  "createdAt": "2025-12-01T02:34:49.000Z",
+  "usedStorage": 689484423011,
+  "index_total_size": 1370793842752,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3946184704,
+   "F8_E4M3": 681408069632,
+   "F32": 1075456
+  }
+ },
+ "deepseek-ai/DeepSeek-V3.2-Base": {
+  "createdAt": "2025-09-29T02:43:23.000Z",
+  "usedStorage": 689483049129,
+  "index_total_size": 1370793842752,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3946184704,
+   "F8_E4M3": 681408069632,
+   "F32": 1075456
+  }
+ },
+ "deepseek-ai/DeepSeek-V3.2-Exp": {
+  "createdAt": "2025-09-29T06:07:26.000Z",
+  "usedStorage": 689483151335,
+  "index_total_size": 1370793842752,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3946184704,
+   "F8_E4M3": 681408069632,
+   "F32": 42667040
+  }
+ },
+ "deepseek-ai/DeepSeek-V3.2-Exp-Base": {
+  "createdAt": "2025-09-29T02:43:23.000Z",
+  "usedStorage": 689483049129,
+  "index_total_size": 1370793842752,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3946184704,
+   "F8_E4M3": 681408069632,
+   "F32": 1075456
+  }
+ },
+ "deepseek-ai/DeepSeek-V4-Flash": {
+  "createdAt": "2026-04-22T06:04:20.000Z",
+  "usedStorage": 159641337663,
+  "index_total_size": 159609485896,
+  "sha": null,
+  "safetensors": {
+   "BF16": 1415259264,
+   "I64": 2327040,
+   "F32": 36168018,
+   "F8_E4M3": 6023020544,
+   "I8": 283467841536
+  }
+ },
+ "deepseek-ai/DeepSeek-V4-Flash-Base": {
+  "createdAt": "2026-04-22T06:03:55.000Z",
+  "usedStorage": 294681616954,
+  "index_total_size": 294673469000,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2474321024,
+   "I64": 2327040,
+   "F32": 53837138,
+   "F8_E4M3": 289490862080
+  }
+ },
+ "deepseek-ai/DeepSeek-V4-Pro": {
+  "createdAt": "2026-04-22T06:04:45.000Z",
+  "usedStorage": 864761623612,
+  "index_total_size": 864704792696,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2816899328,
+   "I64": 2327040,
+   "F32": 87776414,
+   "F8_E4M3": 23169335296,
+   "I8": 1572763336704
+  }
+ },
+ "deepseek-ai/DeepSeek-V4-Pro-Base": {
+  "createdAt": "2026-04-22T06:04:35.000Z",
+  "usedStorage": 1606059713686,
+  "index_total_size": 1606032540792,
+  "sha": null,
+  "safetensors": {
+   "BF16": 4670257408,
+   "I64": 2327040,
+   "F32": 185184414,
+   "F8_E4M3": 1595932672000
+  }
+ },
+ "deepseek-ai/DeepSeek-V4.1-Flash": {
+  "createdAt": "2026-09-10T02:17:58.000Z",
+  "usedStorage": 510401750635,
+  "index_total_size": 510286023000,
+  "sha": null,
+  "safetensors": {
+   "BF16": 1976441856,
+   "F32": 42307282,
+   "F8_E4M3": 204015223296,
+   "I8": 557171343360
+  }
+ },
+ "meta-models/Muse-Glimmer-30B": {
+  "createdAt": "2026-08-09T17:51:35.000Z",
+  "usedStorage": 59581565169,
+  "index_total_size": 59553253376,
+  "sha": null,
+  "safetensors": {
+   "BF16": 29776626688
+  }
+ },
+ "meta-models/Muse-Spark-Open-816B-A42B": {
+  "createdAt": "2026-09-15T19:23:19.000Z",
+  "usedStorage": 1644361479718,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 821906490368,
+   "F32": 130039296
+  }
+ },
+ "meta-models/Muse-Spark-Open-816B-A42B-NVFP4": {
+  "createdAt": "2026-09-15T19:23:10.000Z",
+  "usedStorage": 533039109326,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 48812377088,
+   "F32": 130131456,
+   "U8": 386547056640,
+   "F8_E4M3": 48318382080
+  }
+ },
+ "moonshotai/Kimi-K2-Base": {
+  "createdAt": "2025-07-03T12:49:14.000Z",
+  "usedStorage": 2058417158863,
+  "index_total_size": 1029173256720,
+  "sha": null,
+  "safetensors": {
+   "F32": 23040,
+   "BF16": 2514970968,
+   "F8_E4M3": 1023893241856
+  }
+ },
+ "moonshotai/Kimi-K2-Instruct": {
+  "createdAt": "2025-07-11T00:55:12.000Z",
+  "usedStorage": 1029226387740,
+  "index_total_size": 1029173256720,
+  "sha": null,
+  "safetensors": {
+   "F32": 23040,
+   "BF16": 2514970968,
+   "F8_E4M3": 1023893241856
+  }
+ },
+ "moonshotai/Kimi-K2.5": {
+  "createdAt": "2026-01-01T06:06:03.000Z",
+  "usedStorage": 595246118966,
+  "index_total_size": 595148192736,
+  "sha": null,
+  "safetensors": {
+   "F32": 23040,
+   "I32": 1014686023680,
+   "BF16": 12193329648
+  }
+ },
+ "moonshotai/Kimi-K2.6": {
+  "createdAt": "2026-04-14T04:23:36.000Z",
+  "usedStorage": 595263427116,
+  "index_total_size": 595148192736,
+  "sha": null,
+  "safetensors": {
+   "F32": 23040,
+   "I32": 1014686023680,
+   "BF16": 12193329648
+  }
+ },
+ "moonshotai/Kimi-K3": {
+  "createdAt": "2026-06-13T06:42:57.000Z",
+  "usedStorage": 1561018243668,
+  "index_total_size": 1560860324864,
+  "sha": null,
+  "safetensors": {
+   "F32": 11122432,
+   "BF16": 57179884544,
+   "U8": 2722740830208
+  }
+ },
+ "moonshotai/Kimi-Linear-48B-A3B-Base": {
+  "createdAt": "2025-10-30T12:39:14.000Z",
+  "usedStorage": 98270961861,
+  "index_total_size": 98245528576,
+  "sha": null,
+  "safetensors": {
+   "BF16": 49122599168,
+   "F32": 82560
+  }
+ },
+ "moonshotai/Kimi-Linear-48B-A3B-Instruct": {
+  "createdAt": "2025-10-30T12:37:31.000Z",
+  "usedStorage": 98270961861,
+  "index_total_size": 98245528576,
+  "sha": null,
+  "safetensors": {
+   "BF16": 49122599168,
+   "F32": 82560
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16": {
+  "createdAt": "2025-12-04T03:37:11.000Z",
+  "usedStorage": 63174529404,
+  "index_total_size": 63155886464,
+  "sha": null,
+  "safetensors": {
+   "F32": 5888,
+   "BF16": 31577934400
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8": {
+  "createdAt": "2025-12-06T06:00:45.000Z",
+  "usedStorage": 32699241029,
+  "index_total_size": 32679949312,
+  "sha": null,
+  "safetensors": {
+   "F32": 7922384,
+   "BF16": 1078212032,
+   "F8_E4M3": 30491811840
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-NVFP4": {
+  "createdAt": "2025-12-20T09:12:40.000Z",
+  "usedStorage": 19359874045,
+  "index_total_size": 19339781632,
+  "sha": null,
+  "safetensors": {
+   "F32": 7916416,
+   "BF16": 1078212032,
+   "F8_E4M3": 1905738240,
+   "U8": 15245905920
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16": {
+  "createdAt": "2026-03-10T18:32:14.000Z",
+  "usedStorage": 247244727964,
+  "index_total_size": 247222108160,
+  "sha": null,
+  "safetensors": {
+   "F32": 20992,
+   "BF16": 123611012096
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8": {
+  "createdAt": "2026-03-10T18:32:42.000Z",
+  "usedStorage": 128379469916,
+  "index_total_size": 128334890312,
+  "sha": null,
+  "safetensors": {
+   "F32": 20992,
+   "BF16": 4723465216,
+   "F8_E4M3": 118887546880
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4": {
+  "createdAt": "2026-03-10T18:33:04.000Z",
+  "usedStorage": 80351660383,
+  "index_total_size": 80297329824,
+  "sha": null,
+  "safetensors": {
+   "F32": 20992,
+   "BF16": 6020553728,
+   "F8_E4M3": 4825546752,
+   "U8": 56382455808
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16": {
+  "createdAt": "2026-06-03T14:50:04.000Z",
+  "usedStorage": 2242147855302,
+  "index_total_size": 1121049257984,
+  "sha": null,
+  "safetensors": {
+   "BF16": 560524578816,
+   "F32": 25088
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4": {
+  "createdAt": "2026-06-03T14:54:33.000Z",
+  "usedStorage": 704721918479,
+  "index_total_size": 352284061280,
+  "sha": null,
+  "safetensors": {
+   "BF16": 16640790528,
+   "F8_E4M3": 28286386176,
+   "F32": 201351704,
+   "U8": 257698037760
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-BF16": {
+  "createdAt": "2026-10-09T12:45:14.000Z",
+  "usedStorage": 149792249678,
+  "index_total_size": 149770189864,
+  "sha": null,
+  "safetensors": {
+   "F32": 13830,
+   "BF16": 74885067264,
+   "I64": 2
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16": {
+  "createdAt": "2026-08-01T06:55:21.000Z",
+  "usedStorage": 65844953520,
+  "index_total_size": 65842365568,
+  "sha": null,
+  "safetensors": {
+   "F32": 3072,
+   "BF16": 32913263168
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-NVFP4": {
+  "createdAt": "2026-08-04T19:10:45.000Z",
+  "usedStorage": 25179445672,
+  "index_total_size": 21559589596,
+  "sha": null,
+  "safetensors": {
+   "BF16": 1828973120,
+   "F8_E4M3": 890265600,
+   "F32": 7916556,
+   "U8": 15093055488
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-Nano-9B-v2": {
+  "createdAt": "2025-08-12T22:43:32.000Z",
+  "usedStorage": 17794621091,
+  "index_total_size": 17776454656,
+  "sha": null,
+  "safetensors": {
+   "BF16": 8888227328
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-Nano-9B-v2-Base": {
+  "createdAt": "2025-08-14T01:31:31.000Z",
+  "usedStorage": 17793570842,
+  "index_total_size": 17776454656,
+  "sha": null,
+  "safetensors": {
+   "BF16": 8888227328
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-Nano-9B-v2-FP8": {
+  "createdAt": "2025-09-22T04:45:16.000Z",
+  "usedStorage": 10302172098,
+  "index_total_size": 10285035328,
+  "sha": null,
+  "safetensors": {
+   "F32": 104,
+   "BF16": 1396807168,
+   "F8_E4M3": 7491420160
+  }
+ },
+ "nvidia/NVIDIA-Nemotron-Nano-9B-v2-NVFP4": {
+  "createdAt": "2025-10-07T03:12:52.000Z",
+  "usedStorage": 7852303330,
+  "index_total_size": 7835156224,
+  "sha": null,
+  "safetensors": {
+   "BF16": 1972540928,
+   "F8_E4M3": 432230400,
+   "U8": 3457843200
+  }
+ },
+ "nvidia/Nemotron-H-56B-Base-8K": {
+  "createdAt": "2025-04-08T17:36:43.000Z",
+  "usedStorage": 112665857986,
+  "index_total_size": 112648700928,
+  "sha": null,
+  "safetensors": {
+   "BF16": 56324350464
+  }
+ },
+ "tencent/Hunyuan-A13B-Instruct": {
+  "createdAt": "2025-06-25T12:39:52.000Z",
+  "usedStorage": 482436254851,
+  "index_total_size": 160810164224,
+  "sha": null,
+  "safetensors": {
+   "F32": 8388608,
+   "BF16": 80384794624
+  }
+ },
+ "tencent/Hunyuan-A13B-Instruct-FP8": {
+  "createdAt": "2025-06-26T12:56:35.000Z",
+  "usedStorage": 80929078360,
+  "index_total_size": 80926856512,
+  "sha": null,
+  "safetensors": {
+   "BF16": 533635072,
+   "F8_E4M3": 79859548160
+  }
+ },
+ "tencent/Hy3": {
+  "createdAt": "2026-07-02T13:23:54.000Z",
+  "usedStorage": 597584438620,
+  "index_total_size": 597572342272,
+  "sha": null,
+  "safetensors": {
+   "BF16": 298786140416,
+   "F32": 15360
+  }
+ },
+ "tencent/Hy3-Base": {
+  "createdAt": "2026-04-13T06:07:47.000Z",
+  "usedStorage": 597582269656,
+  "index_total_size": 597572342272,
+  "sha": null,
+  "safetensors": {
+   "BF16": 298786140416,
+   "F32": 15360
+  }
+ },
+ "tencent/Hy3-FP8": {
+  "createdAt": "2026-07-04T13:39:00.000Z",
+  "usedStorage": 299908854312,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "F8_E4M3": 297699115008,
+   "BF16": 1087025408,
+   "F32": 15360
+  }
+ },
+ "tencent/Hy4-preview": {
+  "createdAt": "2026-08-27T08:52:40.000Z",
+  "usedStorage": 1560008337568,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 779930197312,
+   "F32": 30795421
+  }
+ },
+ "tencent/Hy4-preview-FP8": {
+  "createdAt": "2026-08-27T08:57:54.000Z",
+  "usedStorage": 813790680536,
+  "index_total_size": null,
+  "sha": null,
+  "safetensors": {
+   "BF16": 9640893760,
+   "F32": 30795421,
+   "F8_E4M3": 770289303552,
+   "U8": 23555211264
+  }
+ },
+ "unsloth/gemma-3-27b-it": {
+  "createdAt": "2025-03-12T06:50:10.000Z",
+  "usedStorage": 54903054082,
+  "index_total_size": 54864813280,
+  "sha": null,
+  "safetensors": {
+   "BF16": 27432406640
+  }
+ },
+ "zai-org/GLM-4.5": {
+  "createdAt": "2025-07-20T03:25:36.000Z",
+  "usedStorage": 716701364832,
+  "index_total_size": 358337791296,
+  "sha": null,
+  "safetensors": {
+   "BF16": 358337776896,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.5-Base": {
+  "createdAt": "2025-07-20T05:14:19.000Z",
+  "usedStorage": 716721134929,
+  "index_total_size": 716675611392,
+  "sha": null,
+  "safetensors": {
+   "BF16": 358337776896,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.5-FP8": {
+  "createdAt": "2025-07-20T03:29:41.000Z",
+  "usedStorage": 361308155331,
+  "index_total_size": 244322688,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2456325376,
+   "F8_E4M3": 355881451520,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.6": {
+  "createdAt": "2025-09-29T18:22:51.000Z",
+  "usedStorage": 713597382171,
+  "index_total_size": 352797829024,
+  "sha": null,
+  "safetensors": {
+   "BF16": 356785884416,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.6-FP8": {
+  "createdAt": "2025-09-29T07:52:20.000Z",
+  "usedStorage": 361308155547,
+  "index_total_size": 241145664,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2456325376,
+   "F8_E4M3": 355881451520,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.7": {
+  "createdAt": "2025-12-22T07:45:52.000Z",
+  "usedStorage": 716701167491,
+  "index_total_size": 358337791296,
+  "sha": null,
+  "safetensors": {
+   "BF16": 358337776896,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.7-FP8": {
+  "createdAt": "2025-12-22T13:41:42.000Z",
+  "usedStorage": 362083495491,
+  "index_total_size": 244171136,
+  "sha": null,
+  "safetensors": {
+   "BF16": 3232271616,
+   "F8_E4M3": 355105505280,
+   "F32": 14400
+  }
+ },
+ "zai-org/GLM-4.7-Flash": {
+  "createdAt": "2026-01-19T06:28:10.000Z",
+  "usedStorage": 62937229623,
+  "index_total_size": 31221488576,
+  "sha": null,
+  "safetensors": {
+   "BF16": 31221485568,
+   "F32": 3008
+  }
+ },
+ "zai-org/GLM-5": {
+  "createdAt": "2026-02-11T04:55:46.000Z",
+  "usedStorage": 1507756766358,
+  "index_total_size": 1507728316928,
+  "sha": null,
+  "safetensors": {
+   "BF16": 753864119552,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5-FP8": {
+  "createdAt": "2026-02-11T04:05:41.000Z",
+  "usedStorage": 756209259292,
+  "index_total_size": 756162687872,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2114950400,
+   "F8_E4M3": 751749169152,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5.1": {
+  "createdAt": "2026-04-03T09:28:47.000Z",
+  "usedStorage": 1507756036618,
+  "index_total_size": 1507728316928,
+  "sha": null,
+  "safetensors": {
+   "BF16": 753864119552,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5.1-FP8": {
+  "createdAt": "2026-04-03T09:29:04.000Z",
+  "usedStorage": 756209259292,
+  "index_total_size": 756162687872,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2114950400,
+   "F8_E4M3": 751749169152,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5.2": {
+  "createdAt": "2026-06-16T07:39:20.000Z",
+  "usedStorage": 1506689458421,
+  "index_total_size": 1506659919872,
+  "sha": null,
+  "safetensors": {
+   "BF16": 753329921024,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5.2-FP8": {
+  "createdAt": "2026-06-16T07:20:33.000Z",
+  "usedStorage": 761025363709,
+  "index_total_size": 755617140416,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2103729152,
+   "F8_E4M3": 751226191872,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5.3": {
+  "createdAt": "2026-08-25T06:42:50.000Z",
+  "usedStorage": 755681496428,
+  "index_total_size": 755617140416,
+  "sha": null,
+  "safetensors": {
+   "BF16": 2103729152,
+   "F8_E4M3": 751226191872,
+   "F32": 19456
+  }
+ },
+ "zai-org/GLM-5.3-Flash": {
+  "createdAt": "2026-08-25T06:43:14.000Z",
+  "usedStorage": 656694929761,
+  "index_total_size": 328326771576,
+  "sha": null,
+  "safetensors": {
+   "BF16": 6926096640,
+   "F8_E4M3": 314396639232,
+   "F32": 295518
+  }
+ }
+}

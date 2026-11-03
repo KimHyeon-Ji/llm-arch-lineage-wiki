@@ -31,8 +31,6 @@ PURPLE = "#6b4fc8"
 GRID = "#e6e8f1"
 AXIS = "#8b90a3"
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#e0a030", "#6b4fc8"]   # 차트 계열 — 이 순서로만 쓴다
-KV_FILL, STATE_FILL = SERIES[0], SERIES[1]                         # 길이에 따라 커지는 KV / 고정 state
-LIGHT_BLUE = ("#e2eefc", "#2a78d6")                                # 32K 점 (같은 hue의 밝은 단계)
 BOX = ("#f6f5fd", "#d9d2f3")                                       # 설명 상자
 
 GB = 1e9
@@ -90,8 +88,8 @@ MODELS = [
          kv=890, kv_bf16=3200, win=(40, 128, 576), fixed=0, ctx=1024 * K, ctx_note="1M"),
     dict(key="q38_27", name="Qwen3.8-27B", fam="Hybrid", date="2026-08", sub="dense FFN · DeltaNet 48층 + attention 16층",
          arch="dense FFN · Gated DeltaNet 48층 + full attention 16층",
-         total_p="27.8B (vision · MTP 포함)", active_p="27.8B", fmt="BF16", kv_fmt="BF16",
-         w_gpu=55.56e9, w_bf16=55.56e9, w_note="",
+         total_p="27.8B (vision · MTP 포함)", active_p="27.8B", fmt="FP8 (BF16도 공개)", kv_fmt="BF16",
+         w_gpu=30.9e9, w_bf16=55.56e9, w_note="",
          kv=16 * 4 * 256 * 2 * 2, kv_bf16=16 * 4 * 256 * 2 * 2,
          fixed=gdn_state(48, 48, 16, 128, 128), ctx=256 * K, ctx_note="262K (YaRN 1M)"),
     dict(key="q38_24t", name="Qwen3.8-2.4T-A95B", fam="Hybrid", date="2026-08", sub="MoE · DeltaNet 69층 + attention 23층",
@@ -118,7 +116,7 @@ MODELS = [
 APPENDIX = [
     dict(key="q3next", name="Qwen3-Next 80B-A3B", fam="Hybrid", date="2025-09", sub="MoE · DeltaNet 36층 + attention 12층",
          arch="MoE · Gated DeltaNet 36층 + full attention 12층", total_p="81.3B", active_p="3B",
-         fmt="BF16", kv_fmt="BF16", w_gpu=162.65e9, w_bf16=162.65e9, w_note="",
+         fmt="FP8 (BF16도 공개)", kv_fmt="BF16", w_gpu=82.0e9, w_bf16=162.65e9, w_note="",
          kv=12 * 2 * 256 * 2 * 2, kv_bf16=12 * 2 * 256 * 2 * 2,
          fixed=gdn_state(36, 32, 16, 128, 128), ctx=256 * K, ctx_note="262K"),
     dict(key="klinear", name="Kimi Linear 48B-A3B", fam="Hybrid", date="2025-10", sub="MoE · KDA 20층 + MLA 7층",
@@ -128,16 +126,13 @@ APPENDIX = [
          fixed=gdn_state(20, 32, 32, 128, 128), ctx=1024 * K, ctx_note="1M"),
     dict(key="q38fn", name="Qwen3.8-Flash-Next", fam="Hybrid", date="2026-08", sub="MoE · DeltaNet 36층 + sparse attention 12층",
          arch="MoE · Gated DeltaNet 36층 + sparse attention 12층, n-gram 51B",
-         total_p="125B + n-gram 51B + MTP 4B", active_p="6B", fmt="BF16", kv_fmt="BF16",
-         w_gpu=360.0e9, w_bf16=360.0e9, w_note="n-gram 표 102 GB 포함",
+         total_p="125B + n-gram 51B + MTP 4B", active_p="6B", fmt="FP8 (BF16도 공개)", kv_fmt="BF16",
+         w_gpu=185.5e9, w_bf16=360.0e9, w_note="n-gram 표 포함",
          kv=12 * 2 * 256 * 2 * 2 + 12 * 128 * 2 // 4, kv_bf16=12 * 2 * 256 * 2 * 2 + 12 * 128 * 2 // 4,
          fixed=gdn_state(36, 48, 16, 128, 128), ctx=256 * K, ctx_note="262K (YaRN 1M)"),
 ]
 
 NODES = [("H100 SXM 80GB × 8", 640e9), ("B200 180GB × 8", 1440e9)]
-GROUP_LABEL = {"GQA": "전통적 attention (GQA)", "MLA": "DeepSeek 계열 — MLA에서 압축으로",
-               "Hybrid": "Hybrid — linear · SSM 층 + 일부 attention 층"}
-
 
 def state_bytes(m, t):
     """요청 하나가 길이 t 토큰을 보유할 때의 대화 상태 바이트."""
@@ -306,6 +301,40 @@ LINEAGE = [
 LINEAGE.sort(key=lambda m: (m["date"], m["name"]))
 SERIES_ORDER = ["GLM", "DeepSeek", "Hy", "MiniMax", "Qwen", "Nemotron", "Kimi", "Muse", "MiMo"]
 
+# 가중치 — (공식 체크포인트 중 가장 작은 것 GB, 그 포맷, 같은 가중치를 BF16으로 GB). 원본: ../data/raw/checkpoint-sizes-lineage.json
+# 크기 = safetensors dtype별 원소 수 × 바이트. FP4 · INT4처럼 묶어 저장하는 dtype이 있으면 index의 total_size(없으면 usedStorage).
+# BF16 = BF16 저장소의 크기, 없으면 파라미터 수 × 2. V4.1-Flash는 host에 두는 Engram 203 GB를 뺀 GPU 상주분이다.
+WEIGHTS = {
+    "GLM-4.5": (360.8, "FP8", 716.7), "GLM-4.6": (360.8, "FP8", 713.6), "GLM-4.7": (361.6, "FP8", 716.7),
+    "GLM-4.7-Flash": (62.4, "BF16", 62.4), "GLM-5": (756.0, "FP8", 1507.7), "GLM-5.1": (756.0, "FP8", 1507.7),
+    "GLM-5.2": (755.4, "FP8", 1506.7), "GLM-5.3": (755.4, "FP8", 1506.6), "GLM-5.3-Flash": (328.3, "FP8", 642.6),
+    "DeepSeek-V3": (688.4, "FP8", 1369.0), "DeepSeek-V3.1": (688.6, "FP8", 1369.0),
+    "DeepSeek-V3.2-Exp": (689.5, "FP8", 1370.8), "DeepSeek-V3.2": (689.3, "FP8", 1370.8),
+    "DeepSeek-V4-Flash": (159.6, "FP4 expert + FP8", 581.8), "DeepSeek-V4-Pro": (864.7, "FP4 expert + FP8", 3197.6),
+    "DeepSeek-V4.1-Flash": (307.5, "FP4 expert + FP8", 1133.2),
+    "Hunyuan-A13B": (80.9, "FP8", 160.8), "Hy3": (299.9, "FP8", 597.6), "Hy4-preview": (813.8, "FP8", 1560.0),
+    "MiniMax-Text-01": (914.7, "BF16", 914.7), "MiniMax-M1": (912.2, "BF16", 912.2),
+    "MiniMax-M2": (230.1, "FP8", 457.4), "MiniMax-M2.1": (230.1, "FP8", 457.4), "MiniMax-M2.5": (230.1, "FP8", 457.4),
+    "MiniMax-M2.7": (230.1, "FP8", 457.4), "MiniMax-M3": (854.2, "BF16", 854.2),
+    "MiniMax-M3.1-Flash": (250.1, "8-bit", 441.0),
+    "Qwen3-235B-A22B": (239.0, "FP8", 470.2), "Qwen3-Next 80B-A3B": (82.0, "FP8", 162.6),
+    "Qwen3.5-397B-A17B": (406.1, "FP8", 806.8), "Qwen3.5-27B": (30.9, "FP8", 55.6), "Qwen3.6-35B-A3B": (37.5, "FP8", 71.9),
+    "Qwen3.6-27B": (30.9, "FP8", 55.6), "Qwen3.8-27B": (30.9, "FP8", 55.6), "Qwen3.8-2.4T-A95B": (2496.1, "FP8", 4892.4),
+    "Qwen3.8-Flash-Next": (185.5, "FP8", 360.0),
+    "Nemotron-H-56B": (112.6, "BF16", 112.6), "Nemotron Nano 9B v2": (7.8, "NVFP4", 17.8),
+    "Nemotron 3 Nano 30B-A3B": (19.3, "NVFP4", 63.2), "Nemotron 3 Super 120B-A12B": (80.3, "NVFP4", 247.2),
+    "Nemotron 3 Ultra 550B-A55B": (352.3, "NVFP4", 1121.0), "Nemotron 3.5 Lightning 30B-A3B": (21.6, "NVFP4", 65.8),
+    "Nemotron 3.5 Bolt 74B-A9B": (149.8, "BF16", 149.8),
+    "Kimi K2": (1028.9, "FP8", 2052.8), "Kimi Linear 48B-A3B": (98.2, "BF16", 98.2), "Kimi K2.5": (595.1, "INT4", 2053.8),
+    "Kimi K2.6": (595.1, "INT4", 2053.8), "Kimi K3": (1560.9, "MXFP4", 5559.9),
+    "Muse Glimmer 30B": (59.6, "BF16", 59.6), "Muse Spark Open 816B-A42B": (533.0, "NVFP4", 1644.3),
+    "MiMo-V2-Flash": (313.0, "FP8", 619.6), "MiMo-V2.5": (315.0, "FP8", 621.6), "MiMo-V2.5-Pro": (1033.1, "FP8", 2046.4),
+    "MiMo-V2.6-Flash": (172.9, "FP4 혼합", 621.6), "MiMo-V2.6-Pro": (566.0, "FP4 혼합", 2048.4),
+}
+for _m in LINEAGE:
+    _w, _m["wfmt"], _b = WEIGHTS[_m["name"]]
+    _m["w"], _m["wbf16"] = _w * GB, _b * GB
+
 
 def kv1m(m, t=T1M):
     """1M 토큰을 보유한 요청 하나 — state 사본 1개. (KV, window, state) 바이트."""
@@ -391,29 +420,6 @@ def fmt_gb(v):
     return f"{v * 1000:.0f} MB"
 
 
-def rows_layout(models, y, pitch=54, head=46):
-    """계열 머리글과 모델 행의 y 위치. (머리글 목록, 행 중심 목록, 끝 y)"""
-    heads, cys, prev = [], [], None
-    for m in models:
-        if m["fam"] != prev:
-            heads.append((y + 30, GROUP_LABEL[m["fam"]]))
-            y += head
-            prev = m["fam"]
-        cys.append(y + pitch / 2)
-        y += pitch
-    return heads, cys, y
-
-
-def row_labels(f, models, heads, cys, right=None):
-    for y, s in heads:
-        f.text(40, y, s, 15, "start", 700, PURPLE)
-        if right:
-            f.line(40, y + 9, right, y + 9, GRID, 1)
-    for m, cy in zip(models, cys):
-        f.text(40, cy - 2, m["name"], 17, "start", 600)
-        f.text(40, cy + 19, m["sub"], 13, "start", color=MUTED)
-
-
 def box(f, x, y, w, h):
     f.rect(x, y, w, h, BOX[0], BOX[1], 10, 1.5)
 
@@ -437,184 +443,303 @@ def text_w(s, size):
     return sum(size * (0.98 if ord(c) > 0x1100 else 0.56) for c in s)
 
 
-# ---------------------------------------------------------------- 1. 가중치 | 대화 하나
-def fig_overview():
-    ms = MODELS
-    heads, cys, y_end = rows_layout(ms, 178)
-    H = int(y_end + 140)
-    f = Fig("01-overview", 1560, H)
-    f.title(40, 44, "모델 본체는 수백 GB ~ TB, 대화 하나는 수 GB — 128K 토큰 기준")
+# ---------------------------------------------------------------- 공개일 순 그림의 공통 요소
+def _months(d):
+    y, m, dd = map(int, d.split("-"))
+    return (y - 2024) * 12 + (m - 1) + (dd - 1) / 31
 
-    ax0, aw = 400, 540          # 왼쪽: 가중치 (로그 축)
-    bx0, bw = 1030, 380         # 오른쪽: 대화 하나 (선형 축)
-    X = logx(ax0, aw, 30, 7000)
-    XB = lambda v: bx0 + v / 45 * bw  # noqa: E731
-    top, bot = 176, y_end
 
-    f.text(ax0, 100, "모델 본체 — GPU에 올리는 가중치", 17, "start", 700)
-    f.text(ax0, 124, "로그 축 · 검은 점 = 공식 배포 포맷, 빈 점 = 같은 가중치를 BF16으로", 14, "start", color=MUTED)
-    f.text(bx0, 100, "대화 하나 — 128K 토큰을 보유한 상태", 17, "start", 700)
-    f.text(bx0, 124, "선형 축 · 공식 KV dtype", 14, "start", color=MUTED)
+def _half(d):
+    y, m = int(d[:4]), int(d[5:7])
+    return f"{y} H{1 if m <= 6 else 2}"
 
-    row_labels(f, ms, heads, cys)
 
-    # 왼쪽 축
-    for t, lab in ((30, "30 GB"), (100, "100 GB"), (300, "300 GB"), (1000, "1 TB"), (3000, "3 TB")):
-        f.line(X(t), top, X(t), bot, GRID, 1)
-        f.text(X(t), bot + 26, lab, 14, color=MUTED, mono=True)
-    f.line(ax0, bot, ax0 + aw, bot, AXIS, 1.5)
-    for (label, cap), dx in zip(NODES, (-6, 6)):
-        x = X(cap / GB)
-        f.line(x, top - 8, x, bot, AXIS, 1.5, "6 5")
-        anchor = "end" if dx < 0 else "start"
-        f.text(x + dx, 150, label.split(" ×")[0].replace(" SXM 80GB", "").replace(" 180GB", "") + " × 8", 13, anchor, 600,
-               color=INK)
-        f.text(x + dx, 166, fmt_gb(cap / GB), 13, anchor, color=MUTED, mono=True)
-    for m, cy in zip(ms, cys):
-        g, b = m["w_gpu"] / GB, m["w_bf16"] / GB
-        if abs(b - g) / g > 0.02:
-            f.line(X(g), cy, X(b), cy, "#c9cddb", 3)
-            f.ring(X(b), cy, 6.5, MUTED)
-        f.dot(X(g), cy, 7.5, INK)
-        f.text(X(g) - 14, cy + 5, fmt_gb(g), 14, "end", 700, mono=True, halo=True)
+HALVES = ["2024 H2", "2025 H1", "2025 H2", "2026 H1", "2026 H2"]
+WEIGHT_FILL, WEIGHT_LIGHT = "#4a5573", "#cdd2df"                    # 가중치 (요청과 무관한 본체)
+GPU_COLOR = "#c2366b"                                                # GPU 용량 기준선
+GPU_LINES = [("H100 1장", 80e9), ("B200 1장", 180e9), ("H100 × 8", 640e9), ("B200 × 8", 1440e9)]
 
-    # 오른쪽 막대
-    for t in (0, 10, 20, 30, 40):
-        f.line(XB(t), top, XB(t), bot, GRID, 1)
-        f.text(XB(t), bot + 26, f"{t} GB", 14, color=MUTED, mono=True)
-    f.line(bx0, bot, bx0 + bw, bot, AXIS, 1.5)
-    for m, cy in zip(ms, cys):
-        kv = kv_part(m, T128) / GB
-        fx = m["fixed"] / GB
-        f.rect(XB(0), cy - 11, max(XB(kv) - XB(0), 2), 22, KV_FILL, "none", 4)
-        end = XB(kv)
-        if fx > 0:
-            w = max(XB(kv + fx) - XB(kv), 3)
-            f.rect(end + 2, cy - 11, w, 22, STATE_FILL, "none", 3)
-            end += 2 + w
-        f.text(end + 12, cy + 5, fmt_gb(kv + fx), 14, "start", 700, mono=True)
-        if fx > 0:
-            f.text(end + 12 + text_w(fmt_gb(kv + fx), 14) + 14, cy + 5, f"고정 state {fmt_gb(fx)}", 13, "start",
-                   color=MUTED)
 
-    ly = bot + 72
-    legend_items(f, ax0, ly, [("dot", INK, "공식 배포 포맷 (GPU에 올리는 분)"), ("ring", MUTED, "같은 가중치를 BF16으로")])
-    legend_items(f, bx0, ly, [("bar", KV_FILL, "KV — 길이에 따라 커진다"), ("bar", STATE_FILL, "고정 state")])
-    f.text(40, H - 22, "조건: 동시 대화 1개 · 공유 없음 · 계산값 (가중치 + 상태의 논리적 하한).  엔진 workspace · 예약 pool · 병렬화 복제는 넣지 않았다.  "
-           "V4.1-Flash의 Engram 203 GB는 host에 두므로 뺐다.", 15, "start", color=MUTED)
+def median(vals):
+    v = sorted(vals)
+    n = len(v)
+    return v[n // 2] if n % 2 else (v[n // 2 - 1] + v[n // 2]) / 2
+
+
+def _cat_legend(f, x, y):
+    for c in ("full", "sparse", "swa", "state"):
+        f.dot(x + 8, y - 5, 7, CAT_COLOR[c])
+        f.text(x + 24, y, CAT_LABEL[c], 15, "start", color=MUTED)
+        x += 60 + text_w(CAT_LABEL[c], 15)
+    return x
+
+
+def _log_y(top, bot, lo, hi):
+    return lambda v: bot - (math.log10(max(v, lo)) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) * (bot - top)
+
+
+def _date_columns(f, ms, x0, x1, top, bot, Y, ticks, value):
+    """모델을 공개일 순으로 한 열씩 놓는다. 반기 경계 · 반기 중앙값 점선 · 회전한 모델 이름. (열 중심 x 목록, 열 폭)."""
+    for v, lab in ticks:
+        f.line(x0, Y(v), x1, Y(v), GRID, 1)
+        f.text(x0 - 10, Y(v) + 5, lab, 13, "end", color=MUTED, mono=True)
+    step = (x1 - x0) / len(ms)
+    for h in HALVES:
+        ii = [i for i, m in enumerate(ms) if _half(m["date"]) == h]
+        if not ii:
+            continue
+        a, b = x0 + step * ii[0], x0 + step * (ii[-1] + 1)
+        f.line(a, top - 46, a, bot, "#c9cddb", 1.2, "5 4")
+        if len(ii) < 3:
+            continue
+        f.text((a + b) / 2, top - 28, h, 14, weight=700, color=MUTED)
+        med = median(value(ms[i]) for i in ii)
+        f.line(a + 4, Y(med), b - 4, Y(med), INK, 2.5, "8 5")
+        f.text((a + b) / 2, top - 8, f"중앙값 {fmt_gb(med)}", 13, weight=700)
+    for i, m in enumerate(ms):
+        x = x0 + step * (i + 0.5)
+        f.raw(f'<text transform="translate({x + 4:.1f},{bot + 12}) rotate(-60)" font-family="{FONT}" font-size="12.5" '
+              f'text-anchor="end" fill="{INK}">{esc(m["name"])}</text>')
+    f.line(x0, bot, x1, bot, AXIS, 1.5)
+    return [x0 + step * (i + 0.5) for i in range(len(ms))], step
+
+
+def _gpu_lines(f, x0, x1, Y, lines):
+    for label, cap in lines:
+        y = Y(cap / GB)
+        f.line(x0, y, x1, y, GPU_COLOR, 2)
+        f.text(x1 + 10, y - 3, label, 14, "start", 700, GPU_COLOR)
+        f.text(x1 + 10, y + 15, f"{cap / 1e12:.2f} TB" if cap >= 1e12 else f"{cap / GB:.0f} GB", 13, "start",
+               color=GPU_COLOR, mono=True)
+
+
+# ---------------------------------------------------------------- 1. 시리즈별 attention 경로
+PATHS = {   # 시리즈가 지나온 길 — (분류, 말). 그림 오른쪽 열
+    "GLM": [("full", "full"), ("sparse", "sparse"), ("state", "+ state")],
+    "DeepSeek": [("full", "full"), ("sparse", "sparse"), ("sparse", "압축")],
+    "Hy": [("full", "full"), ("sparse", "sparse")],
+    "MiniMax": [("state", "state"), ("full", "full"), ("sparse", "sparse")],
+    "Qwen": [("full", "full"), ("state", "state")],
+    "Nemotron": [("state", "처음부터 state")],
+    "Kimi": [("full", "full"), ("state", "state")],
+    "Muse": [("swa", "sliding window")],
+    "MiMo": [("swa", "sliding window")],
+}
+
+
+def fig_paths():
+    x0, x1, top = 220, 1250, 150
+    colw = (x1 - x0) / len(HALVES)
+    pill_h, gap = 26, 6
+
+    def flow(ms):
+        """칸 안에 알약을 왼쪽부터 채운다. ((모델, x, 폭, 줄) 목록, 줄 수)."""
+        out, x, line = [], 0, 0
+        for m in ms:
+            w = text_w(m["short"], 13) + 30
+            if x and x + w > colw - 16:
+                x, line = 0, line + 1
+            out.append((m, x, w, line))
+            x += w + gap
+        return out, line + 1
+
+    rows = []
+    for s in SERIES_ORDER:
+        cells = [flow([m for m in LINEAGE if m["series"] == s and _half(m["date"]) == h]) for h in HALVES]
+        rows.append((s, cells, max(n for _, n in cells) * (pill_h + gap) + 26))
+    bot = top + sum(r[2] for r in rows)
+    H = int(bot + 320)
+    f = Fig("01-attention-paths", 1560, H)
+    f.title(40, 44, "시리즈마다 다른 길로 갔다 — 9개 시리즈 55개 모델의 attention 구성")
+    _cat_legend(f, 40, 84)
+
+    for i, h in enumerate(HALVES):
+        f.text(x0 + colw * (i + 0.5), top - 18, h, 15, weight=700, color=MUTED, mono=True)
+        f.line(x0 + colw * i, top - 6, x0 + colw * i, bot, GRID, 1)
+    f.line(x1, top - 6, x1, bot, GRID, 1)
+    f.text(x1 + 30, top - 18, "지나온 길", 15, "start", 700, MUTED)
+    y = top
+    for s, cells, rh in rows:
+        f.line(40, y, 1520, y, GRID, 1)
+        f.text(40, y + rh / 2 + 1, s, 18, "start", 700)
+        f.text(40, y + rh / 2 + 21, next(m["co"] for m in LINEAGE if m["series"] == s), 13, "start", color=MUTED)
+        for i, (items, _) in enumerate(cells):
+            cx = x0 + colw * i + 10
+            for m, px, w, line in items:
+                py = y + 13 + line * (pill_h + gap)
+                f.rect(cx + px, py, w, pill_h, CAT_LIGHT[m["cat"]], "none", 13)
+                f.dot(cx + px + 13, py + pill_h / 2, 5, CAT_COLOR[m["cat"]])
+                f.text(cx + px + 23, py + 18, m["short"], 13, "start", 600)
+        px = x1 + 30
+        for j, (c, word) in enumerate(PATHS[s]):
+            if j:
+                f.text(px + 2, y + rh / 2 + 7, "→", 16, "start", color=MUTED)
+                px += 26
+            f.text(px, y + rh / 2 + 7, word, 16, "start", 700, CAT_COLOR[c])
+            px += text_w(word, 16) + 4
+        y += rh
+    f.line(40, bot, 1520, bot, AXIS, 1.5)
+
+    # ---- 반기별 비율
+    y = bot + 64
+    f.text(40, y, "반기별 비율", 18, "start", 700)
+    f.text(40, y + 24, "공개 모델 수 · 크기 변형도 하나씩", 14, "start", color=MUTED)
+    bx0, bw = 220, 860
+    for i, h in enumerate(HALVES[1:]):
+        yy = y + 48 + i * 40
+        ms = [m for m in LINEAGE if _half(m["date"]) == h]
+        f.text(bx0 - 16, yy + 20, h, 15, "end", 600, mono=True)
+        x = bx0
+        for c in ("full", "sparse", "swa", "state"):
+            k = sum(m["cat"] == c for m in ms)
+            if k:
+                w = bw * k / len(ms)
+                f.rect(x, yy, w - 2, 28, CAT_COLOR[c], "none", 3)
+                f.text(x + w / 2, yy + 20, f"{k}" if w < 90 else f"{k}개 · {k / len(ms):.0%}", 14, weight=700,
+                       color="#ffffff")
+                x += w
+        f.text(bx0 + bw + 12, yy + 20, f"{len(ms)}개", 14, "start", color=MUTED)
+    box(f, 1150, y - 26, 370, 214)
+    f.lines(1174, y + 10, ["• 2025 H2 — 절반이 full attention",
+                           "• 2026 H2 — full만 쓰는 모델은 Hy3 하나",
+                           "• 공통점: 모든 층이 과거 전체를",
+                           "  저장 · 읽는 구조를 버렸다",
+                           "• 차이점: 무엇으로 바꿨는지는",
+                           "  회사마다 다르다"], 15, 30)
+    f.text(40, H - 18, "분류 순서: 층 하나라도 recurrent state를 쓰면 State → 선택 · 압축 attention이 있으면 Sparse → window 층이 있으면 Sliding window → 나머지는 Full.",
+           14, "start", color=MUTED)
     return f
 
 
-# ---------------------------------------------------------------- 2. 길이에 따른 대화 상태
-def fig_context():
-    pick = ["llama70", "gemma27", "dsv3", "q38_27", "dsv41f"]
-    ms = [m for k in pick for m in MODELS if m["key"] == k]
-    f = Fig("02-context-curve", 1560, 660)
-    f.title(40, 44, "대화 하나의 상태는 길이에 비례해 커진다 — 기울기는 같고 높이가 다르다")
-
-    x0, y0, w, h = 130, 110, 800, 420
-    lx0, lx1 = 8, 20                       # 2^8 = 256 토큰 ~ 2^20 = 1M 토큰
-    ly0, ly1 = -3, 2                       # 1 MB ~ 100 GB
-    X = lambda t: x0 + (math.log2(t) - lx0) / (lx1 - lx0) * w      # noqa: E731
-    Y = lambda v: y0 + h - (math.log10(v) - ly0) / (ly1 - ly0) * h  # noqa: E731
-
-    for v, lab in ((1e-3, "1 MB"), (1e-2, "10 MB"), (1e-1, "100 MB"), (1, "1 GB"), (10, "10 GB"), (100, "100 GB")):
-        f.line(x0, Y(v), x0 + w, Y(v), GRID, 1)
-        f.text(x0 - 12, Y(v) + 5, lab, 14, "end", color=MUTED, mono=True)
-    f.line(x0, y0 + h, x0 + w, y0 + h, AXIS, 1.5)
-    for t, lab in ((256, "256"), (1024, "1K"), (4096, "4K"), (32768, "32K"), (131072, "128K"), (262144, "256K"),
-                   (1048576, "1M")):
-        f.line(X(t), y0 + h, X(t), y0 + h + 5, AXIS, 1.5)
-        f.text(X(t), y0 + h + 24, lab, 14, color=MUTED, mono=True)
-    f.text(x0 + w / 2, y0 + h + 54, "대화가 보유한 토큰 수 (입력 + 지금까지의 출력) — 로그 축", 15, color=MUTED)
-    f.text(x0 - 60, y0 - 22, "대화 하나의 상태 — 로그 축", 15, "start", color=MUTED)
-
-    for m, col in zip(ms, SERIES):
-        ts = [2 ** (e / 8) for e in range(lx0 * 8, lx1 * 8 + 1) if 2 ** (e / 8) <= m["ctx"] + 1]
-        f.poly([(X(t), Y(state_bytes(m, t) / GB)) for t in ts], col, 3)
-        f.dot(X(ts[-1]), Y(state_bytes(m, ts[-1]) / GB), 6.5, col)
-
-    # 읽는 법 — 선 근처의 짧은 설명
-    g = next(m for m in ms if m["key"] == "gemma27")
-    gx, gy = X(1024), Y(state_bytes(g, 1024) / GB)
-    f.line(gx, gy - 10, gx, gy - 48, AXIS, 1.2)
-    f.text(gx, gy - 56, "Gemma 3: local 층이 1024 토큰에서 멈춘다", 14, "middle", color=MUTED, halo=True)
-    d = next(m for m in ms if m["key"] == "dsv41f")
-    dx, dy = X(1048576), Y(state_bytes(d, 1048576) / GB)
-    f.text(dx - 16, dy - 14, "1M 토큰을 채워도 0.94 GB", 14, "end", color=MUTED, halo=True)
-
-    # 오른쪽 범례 표
-    bx, by, bw, bh = 1000, 96, 520, 470
-    box(f, bx, by, bw, bh)
-    f.text(bx + 24, by + 38, "다섯 모델", 18, "start", 700)
-    f.text(bx + 330, by + 38, "토큰당 KV", 14, "end", color=MUTED)
-    f.text(bx + bw - 24, by + 38, "128K 대화", 14, "end", color=MUTED)
-    for i, (m, col) in enumerate(zip(ms, SERIES)):
-        y = by + 78 + i * 38
-        f.line(bx + 24, y - 5, bx + 50, y - 5, col, 4)
-        f.text(bx + 62, y, m["name"], 15, "start", 600)
-        f.text(bx + 330, y, f"{m['kv'] / 1000:,.1f} KB" if m["kv"] < 10000 else f"{m['kv'] / 1000:,.0f} KB", 14,
-               "end", mono=True)
-        f.text(bx + bw - 24, y, fmt_gb(state_bytes(m, T128) / GB), 14, "end", 700, mono=True)
-    f.line(bx + 24, by + 262, bx + bw - 24, by + 262, BOX[1], 1.5)
-    f.lines(bx + 24, by + 298, ["• 모든 선의 기울기가 같다 — 길이 2배면 상태 2배",
-                                "• 높이 차이는 토큰당 KV에서 나온다",
-                                "• Gemma 3 — local 층이 1K에서 멈춰 꺾인다",
-                                "• Qwen3.8-27B — 고정 state 150 MB가",
-                                "  짧은 대화의 바닥을 만든다",
-                                "• 점 = 각 모델의 기본 최대 길이"], 15, 27)
-    f.text(40, 640, "조건: 동시 대화 1개 · 공식 KV dtype · 공유 없음 · 계산값.  토큰당 KV는 길이에 따라 커지는 부분만 (window 층 · 고정 state 제외).",
-           15, "start", color=MUTED)
+# ---------------------------------------------------------------- 2. 가중치 — 공개일 순
+def fig_weights():
+    ms = LINEAGE
+    f = Fig("02-weights-timeline", 1560, 920)
+    f.title(40, 44, "모델 본체(가중치) — 공개일 순, GPU 용량 기준선과 함께")
+    legend_items(f, 40, 84, [("bar", WEIGHT_FILL, "공식 체크포인트 중 가장 작은 것 (FP8 · FP4 변형 포함)"),
+                             ("bar", WEIGHT_LIGHT, "같은 가중치를 BF16으로 쓰면 늘어나는 양")])
+    x0, x1, top, bot = 110, 1400, 170, 620
+    Y = _log_y(top, bot, 5, 7000)
+    ticks = [(10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB"), (3000, "3 TB")]
+    xs, step = _date_columns(f, ms, x0, x1, top, bot, Y, ticks, lambda m: m["w"] / GB)
+    bw = step * 0.66
+    for m, x in zip(ms, xs):
+        w, b = m["w"] / GB, m["wbf16"] / GB
+        if b > w * 1.03:
+            f.rect(x - bw / 2, Y(b), bw, Y(w) - Y(b), WEIGHT_LIGHT, "none", 2)
+        f.rect(x - bw / 2, Y(w), bw, bot - Y(w), WEIGHT_FILL, "none", 2)
+    _gpu_lines(f, x0, x1, Y, GPU_LINES)
+    over = [sum(m["w"] > cap for m in ms) for _, cap in GPU_LINES]
+    f.text(40, 878, f"공식 체크포인트로 H100 × 8(640 GB)을 넘는 모델 {over[2]}개, B200 × 8(1.44 TB)을 넘는 모델 {over[3]}개 (55개 중).  "
+           "가중치만 센 값이다 — KV · 엔진 여유분은 따로 든다.", 14, "start", color=MUTED)
+    f.text(40, 900, "점선 = 반기 중앙값 (진한 막대 기준).  V4.1-Flash는 host에 두는 Engram 203 GB를 뺐다.  크기는 HF safetensors 메타데이터 (2026-11-03 조회).",
+           14, "start", color=MUTED)
     return f
 
 
-# ---------------------------------------------------------------- 3. 본체와 같아지는 동시 대화 수
-def fig_crossover():
-    ms = MODELS
-    heads, cys, y_end = rows_layout(ms, 104)
-    H = int(y_end + 150)
-    f = Fig("03-crossover", 1560, H)
-    f.title(40, 44, "동시 대화가 몇 개 쌓이면 대화 상태의 합이 모델 본체와 같아지나")
+# ---------------------------------------------------------------- 3. 1M 토큰 KV · state — 공개일 순
+def fig_lineage_kv():
+    ms = LINEAGE
+    f = Fig("03-kv1m-timeline", 1560, 920)
+    f.title(40, 44, "1M 토큰 요청 하나의 KV · state — 공개일 순 (BF16 KV, 같은 기준)")
+    x = _cat_legend(f, 40, 84)
+    f.rect(x + 10, 71, 16, 16, "#c9cddb", "none", 3)
+    f.text(x + 34, 84, "4096 토큰마다 재개 지점을 저장하면 늘어나는 양", 15, "start", color=MUTED)
+    x0, x1, top, bot = 110, 1400, 170, 620
+    Y = _log_y(top, bot, 1, 1000)
+    ticks = [(1, "1 GB"), (3, "3"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")]
+    xs, step = _date_columns(f, ms, x0, x1, top, bot, Y, ticks, lambda m: sum(kv1m(m)) / GB)
+    bw = step * 0.66
+    for m, x in zip(ms, xs):
+        s1, s2 = sum(kv1m(m)) / GB, sum(kv1m_ckpt(m)) / GB
+        if s2 > s1 * 1.03:
+            f.rect(x - bw / 2, Y(s2), bw, Y(s1) - Y(s2), CAT_LIGHT[m["cat"]], "none", 2)
+        f.rect(x - bw / 2, Y(s1), bw, bot - Y(s1), CAT_COLOR[m["cat"]], "none", 2)
+    _gpu_lines(f, x0, x1, Y, GPU_LINES[:3])
+    over = [sum(sum(kv1m(m)) > cap for m in ms) for _, cap in GPU_LINES[:2]]
+    f.text(40, 878, f"요청 하나의 1M KV만으로 H100 1장(80 GB)을 넘는 모델 {over[0]}개, B200 1장(180 GB)을 넘는 모델 {over[1]}개 (55개 중).  "
+           "점선 = 반기 중앙값 (진한 막대 기준).", 14, "start", color=MUTED)
+    f.text(40, 900, "조건: 1,048,576 토큰 · KV와 indexer key는 BF16, recurrent state는 config dtype(대부분 FP32) · MTP 층 제외 · "
+           "기본 최대 길이가 1M보다 짧은 모델도 같은 길이로 계산.", 14, "start", color=MUTED)
+    return f
 
-    x0, w = 400, 640
-    X = logx(x0, w, 1, 30000)
-    top, bot = 104, y_end
-    row_labels(f, ms, heads, cys)
-    for t, lab in ((1, "1개"), (10, "10개"), (100, "100개"), (1000, "1,000개"), (10000, "10,000개")):
-        f.line(X(t), top, X(t), bot, GRID, 1)
-        f.text(X(t), bot + 26, lab, 14, color=MUTED, mono=True)
-    f.line(x0, bot, x0 + w, bot, AXIS, 1.5)
-    f.text(x0 + w / 2, bot + 56, "같은 길이의 동시 대화 수 — 로그 축.  왼쪽일수록 대화 상태가 빨리 본체를 넘는다", 15, color=MUTED)
 
-    for m, cy in zip(ms, cys):
-        n32 = m["w_gpu"] / state_bytes(m, T32)
-        n128 = m["w_gpu"] / state_bytes(m, T128)
-        f.line(X(n128), cy, X(n32), cy, "#c9cddb", 3)
-        f.ring(X(n32), cy, 6.5, LIGHT_BLUE[1], LIGHT_BLUE[0])
-        f.dot(X(n128), cy, 7.5, SERIES[0])
-        lab = f"{n128:,.0f}" if n128 >= 10 else f"{n128:.1f}"
-        f.text(X(n128) - 14, cy + 5, lab, 15, "end", 700, mono=True)
-        f.text(X(n32) + 14, cy + 5, f"{n32:,.0f}", 13, "start", color=MUTED, mono=True)
+# ---------------------------------------------------------------- 4. 가중치 vs 대화 상태
+def fig_balance():
+    f = Fig("04-weights-vs-state", 1560, 830)
+    f.title(40, 44, "본체와 대화 상태 — 어느 쪽이 커지고 있나, 언제 따라잡나")
 
-    bx, by, bw = 1110, 104, 410
-    box(f, bx, by, bw, bot - by)
-    f.text(bx + 24, by + 40, "읽는 법", 18, "start", 700)
-    f.text(bx + 24, by + 80, "가중치 ÷ 대화 하나의 상태", 17, "start", 700, PURPLE)
-    f.lines(bx + 24, by + 112, ["가중치 100 GB, 대화 하나 2 GB라면", "대화 50개에서 둘이 같아진다"], 15, 24, color=MUTED)
-    f.lines(bx + 24, by + 186, ["• 3 ~ 6개 — Llama · Gemma · Qwen3.8-27B",
-                                "  긴 대화 몇 개면 KV가 본체를 넘는다.",
-                                "  서빙 규모를 KV 용량이 정한다",
-                                "",
-                                "• 75 ~ 400개 — V3 · V3.2 · 대형 hybrid",
-                                "  본체가 크고 토큰당 상태가 작아",
-                                "  수십 ~ 수백 개까지는 본체가 크다",
-                                "",
-                                "• 약 2,600개 — V4.1-Flash",
-                                "",
-                                "• 32K 대화는 128K의 약 4배",
-                                "• 하드웨어와 무관한 값이다"], 15, 26)
-    legend_items(f, x0, bot + 96, [("dot", SERIES[0], "128K 대화 (굵은 숫자)"), ("ring", LIGHT_BLUE[1], "32K 대화")])
-    f.text(40, H - 18, "조건: GPU 상주 가중치(공식 포맷) ÷ 대화 하나의 상태(공식 KV dtype) · 공유 없음 · 계산값.", 15, "start", color=MUTED)
+    # ---- 왼쪽: 반기 중앙값 추이
+    x0, x1, top, bot = 120, 590, 160, 640
+    f.text(40, 100, "반기 중앙값", 18, "start", 700)
+    f.text(40, 124, "로그 축 · 2024 H2(1개)는 뺐다", 14, "start", color=MUTED)
+    Y = _log_y(top, bot, 3, 1000)
+    for v, lab in ((3, "3 GB"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")):
+        f.line(x0, Y(v), x1, Y(v), GRID, 1)
+        f.text(x0 - 10, Y(v) + 5, lab, 13, "end", color=MUTED, mono=True)
+    hs = HALVES[1:]
+    X = lambda i: x0 + 60 + i * (x1 - x0 - 120) / (len(hs) - 1)  # noqa: E731
+    for i, h in enumerate(hs):
+        f.text(X(i), bot + 26, h, 14, color=MUTED, mono=True)
+    f.line(x0, bot, x1, bot, AXIS, 1.5)
+    series = [("가중치", WEIGHT_FILL, None, lambda m: m["w"]),
+              ("1M 요청 · 4096 단위 저장", "#8fb2e8", "7 5", lambda m: sum(kv1m_ckpt(m))),
+              ("1M 요청 하나", SERIES[0], None, lambda m: sum(kv1m(m))),
+              ("128K 요청 하나", "#8fb2e8", None, lambda m: sum(kv1m(m, T128)))]
+    for name, col, dash, fn in series:
+        vals = [median(fn(m) / GB for m in LINEAGE if _half(m["date"]) == h) for h in hs]
+        pts = [(X(i), Y(v)) for i, v in enumerate(vals)]
+        f.poly(pts, col, 3.5, dash)
+        for px, py in pts:
+            f.dot(px, py, 6.5, col)
+        if dash:
+            continue
+        f.text(pts[0][0] - 14, pts[0][1] + 5, fmt_gb(vals[0]), 13, "end", 700, col, mono=True)
+        f.text(pts[-1][0] + 14, pts[-1][1] + 5, fmt_gb(vals[-1]), 13, "start", 700, col, mono=True)
+    ly = bot + 70
+    for i, (name, col, dash, _) in enumerate(series):
+        lx = 40 + (i % 2) * 280
+        yy = ly + (i // 2) * 30
+        f.line(lx, yy - 5, lx + 26, yy - 5, col, 3.5, dash)
+        f.text(lx + 34, yy, name, 14, "start", color=MUTED)
+
+    # ---- 오른쪽: 모델별 산점도 — 가중치 vs 1M 요청 하나
+    sx0, sx1, st, sb = 780, 1500, 160, 640
+    f.text(sx0 - 70, 100, "모델별 — 1M 요청 몇 개면 상태가 본체와 같아지나", 18, "start", 700)
+    f.text(sx0 - 70, 124, "점선 = 동시 1M 요청 N개의 상태 합이 가중치와 같은 곳.  위로 갈수록 적은 요청으로 따라잡는다", 14, "start",
+           color=MUTED)
+    lo_w, hi_w, lo_k, hi_k = 5, 5000, 2, 1000
+    SX = logx(sx0, sx1 - sx0, lo_w, hi_w)
+    SY = _log_y(st, sb, lo_k, hi_k)
+    for v, lab in ((10, "10 GB"), (100, "100 GB"), (1000, "1 TB")):
+        f.line(SX(v), st, SX(v), sb, GRID, 1)
+        f.text(SX(v), sb + 26, lab, 13, color=MUTED, mono=True)
+    for v, lab in ((3, "3 GB"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")):
+        f.line(sx0, SY(v), sx1, SY(v), GRID, 1)
+        f.text(sx0 - 10, SY(v) + 5, lab, 13, "end", color=MUTED, mono=True)
+    f.line(sx0, sb, sx1, sb, AXIS, 1.5)
+    f.line(sx0, st, sx0, sb, AXIS, 1.5)
+    f.text((sx0 + sx1) / 2, sb + 54, "가중치 (공식 체크포인트 중 가장 작은 것) →", 14, color=MUTED)
+    f.raw(f'<text transform="translate({sx0 - 66},{(st + sb) / 2}) rotate(-90)" font-family="{FONT}" font-size="14" '
+          f'text-anchor="middle" fill="{MUTED}">1M 요청 하나의 KV · state →</text>')
+    for n in (1, 10, 100):
+        a, b = max(lo_w, lo_k * n), min(hi_w, hi_k * n)
+        f.line(SX(a), SY(a / n), SX(b), SY(b / n), "#7b8196", 1.6, "2 4")
+        lw = b / 1.5
+        f.text(SX(lw), SY(lw / n) - 10, "1개면 같아짐" if n == 1 else f"{n}개", 14, "end", 700, MUTED, halo=True)
+    for m in LINEAGE:
+        f.dot(SX(m["w"] / GB), SY(sum(kv1m(m)) / GB), 7, CAT_COLOR[m["cat"]])
+    for name, dx, dy, anchor in (("Hy3", 12, 5, "start"), ("GLM-4.7", -12, -4, "end"), ("MiniMax-M2.7", -12, 10, "end"),
+                                 ("Qwen3.8-27B", 12, 5, "start"), ("DeepSeek-V4.1-Flash", 12, 5, "start"),
+                                 ("DeepSeek-V4-Pro", 12, 5, "start"), ("Kimi K3", 12, 5, "start"),
+                                 ("Qwen3.8-2.4T-A95B", 0, -16, "middle"), ("Nemotron 3 Ultra 550B-A55B", 12, 5, "start"),
+                                 ("Nemotron Nano 9B v2", 12, 5, "start")):
+        m = next(m for m in LINEAGE if m["name"] == name)
+        f.text(SX(m["w"] / GB) + dx, SY(sum(kv1m(m)) / GB) + dy, name.replace(" 550B-A55B", ""), 13, anchor, 600,
+               halo=True)
+    _cat_legend(f, 650, 784)
+    f.text(40, 816, "조건: 가중치는 공식 체크포인트 중 가장 작은 것, 상태는 BF16 KV + config dtype state · 요청 하나 · 공유 없음 · 계산값.",
+           14, "start", color=MUTED)
     return f
 
 
@@ -665,136 +790,6 @@ def fig_per_token():
     return f
 
 
-# ---------------------------------------------------------------- 4. 시리즈별 attention 계보
-def _months(d):
-    y, m, dd = map(int, d.split("-"))
-    return (y - 2024) * 12 + (m - 1) + (dd - 1) / 31
-
-
-def _half(d):
-    y, m = int(d[:4]), int(d[5:7])
-    return f"{y} H{1 if m <= 6 else 2}"
-
-
-HALVES = ["2024 H2", "2025 H1", "2025 H2", "2026 H1", "2026 H2"]
-
-
-def _cat_legend(f, x, y):
-    for c in ("full", "sparse", "swa", "state"):
-        f.dot(x + 8, y - 5, 7, CAT_COLOR[c])
-        f.text(x + 24, y, CAT_LABEL[c], 15, "start", color=MUTED)
-        x += 60 + text_w(CAT_LABEL[c], 15)
-
-
-def fig_lineage():
-    f = Fig("04-lineage-timeline", 1560, 1160)
-    f.title(40, 44, "9개 시리즈의 attention 구성 — 공개일 순 (HF 저장소 생성일)")
-    _cat_legend(f, 40, 84)
-    x0, x1, m0, m1 = 250, 1500, 11, 35           # 2024-12 ~ 2026-11
-    X = lambda d: x0 + (_months(d) - m0) / (m1 - m0) * (x1 - x0)  # noqa: E731
-    top, pitch = 120, 74
-    bot = top + pitch * len(SERIES_ORDER)
-    for mo in range(m0, m1 + 1):
-        x = x0 + (mo - m0) / (m1 - m0) * (x1 - x0)
-        major = mo % 6 == 0
-        f.line(x, top, x, bot, "#d3d6e2" if major else GRID, 1.2 if major else 1)
-        if mo % 3 == 0:
-            f.text(x, bot + 24, f"{2024 + mo // 12}-{mo % 12 + 1:02d}", 13, color=MUTED, mono=True)
-    for r, s in enumerate(SERIES_ORDER):
-        cy = top + pitch * r + pitch / 2
-        ms = [m for m in LINEAGE if m["series"] == s]
-        f.text(40, cy + 1, s, 18, "start", 700)
-        f.text(40, cy + 21, ms[0]["co"], 13, "start", color=MUTED)
-        f.line(X(ms[0]["date"]), cy, X(ms[-1]["date"]), cy, "#c9cddb", 2)
-        clusters = []
-        for m in ms:
-            if clusters and _months(m["date"]) - _months(clusters[-1][-1]["date"]) < 0.34:
-                clusters[-1].append(m)
-            else:
-                clusters.append([m])
-        for i, cl in enumerate(clusters):
-            cx = X(cl[0]["date"])
-            n = len(cl)
-            for j, m in enumerate(cl):
-                f.dot(cx + (j - (n - 1) / 2) * 17, cy, 8, CAT_COLOR[m["cat"]])
-            lab = " · ".join(m["short"] for m in cl)
-            f.text(cx, cy - 16 if i % 2 == 0 else cy + 28, lab, 13, weight=600, halo=True)
-    f.line(x0, bot, x1, bot, AXIS, 1.5)
-
-    # ---- 반기별 구성
-    y = bot + 70
-    f.text(40, y, "반기별로 세면", 18, "start", 700)
-    f.text(40, y + 24, "공개 모델 수 · 같은 날 나온 크기 변형도 하나씩 센다", 14, "start", color=MUTED)
-    bw = 26
-    for i, h in enumerate(HALVES):
-        yy = y + 50 + i * (bw + 12)
-        ms = [m for m in LINEAGE if _half(m["date"]) == h]
-        f.text(230, yy + 19, h, 15, "end", 600, mono=True)
-        x = 250
-        for c in ("full", "sparse", "swa", "state"):
-            k = sum(m["cat"] == c for m in ms)
-            if k:
-                f.rect(x, yy, k * 34 - 2, bw, CAT_COLOR[c], "none", 3)
-                f.text(x + (k * 34 - 2) / 2, yy + 19, str(k), 14, weight=700, color="#ffffff")
-                x += k * 34
-        f.text(x + 10, yy + 19, f"{len(ms)}개", 14, "start", color=MUTED)
-    box(f, 1000, y - 24, 520, 250)
-    f.text(1024, y + 12, "읽는 법", 17, "start", 700)
-    f.lines(1024, y + 46, ["• 2025년까지는 full attention이 주류였다",
-                           "• 2026 H2 공개분에 full만 쓰는 모델은 Hy3 하나다",
-                           "• 회사마다 다른 길로 갔다 — sparse (DeepSeek · GLM ·",
-                           "  MiniMax · Hy4), state (Qwen · Nemotron · Kimi K3),",
-                           "  sliding window (MiMo · Muse)",
-                           "• MiniMax는 state → full → sparse로 두 번 바꿨다",
-                           "• GLM-5.3-Flash는 같은 세대 안에서 state를 섞었다"], 15, 27)
-    f.text(40, 1140, "분류: 층 하나라도 recurrent state를 쓰면 State, 아니면 선택 · 압축 attention이 있으면 Sparse, window 층이 있으면 Sliding window.",
-           14, "start", color=MUTED)
-    return f
-
-
-# ---------------------------------------------------------------- 5. 공개일 순 KV@1M
-def fig_lineage_kv():
-    ms = LINEAGE
-    n = len(ms)
-    f = Fig("05-lineage-kv1m", 1560, 900)
-    f.title(40, 44, "1M 토큰 요청 하나의 KV · state — 공개일 순 (BF16 KV, 같은 기준)")
-    _cat_legend(f, 40, 84)
-    f.rect(1000, 71, 16, 16, "#c9cddb", "none", 3)
-    f.text(1024, 84, "4096 토큰마다 재개 지점을 저장하면 늘어나는 양 · 점선 = 반기 중앙값", 15, "start", color=MUTED)
-    x0, x1, top, bot = 120, 1520, 150, 600
-    lo, hi = 1, 1000
-    Y = lambda v: bot - (math.log10(max(v, lo)) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) * (bot - top)  # noqa: E731
-    for v, lab in ((1, "1 GB"), (3, "3"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")):
-        f.line(x0, Y(v), x1, Y(v), GRID, 1)
-        f.text(x0 - 10, Y(v) + 5, lab, 13, "end", color=MUTED, mono=True)
-    step = (x1 - x0) / n
-    xs = [x0 + step * (i + 0.5) for i in range(n)]
-    # 반기 경계와 중앙값
-    for h in HALVES:
-        idx_ = [i for i, m in enumerate(ms) if _half(m["date"]) == h]
-        if not idx_:
-            continue
-        a, b = x0 + step * idx_[0], x0 + step * (idx_[-1] + 1)
-        f.line(a, top - 46, a, bot, "#c9cddb", 1.2, "5 4")
-        f.text((a + b) / 2, top - 28, h, 14, weight=700, color=MUTED)
-        vals = sorted(sum(kv1m(ms[i])) / GB for i in idx_)
-        med = vals[len(vals) // 2] if len(vals) % 2 else (vals[len(vals) // 2 - 1] + vals[len(vals) // 2]) / 2
-        f.line(a + 4, Y(med), b - 4, Y(med), INK, 2.5, "8 5")
-        f.text((a + b) / 2, top - 8, (f"중앙값 {fmt_gb(med)}" if b - a > 120 else fmt_gb(med)), 13, weight=700)
-    for m, x in zip(ms, xs):
-        s1, s2 = sum(kv1m(m)) / GB, sum(kv1m_ckpt(m)) / GB
-        bw = step * 0.66
-        f.rect(x - bw / 2, Y(s1), bw, bot - Y(s1), CAT_COLOR[m["cat"]], "none", 2)
-        if s2 > s1 * 1.03:
-            f.rect(x - bw / 2, Y(s2), bw, Y(s1) - Y(s2), CAT_LIGHT[m["cat"]], "none", 2)
-        f.raw(f'<text transform="translate({x + 4:.1f},{bot + 12}) rotate(-60)" font-family="{FONT}" font-size="12.5" '
-              f'text-anchor="end" fill="{INK}">{esc(m["name"])}</text>')
-    f.line(x0, bot, x1, bot, AXIS, 1.5)
-    f.text(40, 878, "조건: 1M(1,048,576) 토큰 · KV와 indexer key는 BF16, recurrent state는 config dtype(대부분 FP32) · MTP 층 제외.  "
-           "기본 최대 길이가 1M보다 짧은 모델도 같은 길이로 계산했다.", 14, "start", color=MUTED)
-    return f
-
-
 # ---------------------------------------------------------------- 표 데이터
 def write_csv():
     os.makedirs(DATA, exist_ok=True)
@@ -813,10 +808,13 @@ def write_csv():
     with open(path2, "w", newline="", encoding="utf-8-sig") as f:
         w = csv.writer(f)
         w.writerow(["series", "company", "model", "date", "category", "attention", "kv_bf16_B_per_token", "fixed_state_MB",
-                    "kv1m_state1_GB", "kv1m_ckpt4096_GB", "ctx"])
+                    "kv1m_state1_GB", "kv1m_ckpt4096_GB", "kv128k_state1_GB", "weights_GB", "weights_format",
+                    "weights_bf16_GB", "N_equal_1M", "ctx"])
         for m in LINEAGE:
             w.writerow([m["series"], m["co"], m["name"], m["date"], m["cat"], m["arch"], m["kv"], round(m["fixed"] / 1e6, 1),
-                        round(sum(kv1m(m)) / GB, 1), round(sum(kv1m_ckpt(m)) / GB, 1), m["ctx"]])
+                        round(sum(kv1m(m)) / GB, 1), round(sum(kv1m_ckpt(m)) / GB, 1),
+                        round(sum(kv1m(m, T128)) / GB, 2), round(m["w"] / GB, 1), m["wfmt"], round(m["wbf16"] / GB, 1),
+                        round(m["w"] / sum(kv1m(m)), 1), m["ctx"]])
     return path
 
 
@@ -836,7 +834,7 @@ def print_summary():
             print(f"  {label:20s} {m['name']:22s} {'fits' if left > 0 else 'OVER':5s} {n:10.0f}")
 
 
-FIGS = [fig_overview, fig_context, fig_crossover, fig_per_token, fig_lineage, fig_lineage_kv]
+FIGS = [fig_paths, fig_weights, fig_lineage_kv, fig_balance, fig_per_token]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
