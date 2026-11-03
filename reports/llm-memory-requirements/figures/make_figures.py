@@ -550,14 +550,14 @@ def fig_paths():
     bot = top + sum(r[2] for r in rows)
     H = int(bot + 320)
     f = Fig("01-attention-paths", 1560, H)
-    f.title(40, 44, "시리즈마다 다른 길로 갔다 — 9개 시리즈 55개 모델의 attention 구성")
+    f.title(40, 44, "9개 시리즈 55개 모델의 attention 구성 — 반기별")
     _cat_legend(f, 40, 84)
 
     for i, h in enumerate(HALVES):
         f.text(x0 + colw * (i + 0.5), top - 18, h, 15, weight=700, color=MUTED, mono=True)
         f.line(x0 + colw * i, top - 6, x0 + colw * i, bot, GRID, 1)
     f.line(x1, top - 6, x1, bot, GRID, 1)
-    f.text(x1 + 30, top - 18, "지나온 길", 15, "start", 700, MUTED)
+    f.text(x1 + 30, top - 18, "분류 변화", 15, "start", 700, MUTED)
     y = top
     for s, cells, rh in rows:
         f.line(40, y, 1520, y, GRID, 1)
@@ -600,12 +600,12 @@ def fig_paths():
                 x += w
         f.text(bx0 + bw + 12, yy + 20, f"{len(ms)}개", 14, "start", color=MUTED)
     box(f, 1150, y - 26, 370, 214)
-    f.lines(1174, y + 10, ["• 2025 H2 — 절반이 full attention",
-                           "• 2026 H2 — full만 쓰는 모델은 Hy3 하나",
-                           "• 공통점: 모든 층이 과거 전체를",
-                           "  저장 · 읽는 구조를 버렸다",
-                           "• 차이점: 무엇으로 바꿨는지는",
-                           "  회사마다 다르다"], 15, 30)
+    f.lines(1174, y + 10, ["• 2025 H2 — 14개 중 full 7개",
+                           "• 2026 H1 — 20개 중 full 5개",
+                           "• 2026 H2 — 15개 중 full 1개 (Hy3)",
+                           "• 칸 안의 색 = 그 모델의 분류",
+                           "• 오른쪽 열 = 시리즈의 분류가",
+                           "  바뀐 순서"], 15, 30)
     f.text(40, H - 18, "분류 순서: 층 하나라도 recurrent state를 쓰면 State → 선택 · 압축 attention이 있으면 Sparse → window 층이 있으면 Sliding window → 나머지는 Full.",
            14, "start", color=MUTED)
     return f
@@ -615,7 +615,7 @@ def fig_paths():
 def fig_weights():
     ms = LINEAGE
     f = Fig("02-weights-timeline", 1560, 920)
-    f.title(40, 44, "모델 본체(가중치) — 공개일 순, GPU 용량 기준선과 함께")
+    f.title(40, 44, "55개 모델의 가중치 크기 — 공개일 순")
     legend_items(f, 40, 84, [("bar", WEIGHT_FILL, "공식 체크포인트 중 가장 작은 것 (FP8 · FP4 변형 포함)"),
                              ("bar", WEIGHT_LIGHT, "같은 가중치를 BF16으로 쓰면 늘어나는 양")])
     x0, x1, top, bot = 110, 1400, 170, 620
@@ -641,7 +641,7 @@ def fig_weights():
 def fig_lineage_kv():
     ms = LINEAGE
     f = Fig("03-kv1m-timeline", 1560, 920)
-    f.title(40, 44, "1M 토큰 요청 하나의 KV · state — 공개일 순 (BF16 KV, 같은 기준)")
+    f.title(40, 44, "55개 모델의 1M 토큰 요청 하나의 KV · state 크기 — 공개일 순")
     x = _cat_legend(f, 40, 84)
     f.rect(x + 10, 71, 16, 16, "#c9cddb", "none", 3)
     f.text(x + 34, 84, "4096 토큰마다 재개 지점을 저장하면 늘어나는 양", 15, "start", color=MUTED)
@@ -664,81 +664,67 @@ def fig_lineage_kv():
     return f
 
 
-# ---------------------------------------------------------------- 4. 가중치 vs 대화 상태
-def fig_balance():
-    f = Fig("04-weights-vs-state", 1560, 830)
-    f.title(40, 44, "본체와 대화 상태 — 어느 쪽이 커지고 있나, 언제 따라잡나")
+# ---------------------------------------------------------------- 4. 가중치 + 요청 하나의 KV · state
+KV128_FILL, KV1M_FILL = SERIES[0], "#a9c8f0"                        # 128K까지 / 128K → 1M
 
-    # ---- 왼쪽: 반기 중앙값 추이
-    x0, x1, top, bot = 120, 590, 160, 640
-    f.text(40, 100, "반기 중앙값", 18, "start", 700)
-    f.text(40, 124, "로그 축 · 2024 H2(1개)는 뺐다", 14, "start", color=MUTED)
-    Y = _log_y(top, bot, 3, 1000)
-    for v, lab in ((3, "3 GB"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")):
-        f.line(x0, Y(v), x1, Y(v), GRID, 1)
-        f.text(x0 - 10, Y(v) + 5, lab, 13, "end", color=MUTED, mono=True)
-    hs = HALVES[1:]
-    X = lambda i: x0 + 60 + i * (x1 - x0 - 120) / (len(hs) - 1)  # noqa: E731
-    for i, h in enumerate(hs):
-        f.text(X(i), bot + 26, h, 14, color=MUTED, mono=True)
-    f.line(x0, bot, x1, bot, AXIS, 1.5)
-    series = [("가중치", WEIGHT_FILL, None, lambda m: m["w"]),
-              ("1M 요청 · 4096 단위 저장", "#8fb2e8", "7 5", lambda m: sum(kv1m_ckpt(m))),
-              ("1M 요청 하나", SERIES[0], None, lambda m: sum(kv1m(m))),
-              ("128K 요청 하나", "#8fb2e8", None, lambda m: sum(kv1m(m, T128)))]
-    for name, col, dash, fn in series:
-        vals = [median(fn(m) / GB for m in LINEAGE if _half(m["date"]) == h) for h in hs]
-        pts = [(X(i), Y(v)) for i, v in enumerate(vals)]
-        f.poly(pts, col, 3.5, dash)
-        for px, py in pts:
-            f.dot(px, py, 6.5, col)
-        if dash:
+
+def fig_stack():
+    ms = LINEAGE
+    pitch, head = 22, 34
+    x0, x1, hi = 330, 1290, 2800
+    X = lambda v: x0 + v / hi * (x1 - x0)  # noqa: E731
+    top = 190
+    rows, y, prev = [], top, None
+    for m in ms:
+        h = _half(m["date"])
+        if h != prev:
+            rows.append(("head", h, y))
+            y += head
+            prev = h
+        rows.append(("model", m, y + pitch / 2))
+        y += pitch
+    bot = y + 8
+    H = int(bot + 110)
+    f = Fig("04-weights-plus-state", 1560, H)
+    f.title(40, 44, "55개 모델의 가중치 + 요청 하나의 KV · state — 128K와 1M, 공개일 순")
+    legend_items(f, 40, 84, [("bar", WEIGHT_FILL, "가중치 (공식 체크포인트 중 가장 작은 것)"),
+                             ("bar", KV128_FILL, "KV · state — 128K 토큰"),
+                             ("bar", KV1M_FILL, "128K → 1M 토큰으로 늘어나는 양")])
+    f.text(40, 112, "선형 축 · 막대 길이가 그대로 메모리 크기다.  오른쪽 숫자 = 1M 요청 하나까지 합친 크기와 필요한 GPU 수(용량만 기준)", 14,
+           "start", color=MUTED)
+
+    for v in range(0, hi + 1, 500):
+        f.line(X(v), top - 6, X(v), bot, GRID, 1)
+        f.text(X(v), bot + 24, "0" if v == 0 else (f"{v / 1000:g} TB" if v >= 1000 else f"{v} GB"), 13, color=MUTED,
+               mono=True)
+    for i, (label, cap) in enumerate(GPU_LINES):
+        x = X(cap / GB)
+        f.line(x, top - 30 + (i % 2) * 14, x, bot, GPU_COLOR, 1.6)
+        f.text(x + 4, top - 34 + (i % 2) * 14, f"{label} {fmt_gb(cap / GB).replace('.0 GB', ' GB')}", 12.5, "start",
+               700, GPU_COLOR, halo=True)
+
+    for kind, obj, yy in rows:
+        if kind == "head":
+            f.text(40, yy + 23, obj, 14, "start", 700, MUTED, mono=True)
+            f.line(40, yy + 30, x1 + 230, yy + 30, GRID, 1)
             continue
-        f.text(pts[0][0] - 14, pts[0][1] + 5, fmt_gb(vals[0]), 13, "end", 700, col, mono=True)
-        f.text(pts[-1][0] + 14, pts[-1][1] + 5, fmt_gb(vals[-1]), 13, "start", 700, col, mono=True)
-    ly = bot + 70
-    for i, (name, col, dash, _) in enumerate(series):
-        lx = 40 + (i % 2) * 280
-        yy = ly + (i // 2) * 30
-        f.line(lx, yy - 5, lx + 26, yy - 5, col, 3.5, dash)
-        f.text(lx + 34, yy, name, 14, "start", color=MUTED)
-
-    # ---- 오른쪽: 모델별 산점도 — 가중치 vs 1M 요청 하나
-    sx0, sx1, st, sb = 780, 1500, 160, 640
-    f.text(sx0 - 70, 100, "모델별 — 1M 요청 몇 개면 상태가 본체와 같아지나", 18, "start", 700)
-    f.text(sx0 - 70, 124, "점선 = 동시 1M 요청 N개의 상태 합이 가중치와 같은 곳.  위로 갈수록 적은 요청으로 따라잡는다", 14, "start",
-           color=MUTED)
-    lo_w, hi_w, lo_k, hi_k = 5, 5000, 2, 1000
-    SX = logx(sx0, sx1 - sx0, lo_w, hi_w)
-    SY = _log_y(st, sb, lo_k, hi_k)
-    for v, lab in ((10, "10 GB"), (100, "100 GB"), (1000, "1 TB")):
-        f.line(SX(v), st, SX(v), sb, GRID, 1)
-        f.text(SX(v), sb + 26, lab, 13, color=MUTED, mono=True)
-    for v, lab in ((3, "3 GB"), (10, "10 GB"), (30, "30"), (100, "100 GB"), (300, "300"), (1000, "1 TB")):
-        f.line(sx0, SY(v), sx1, SY(v), GRID, 1)
-        f.text(sx0 - 10, SY(v) + 5, lab, 13, "end", color=MUTED, mono=True)
-    f.line(sx0, sb, sx1, sb, AXIS, 1.5)
-    f.line(sx0, st, sx0, sb, AXIS, 1.5)
-    f.text((sx0 + sx1) / 2, sb + 54, "가중치 (공식 체크포인트 중 가장 작은 것) →", 14, color=MUTED)
-    f.raw(f'<text transform="translate({sx0 - 66},{(st + sb) / 2}) rotate(-90)" font-family="{FONT}" font-size="14" '
-          f'text-anchor="middle" fill="{MUTED}">1M 요청 하나의 KV · state →</text>')
-    for n in (1, 10, 100):
-        a, b = max(lo_w, lo_k * n), min(hi_w, hi_k * n)
-        f.line(SX(a), SY(a / n), SX(b), SY(b / n), "#7b8196", 1.6, "2 4")
-        lw = b / 1.5
-        f.text(SX(lw), SY(lw / n) - 10, "1개면 같아짐" if n == 1 else f"{n}개", 14, "end", 700, MUTED, halo=True)
-    for m in LINEAGE:
-        f.dot(SX(m["w"] / GB), SY(sum(kv1m(m)) / GB), 7, CAT_COLOR[m["cat"]])
-    for name, dx, dy, anchor in (("Hy3", 12, 5, "start"), ("GLM-4.7", -12, -4, "end"), ("MiniMax-M2.7", -12, 10, "end"),
-                                 ("Qwen3.8-27B", 12, 5, "start"), ("DeepSeek-V4.1-Flash", 12, 5, "start"),
-                                 ("DeepSeek-V4-Pro", 12, 5, "start"), ("Kimi K3", 12, 5, "start"),
-                                 ("Qwen3.8-2.4T-A95B", 0, -16, "middle"), ("Nemotron 3 Ultra 550B-A55B", 12, 5, "start"),
-                                 ("Nemotron Nano 9B v2", 12, 5, "start")):
-        m = next(m for m in LINEAGE if m["name"] == name)
-        f.text(SX(m["w"] / GB) + dx, SY(sum(kv1m(m)) / GB) + dy, name.replace(" 550B-A55B", ""), 13, anchor, 600,
-               halo=True)
-    _cat_legend(f, 650, 784)
-    f.text(40, 816, "조건: 가중치는 공식 체크포인트 중 가장 작은 것, 상태는 BF16 KV + config dtype state · 요청 하나 · 공유 없음 · 계산값.",
+        m = obj
+        w, k128, k1m = m["w"] / GB, sum(kv1m(m, T128)) / GB, sum(kv1m(m)) / GB
+        f.dot(48, yy, 5, CAT_COLOR[m["cat"]])
+        f.text(60, yy + 5, m["name"], 13, "start", 600)
+        bh = 14
+        f.rect(X(0), yy - bh / 2, max(X(w) - X(0), 1), bh, WEIGHT_FILL, "none", 2)
+        f.rect(X(w), yy - bh / 2, max(X(w + k128) - X(w), 1), bh, KV128_FILL, "none", 0)
+        f.rect(X(w + k128), yy - bh / 2, max(X(w + k1m) - X(w + k128), 1), bh, KV1M_FILL, "none", 2)
+        tot = w + k1m
+        n_h, n_b = math.ceil(tot / 80), math.ceil(tot / 180)
+        f.text(X(tot) + 8, yy + 5, f"{fmt_gb(tot)} · H100 {n_h}장 / B200 {n_b}장", 12.5, "start", color=INK, halo=True)
+    f.line(x0, bot, x1, bot, AXIS, 1.5)
+    over = sum(m["w"] + sum(kv1m(m)) > 640e9 for m in ms)
+    kv_big = sum(sum(kv1m(m)) > m["w"] for m in ms)
+    f.text(40, H - 40, f"1M 요청 하나까지 합쳐 H100 × 8(640 GB)을 넘는 모델 {over}개.  1M 요청 하나의 KV · state가 가중치보다 큰 모델 {kv_big}개.  "
+           "왼쪽 점 색 = attention 분류 (그림 01과 같다).", 14, "start", color=MUTED)
+    f.text(40, H - 18, "조건: KV는 BF16, state는 config dtype · 요청 하나 · 공유 없음 · 계산값.  GPU 수는 용량 ÷ 장당 용량의 올림이며 병렬화 복제 · 엔진 여유분은 넣지 않았다.",
            14, "start", color=MUTED)
     return f
 
@@ -751,7 +737,7 @@ def fig_per_token():
     bot = y0 + pitch * len(ms)
     H = int(bot + 120)
     f = Fig("A1-kv-per-token", 1560, H)
-    f.title(40, 44, "토큰 하나가 추가하는 KV — 구조의 차이와 정밀도의 차이")
+    f.title(40, 44, "대표 모델의 토큰당 KV — 공식 dtype과 BF16")
 
     x0, w = 400, 660
     X = logx(x0, w, 0.5, 500)
@@ -834,7 +820,7 @@ def print_summary():
             print(f"  {label:20s} {m['name']:22s} {'fits' if left > 0 else 'OVER':5s} {n:10.0f}")
 
 
-FIGS = [fig_paths, fig_weights, fig_lineage_kv, fig_balance, fig_per_token]
+FIGS = [fig_paths, fig_weights, fig_lineage_kv, fig_stack, fig_per_token]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
