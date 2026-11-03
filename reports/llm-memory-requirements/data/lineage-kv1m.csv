@@ -2,9 +2,9 @@
 DeepSeek,DeepSeek,DeepSeek-V3,2024-12-25,full,MLA 61층,70272,0.0,73.7,73.7,9.21,688.4,FP8,1369.0,9.3,128K
 MiniMax,MiniMax,MiniMax-Text-01,2025-01-12,state,lightning attention 70층 + GQA 10층 (KV 8 × 128),40960,293.6,43.2,118.1,5.66,914.7,BF16,914.7,21.2,1M
 Nemotron,NVIDIA,Nemotron-H-56B,2025-04-08,state,Mamba-2 54층 + GQA 10층 (KV 8 × 128),40960,912.6,43.9,276.6,6.28,112.6,BF16,112.6,2.6,8K
-Qwen,Alibaba,Qwen3-235B-A22B,2025-04-27,full,GQA 94층 (KV 4 × 128),192512,0.0,201.9,201.9,25.23,239.0,FP8,470.2,1.2,40K
+Qwen,Alibaba,Qwen3-235B-A22B,2025-04-27,full,GQA 94층 (KV 4 × 128),192512,0.0,201.9,201.9,25.23,124.5,INT4 (GPTQ),470.2,0.6,40K
 MiniMax,MiniMax,MiniMax-M1,2025-06-13,state,lightning attention 70층 + GQA 10층 (KV 8 × 128),40960,293.6,43.2,118.1,5.66,912.2,BF16,912.2,21.1,1M
-Hy,Tencent,Hunyuan-A13B,2025-06-25,full,GQA 32층 (KV 8 × 128),131072,0.0,137.4,137.4,17.18,80.9,FP8,160.8,0.6,32K
+Hy,Tencent,Hunyuan-A13B,2025-06-25,full,GQA 32층 (KV 8 × 128),131072,0.0,137.4,137.4,17.18,42.7,INT4 (GPTQ),160.8,0.3,32K
 Kimi,Moonshot AI,Kimi K2,2025-07-11,full,MLA 61층,70272,0.0,73.7,73.7,9.21,1028.9,FP8,2052.8,14.0,128K
 GLM,Z.ai,GLM-4.5,2025-07-20,full,GQA 92층 (KV 8 × 128),376832,0.0,395.1,395.1,49.39,360.8,FP8,716.7,0.9,128K
 Nemotron,NVIDIA,Nemotron Nano 9B v2,2025-08-12,state,Mamba-2 27층 + GQA 4층 (KV 8 × 128),16384,143.5,17.3,53.9,2.29,7.8,NVFP4,17.8,0.5,128K
@@ -23,7 +23,7 @@ Kimi,Moonshot AI,Kimi K2.5,2026-01-01,full,MLA 61층,70272,0.0,73.7,73.7,9.21,59
 GLM,Z.ai,GLM-4.7-Flash,2026-01-19,full,MLA 47층,54144,0.0,56.8,56.8,7.1,62.4,BF16,62.4,1.1,200K
 GLM,Z.ai,GLM-5,2026-02-11,sparse,MLA + DSA 78층 (indexer 78층),109824,0.0,115.2,115.2,14.39,756.0,FP8,1507.7,6.6,200K
 MiniMax,MiniMax,MiniMax-M2.5,2026-02-12,full,GQA 62층 (KV 8 × 128),253952,0.0,266.3,266.3,33.29,230.1,FP8,457.4,0.9,196K
-Qwen,Alibaba,Qwen3.5-397B-A17B,2026-02-16,state,Gated DeltaNet 45층 + GQA 15층 (KV 2 × 256),30720,192.1,32.4,81.4,4.22,406.1,FP8,806.8,12.5,262K
+Qwen,Alibaba,Qwen3.5-397B-A17B,2026-02-16,state,Gated DeltaNet 45층 + GQA 15층 (KV 2 × 256),30720,192.1,32.4,81.4,4.22,235.7,INT4 (GPTQ),806.8,7.3,262K
 Qwen,Alibaba,Qwen3.5-27B,2026-02-24,state,Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256),65536,153.9,68.9,108.1,8.74,30.9,FP8,55.6,0.4,262K
 Nemotron,NVIDIA,Nemotron 3 Super 120B-A12B,2026-03-10,state,Mamba-2 40층 + GQA 8층 (KV 2 × 128),8192,170.2,8.8,52.2,1.24,80.3,NVFP4,247.2,9.2,262K
 GLM,Z.ai,GLM-5.1,2026-04-03,sparse,MLA + DSA 78층 (indexer 78층),109824,0.0,115.2,115.2,14.39,756.0,FP8,1507.7,6.6,200K
@@ -34,8 +34,8 @@ Qwen,Alibaba,Qwen3.6-27B,2026-04-21,state,Gated DeltaNet 48층 + GQA 16층 (KV 4
 DeepSeek,DeepSeek,DeepSeek-V4-Flash,2026-04-22,sparse,CSA 21층 + HCA 20층 + SWA만 2층 (모든 층 SWA 128),6880,0.0,7.2,8.7,0.91,159.6,FP4 expert + FP8,581.8,22.1,1M
 DeepSeek,DeepSeek,DeepSeek-V4-Pro,2026-04-22,sparse,CSA 30층 + HCA 31층 + SWA만 0층 (모든 층 SWA 128),9848,0.0,10.3,12.4,1.3,864.7,FP4 expert + FP8,3197.6,83.7,1M
 MiMo,Xiaomi,MiMo-V2.5,2026-04-27,swa,"SWA 39층 (window 128, KV 8) + full 9층 (KV 4)",23040,0.0,24.2,30.7,3.05,315.0,FP8,621.6,13.0,1M
-MiMo,Xiaomi,MiMo-V2.5-Pro,2026-04-27,swa,"SWA 60층 (window 128, KV 8) + full 10층 (KV 8)",51200,0.0,53.7,63.8,6.75,1033.1,FP8,2046.4,19.2,1M
-MiniMax,MiniMax,MiniMax-M3,2026-06-02,sparse,GQA 60층 (KV 4 × 128) · MSA 57층 + full 3층,137472,0.0,144.1,144.1,18.02,854.2,BF16,854.2,5.9,1M
+MiMo,Xiaomi,MiMo-V2.5-Pro,2026-04-27,swa,"SWA 60층 (window 128, KV 8) + full 10층 (KV 8)",51200,0.0,53.7,63.8,6.75,569.9,MXFP4,2046.4,10.6,1M
+MiniMax,MiniMax,MiniMax-M3,2026-06-02,sparse,GQA 60층 (KV 4 × 128) · MSA 57층 + full 3층,137472,0.0,144.1,144.1,18.02,430.5,MXFP8,854.2,3.0,1M
 Nemotron,NVIDIA,Nemotron 3 Ultra 550B-A55B,2026-06-03,state,Mamba-2 48층 + GQA 12층 (KV 2 × 128),12288,408.0,13.3,117.3,2.02,352.3,NVFP4,1121.0,26.5,262K
 Kimi,Moonshot AI,Kimi K3,2026-06-13,state,KDA 69층 + MLA 24층,27648,449.4,29.4,144.0,4.07,1560.9,MXFP4,5559.9,53.0,1M
 GLM,Z.ai,GLM-5.2,2026-06-16,sparse,"MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유)",95232,0.0,99.9,99.9,12.48,755.4,FP8,1506.7,7.6,1M
@@ -52,5 +52,5 @@ DeepSeek,DeepSeek,DeepSeek-V4.1-Flash,2026-09-10,sparse,압축 global KV + 층 �
 Muse,Meta,Muse Spark Open 816B-A42B,2026-09-15,swa,SWA 46층 (window 2048) + full 16층 (KV 16 × 64),65536,0.0,69.1,167.5,8.98,533.0,NVFP4,1644.3,7.7,1M
 MiMo,Xiaomi,MiMo-V2.6-Flash,2026-09-21,swa,"SWA 39층 (window 128, KV 8) + full 9층 (KV 4)",23040,0.0,24.2,30.7,3.05,172.9,FP4 혼합,621.6,7.1,1M
 MiMo,Xiaomi,MiMo-V2.6-Pro,2026-09-21,swa,"SWA 60층 (window 128, KV 8) + full 10층 (KV 8)",51200,0.0,53.7,63.8,6.75,566.0,FP4 혼합,2048.4,10.5,1M
-Nemotron,NVIDIA,Nemotron 3.5 Bolt 74B-A9B,2026-10-09,state,Mamba-2 40층 + GQA 8층 (KV 2 × 128),8192,170.2,8.8,52.2,1.24,149.8,BF16,149.8,17.1,262K
+Nemotron,NVIDIA,Nemotron 3.5 Bolt 74B-A9B,2026-10-09,state,Mamba-2 40층 + GQA 8층 (KV 2 × 128),8192,170.2,8.8,52.2,1.24,24.1,2-bit 혼합,149.8,2.8,262K
 MiniMax,MiniMax,MiniMax-M3.1-Flash,2026-10-17,sparse,GQA 60층 (KV 4 × 128) · MSA 60층,138240,0.0,145.0,145.0,18.12,250.1,8-bit,441.0,1.7,1M

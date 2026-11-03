@@ -3,7 +3,7 @@
 - 자료 기준일: config **2026-11-02**, 체크포인트 크기 **2026-11-03** (공식 HF 저장소)
 - 대상: 공개 가중치 모델의 **추론 · 서빙**. 학습 메모리와 자체 GPU 실측은 다루지 않는다
 - 모든 수치는 공식 config · 체크포인트 · 기술 보고서에서 가져오거나 계산했다
-- 용량은 10진 단위다 (1 GB = 10⁹ B). 체크포인트와 GPU 표기가 10진이기 때문이다
+- 용량은 10진 단위다 (1 GB = 10⁹ B). GPU 기준선은 제품 표기 용량(H100 80 GB, B200 180 GB)을 그대로 10⁹ B로 쓴 보수적인 예산이다. 실제 장치 메모리는 조금 더 크다 (H100은 `nvidia-smi` 기준 81,559 MiB ≈ 85.5 GB)
 - 계획서: [llm-memory-requirements-plan.md](llm-memory-requirements-plan.md) · 기존 자료 검토: [llm-memory-related-work.md](llm-memory-related-work.md)
 
 ---
@@ -28,9 +28,9 @@ LLM이 추론할 때 GPU에 올리는 메모리는 가중치와 대화 상태 �
 ## 요약
 
 1. 9개 시리즈 55개 모델 중 2026 H2 공개분 15개에서 full attention만 쓰는 모델은 Hy3 하나다. 나머지는 sparse 4개, sliding window 4개, state hybrid 6개다.
-2. 가중치의 반기 중앙값은 239 → 337 → 379 → 300 GB다. 55개 중 47개가 BF16보다 낮은 정밀도로 배포된다. 17개는 H100 × 8(640 GB)을, 2개는 B200 × 8(1.44 TB)을 넘는다.
+2. 가중치의 반기 중앙값은 124 → 337 → 334 → 300 GB다. 55개 중 49개가 BF16보다 낮은 정밀도의 공식 체크포인트를 낸다. 15개는 H100 × 8(640 GB)을, 2개는 B200 × 8(1.44 TB)을 넘는다.
 3. 1M 토큰 요청 하나의 KV · state는 3.4 GB(DeepSeek-V4.1-Flash)부터 395 GB(GLM-4.x)까지다. 반기 중앙값은 2025 H2 82 GB, 2026 H2 54 GB다.
-4. 1M 요청 하나의 KV · state가 가중치보다 큰 모델은 13개다. 가중치와 같아지는 동시 1M 요청 수의 반기 중앙값은 2.6개(2025 H1)에서 7.6개(2026 H2)로 늘었다.
+4. 1M 요청 하나의 KV · state가 가중치보다 큰 모델은 14개다. 가중치와 같아지는 동시 1M 요청 수의 반기 중앙값은 2.6개(2025 H1)에서 7.1개(2026 H2)로 늘었다.
 
 ---
 
@@ -54,41 +54,39 @@ KV 크기는 attention이 지나간 토큰을 저장하고 읽는 방식에 따�
 
 ### 9개 시리즈의 attention 구성 변화
 
+9개 시리즈 55개 모델의 attention 구성을 공개 순으로 비교했다. 오른쪽 열은 시리즈별 변화 순서다.
+
 ![9개 시리즈의 attention 구성](llm-memory-requirements/figures/01-attention-paths.png)
 
-GLM, DeepSeek, Hy, MiniMax, Qwen, Nemotron, Kimi, Muse, MiMo의 세대별 모델 55개를 공개 반기별로 놓고 분류 색을 칠했다. 오른쪽 열은 각 시리즈의 분류가 바뀐 순서다.
+> [!NOTE]
+> **최근 모델의 attention 구성은 sparse · sliding window · state의 세 갈래가 중심이다.**
 
-- 반기별 full attention 비율: 2025 H1 40%, 2025 H2 50%, 2026 H1 25%, 2026 H2 7%(Hy3 하나)
-- sparse로 바꾼 시리즈: DeepSeek(V3.2 DSA → V4 압축), GLM(GLM-5부터 DSA), MiniMax(M3 MSA), Hy(Hy4)
-- state를 쓰는 시리즈: Qwen(3-Next 이후), Nemotron(처음부터 Mamba), Kimi(Linear, K3)
-- sliding window를 쓰는 시리즈: MiMo, Muse
-- MiniMax는 state(Text-01 · M1) → full(M2.x) → sparse(M3) 순서로 바뀌었다. GLM은 같은 날 GLM-5.3(sparse)과 GLM-5.3-Flash(state + DSA)를 공개했다
-- Hy4-preview의 attention 설정은 GLM-5.2 · 5.3과 거의 같다 (MLA 78층, indexer 21층, 57층은 선택 공유)
+- 2026 H2 공개 15개 중 14개가 이 세 가지 구성을 쓴다. Full attention만 쓰는 모델은 Hy3 하나다
+- 변화 경로는 시리즈마다 다르다. MiniMax는 state → full → sparse 순서로 바뀌었다
 
 ---
 
 ## 2. 모델 가중치 크기 (공개일 순)
 
+진한 막대는 공식 체크포인트 중 가장 작은 것, 옅은 부분은 BF16으로 저장할 때 늘어나는 양이다. 빨간 선은 GPU 용량 기준, 검은 점선은 반기 중앙값이다. 체크포인트 선정 기준과 GPU 상주 범위는 [부록 A](#a-전체-표--55개-모델-분류별-공개일-순)에 정리했다.
+
 ![모델 가중치 — 공개일 순](llm-memory-requirements/figures/02-weights-timeline.png)
 
-진한 막대는 공식 저장소가 낸 체크포인트 중 가장 작은 것(FP8 · FP4 변형 포함), 옅은 부분은 같은 가중치를 BF16으로 저장할 때 늘어나는 양이다. 빨간 선은 GPU 용량, 검은 점선은 반기 중앙값이다.
+> [!NOTE]
+> **배포 가중치의 반기 중앙값은 2025 H2 이후 300 GB 안팎을 유지하고 있다.**
+
+- 반기 중앙값은 124 → 337 → 334 → 300 GB다. 최근 두 반기 연속 줄었다
+- 55개 중 49개가 BF16보다 낮은 정밀도로 공개됐다. 정밀도를 낮추면 같은 모델도 가중치 크기가 줄어든다
+- 가장 큰 Qwen3.8-2.4T는 2.5 TB로, 모델 간 크기 차이는 여전히 크다
 
 | GPU 용량 | 공식 체크포인트가 들어가는 모델 | BF16이면 |
 |---|---|---|
-| H100 1장 (80 GB) | 9개 | 9개 |
-| B200 1장 (180 GB) | 17개 | 14개 |
-| H100 × 8 (640 GB) | 38개 | 27개 |
+| H100 1장 (80 GB) | 11개 | 9개 |
+| B200 1장 (180 GB) | 18개 | 14개 |
+| H100 × 8 (640 GB) | 40개 | 27개 |
 | B200 × 8 (1.44 TB) | 53개 | 41개 |
 
 (55개 중. 가중치만 센 값이며 KV와 엔진 여유분은 포함하지 않았다.)
-
-- 반기 중앙값은 239 → 337 → 379 → 300 GB다. 가장 큰 모델은 Qwen3.8-2.4T(2.5 TB, FP8)와 Kimi K3(1.56 TB, MXFP4)다
-- 55개 중 47개가 BF16보다 낮은 정밀도로 배포된다. 2025 H2 이후 반기 중앙값 기준으로 BF16 크기의 약 절반이다. FP4 계열(NVFP4 · MXFP4 · INT4 · FP4 expert)은 2026 H1에 7개, H2에 5개다
-  - Kimi K3: 2.8T 파라미터, MXFP4로 1.56 TB. BF16이면 5.6 TB
-  - DeepSeek-V4-Pro: 1.6T 파라미터, FP4 expert로 865 GB. BF16이면 3.2 TB
-- 파라미터 수 × 2로 계산한 크기는 FP8 모델에서 약 2배, FP4 모델에서 약 3 ~ 4배 크게 나온다
-- DeepSeek-V4.1-Flash의 Engram 표(203 GB)는 입력 토큰으로 필요한 행을 미리 알 수 있어 host 메모리에서 가져오도록 설계되었다. 그래프의 308 GB는 이것을 뺀 값이다
-- MoE 모델은 활성 파라미터가 아니라 전체 파라미터를 GPU에 올린다. 어떤 expert가 선택될지 미리 알 수 없기 때문이다
 
 ---
 
@@ -96,17 +94,19 @@ GLM, DeepSeek, Hy, MiniMax, Qwen, Nemotron, Kimi, Muse, MiMo의 세대별 모델
 
 ### 1M 기준
 
-요청 하나가 1M(1,048,576) 토큰을 보유한 상태로 비교한다. 최신 모델의 기본 최대 길이가 1M에 모여 있어, 구조 차이를 같은 기준으로 비교하기 위해서다. 값은 두 가지다.
+요청 하나가 1M(1,048,576) 토큰을 보유할 때 필요한 대화 상태를 비교한다. KV는 BF16, 고정 state는 모델별 설정의 정밀도를 따랐다.
 
-- **KV@1M / state 1개** (진한 막대) — 이어서 생성하는 데 필요한 양. KV(+ indexer key) + window KV + 고정 state 한 벌
-- **KV@1M / 4096 단위 저장** (옅은 부분까지) — 같은 대화를 4096 토큰마다 다시 이어 갈 수 있게 저장할 때(prefix caching)의 양
-  - KV는 줄을 덧붙이기만 하므로 모든 지점이 이미 들어 있다 → 늘지 않는다
-  - state는 매 스텝 덮어쓰므로 지점마다 사본이 필요하다 → state × 256
-  - window KV도 지점마다 최근 W 토큰이 필요하다 → 층마다 min(1M, 256 × W) 토큰
-
-KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대부분 FP32)이다.
+- **진한 막대** — 이어서 생성하는 데 필요한 KV와 state 한 벌
+- **옅은 부분** — 4096 토큰마다 재개 지점을 저장할 때 추가되는 양 ([계산식](#c-계산식))
 
 ![1M 토큰 KV — 공개일 순](llm-memory-requirements/figures/03-kv1m-timeline.png)
+
+> [!NOTE]
+> **같은 1M 토큰도 attention 구조에 따라 대화 상태의 크기가 100배 넘게 차이 난다.**
+
+- DeepSeek-V4.1-Flash는 3.4 GB, GLM-4.x는 395 GB다. 반기 간 변화보다 모델 간 차이가 더 크다
+- 반기 중앙값은 2025 H2의 82 GB에서 2026 H2의 54 GB로 줄었다
+- state 모델은 재개 지점마다 사본을 남겨야 한다. Nemotron 3 Ultra는 재개 지점을 저장하면 13 GB에서 117 GB로 늘어난다
 
 | 반기 | 모델 수 | 128K 요청 하나 | 1M 요청 하나 | 1M · 4096 단위 저장 |
 |---|---|---|---|---|
@@ -117,13 +117,6 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 
 (반기 중앙값. 2024 H2는 DeepSeek-V3 하나라 뺐다.)
 
-- 1M 요청 하나의 KV · state가 H100 1장(80 GB)보다 큰 모델은 20개, B200 1장(180 GB)보다 큰 모델은 9개다
-- 같은 반기 안의 차이가 반기 간 중앙값 차이보다 크다. 2026 H2는 3.4 GB(V4.1-Flash)부터 344 GB(Hy3)까지다
-- full GQA: GLM-4.x 395 GB, Hy3 344 GB, MiniMax-M2.x 266 GB. full MLA: Kimi K2.x · DeepSeek-V3.x 74 GB
-- sparse: GLM-5 115 GB, MiniMax-M3 144 GB, Hy4 100 GB. 저장도 압축하는 DeepSeek-V4 계열은 V4-Flash 7.2 GB, V4.1-Flash 3.4 GB다
-- state hybrid는 4096 단위 저장 시 크게 늘어난다: Nemotron 3 Ultra 13 → 117 GB(8.8배), Kimi K3 29 → 144 GB, Qwen3.8-2.4T 99 → 249 GB
-- sliding window는 window 크기에 따라 늘어나는 정도가 다르다: MiMo(W 128) 24 → 31 GB, Muse Spark Open(W 2048) 69 → 168 GB
-
 ### 실제 서비스의 요청 길이
 
 | 출처 | 대상 · 기간 | 요청 하나가 보유한 토큰 |
@@ -133,6 +126,7 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 
 - 일반 채팅 · API는 수천 토큰이고, 코딩 에이전트는 대화 이력과 도구 결과가 쌓여 수십만 토큰이다. 긴 에이전트 세션은 1M에 가까워진다
 - 이 보고서의 55개 모델은 기본 최대 길이가 모두 1M 이하라, 요청 하나는 1M이 상한이다. 공개 가중치 중 1M을 넘는 모델은 Llama 4 Scout(10M, 2025-04) 정도다
+- 단, 55개 중 37개는 기본 최대 길이가 1M보다 짧다 (Nemotron-H-56B 8K, Hunyuan-A13B 32K 등). 이 모델들의 1M 값은 구조를 비교하기 위한 계산이며, 그 길이로 실제 서빙할 수 있다는 뜻이 아니다
 - 그래서 요청 하나는 1M을 기준으로 두고, 4절에서는 1M 요청을 동시에 여러 개 보유하는 경우를 본다
 
 ---
@@ -141,42 +135,56 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 
 ### 1M 요청을 동시에 보유할 때
 
-서버는 요청을 여러 개 동시에 보유하고, 끝난 세션의 KV를 재사용하려고 보관하기도 한다. 1M 요청의 동시 보유 수를 8 · 32 · 128개로 가정해 가중치와 합쳤다. 동시 보유 수는 가정값이다.
+서버는 요청을 여러 개 동시에 보유하고, 끝난 세션의 KV를 재사용하려고 보관하기도 한다. 1M 요청의 동시 보유 수를 8 · 32 · 128개로 가정해 가중치와 합쳤다. 동시 보유 수는 가정값이고, 기본 최대 길이가 1M보다 짧은 37개 모델은 지원 길이를 넘는 가상 계산이다.
 
 | 동시 1M 요청 | 총 보유 토큰 | H100 × 8(640 GB)을 넘는 모델 | B200 × 8(1.44 TB)을 넘는 모델 | GB200 NVL72(13.4 TB)를 넘는 모델 | KV + state가 가중치보다 큰 모델 | 합계 중앙값 |
 |---|---|---|---|---|---|---|
-| 8개 | 8M | 33개 | 19개 | 0개 | 32개 | 1.2 TB |
-| 32개 | 32M | 46개 | 37개 | 0개 | 52개 | 2.5 TB |
+| 8개 | 8M | 32개 | 18개 | 0개 | 34개 | 1.1 TB |
+| 32개 | 32M | 46개 | 36개 | 0개 | 52개 | 2.3 TB |
 | 128개 | 128M | 55개 | 48개 | 18개 | 55개 | 8.8 TB |
 
-(55개 중. 가중치만으로는 H100 × 8을 넘는 모델이 17개, B200 × 8을 넘는 모델이 2개다.)
+(55개 중. 가중치만으로는 H100 × 8을 넘는 모델이 15개, B200 × 8을 넘는 모델이 2개다.)
 
-각 그림은 모델마다 가중치(진한 회색), KV(파랑), 고정 state(주황), 4096 토큰마다 재개 지점을 저장하면 늘어나는 양(옅은 주황)을 한 막대에 이어 붙였다. 선형 축이며 그림마다 축 범위가 다르다. 오른쪽 숫자는 가중치 + KV + state의 합과 그 용량에 필요한 GPU 수다 (재개 지점 저장분 제외).
+회색은 가중치, 파랑은 KV, 주황은 고정 state다. 옅은 주황은 재개 지점 저장분이다. 오른쪽은 저장분을 제외한 합계와 GPU 수이며, 그림마다 가로축 범위가 다르다.
 
 ![동시 1M 요청 8개](llm-memory-requirements/figures/04a-scenario-1m-x8.png)
 
+> [!NOTE]
+> **1M 토큰 요청 8개만 쌓여도, 절반이 넘는 모델에서 대화 상태가 가중치보다 커진다.**
+
+- 55개 중 34개 모델에서 KV · state가 가중치보다 크다
+- 가중치와 대화 상태를 합친 메모리의 중앙값은 1.1 TB다
+
 ![동시 1M 요청 32개](llm-memory-requirements/figures/04b-scenario-1m-x32.png)
+
+> [!NOTE]
+> **동시 1M 요청 32개에서는 거의 모든 모델에서 대화 상태가 가중치보다 크다.**
+
+- 55개 중 52개 모델에서 대화 상태가 가중치보다 크다
+- 가중치와 상태를 합치면 GLM-4.7은 13.0 TB, Hy3는 11.3 TB다
 
 ![동시 1M 요청 128개](llm-memory-requirements/figures/04c-scenario-1m-x128.png)
 
-- 동시 8개에서 이미 55개 중 32개 모델의 KV + state가 가중치보다 크다. 32개부터는 거의 모든 모델이 그렇다
-- full GQA 모델은 동시 32개에서 GLM-4.7 13.0 TB, Hy3 11.3 TB로 랙 하나(13.4 TB)에 가깝다. 128개에서는 51 TB, 44 TB다
-- 압축 KV인 DeepSeek-V4.1-Flash는 동시 128개에서도 738 GB다
-- state hybrid는 KV + state 자체는 작지만, 재개 지점을 저장하면 크게 늘어난다. 동시 32개에서 Kimi K3 2.5 TB → +3.7 TB, Nemotron 3 Ultra 0.78 TB → +3.3 TB
-- 이 규모는 GPU 메모리에 모두 둘 수 없어, 실제로는 KV를 CPU 메모리 · SSD로 내려 보관하고 필요할 때 다시 올린다
+> [!NOTE]
+> **같은 1M 요청 128개도 구조에 따라 필요한 메모리가 1 TB 미만에서 수십 TB까지 벌어진다.**
+
+- 모든 모델에서 대화 상태가 가중치보다 크며, 합계 중앙값은 8.8 TB다
+- 합계는 GLM-4.7이 51 TB, DeepSeek-V4.1-Flash가 738 GB다
+
+재개 지점 저장과 실제 GPU 배치에 따른 추가 메모리는 [부록 C](#c-계산식) · [D](#d-실행-메모리에-더해지는-것)에서 다룬다.
 
 ### 반기별 추이
 
 | 반기 | 가중치 | 128K 요청 하나 | 1M 요청 하나 | 가중치와 같아지는 동시 1M 요청 수 |
 |---|---|---|---|---|
-| 2025 H1 | 239 GB | 6.3 GB | 43.9 GB | 2.6개 |
+| 2025 H1 | 124 GB | 6.3 GB | 43.9 GB | 2.6개 |
 | 2025 H2 | 337 GB | 10.2 GB | 81.9 GB | 3.1개 |
-| 2026 H1 | 379 GB | 7.9 GB | 62.8 GB | 7.8개 |
-| 2026 H2 | 300 GB | 6.8 GB | 53.7 GB | 7.6개 |
+| 2026 H1 | 334 GB | 7.9 GB | 62.8 GB | 7.4개 |
+| 2026 H2 | 300 GB | 6.8 GB | 53.7 GB | 7.1개 |
 
 (모두 반기 중앙값. 마지막 열은 모델별 가중치 ÷ 1M 요청 하나의 중앙값이다.)
 
-가중치와 1M 요청 하나 모두 2025 H2 ~ 2026 H1에 가장 크고 2026 H2에 줄었다. 가중치와 같아지는 동시 1M 요청 수는 2025년 3개 안팎에서 2026년 8개 안팎으로 늘었다.
+가중치와 1M 요청 하나 모두 2025 H2 ~ 2026 H1에 가장 크고 2026 H2에 줄었다. 가중치와 같아지는 동시 1M 요청 수는 2025년 3개 안팎에서 2026년 7개 안팎으로 늘었다.
 
 ### 동시 요청 수와 요청 길이
 
@@ -185,14 +193,14 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 | Full attention만 | 7개 | 0.9개 | 0.9개 |
 | Sparse (+ full) | 61개 | 7.6개 | 7.6개 |
 | Sliding window + full | 84개 | 10.5개 | 8.9개 |
-| State + full/sparse | 59개 | 8.1개 | 2.3개 |
+| State + full/sparse | 40개 | 5.1개 | 1.7개 |
 
 (대화 상태의 합이 가중치와 같아지는 동시 요청 수, 분류별 중앙값.)
 
 - 요청 길이가 128K에서 1M으로 8배 길어지면 같아지는 요청 수는 약 1/8이 된다
-- full attention 모델은 1M 요청 1개 안팎, 다른 분류는 1M 요청 8 ~ 10개 안팎에서 대화 상태가 가중치와 같아진다
-- 같아지는 요청 수가 큰 모델은 DeepSeek-V4.1-Flash 92개, V4-Pro 84개, Kimi K3 53개다
-- state 모델은 4096 단위 저장을 하면 중앙값이 8.1개에서 2.3개로 줄어든다
+- full attention 모델은 1M 요청 1개 안팎, 다른 분류는 1M 요청 5 ~ 10개 안팎에서 대화 상태가 가중치와 같아진다
+- 같아지는 요청 수가 큰 모델은 DeepSeek-V4.1-Flash 91개, V4-Pro 84개, Kimi K3 53개다
+- state 모델은 4096 단위 저장을 하면 중앙값이 5.1개에서 1.7개로 줄어든다
 
 ### 쓰기 · 읽기 특성
 
@@ -242,8 +250,8 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 | 분류 | 모델 | 공개일 | Attention 구성 | 가중치 (포맷) | BF16이면 | KV@1M / state 1개 | KV@1M / 4096 단위 저장 | 기본 최대 길이 |
 |---|---|---|---|---|---|---|---|---|
 | **Full attention만** | DeepSeek-V3 | 2024-12-25 | MLA 61층 | 688 GB (FP8) | 1.37 TB | 73.7 GB | 같음 | 128K |
-|  | Qwen3-235B-A22B | 2025-04-27 | GQA 94층 (KV 4 × 128) | 239 GB (FP8) | 470 GB | 202 GB | 같음 | 40K |
-|  | Hunyuan-A13B | 2025-06-25 | GQA 32층 (KV 8 × 128) | 80.9 GB (FP8) | 161 GB | 137 GB | 같음 | 32K |
+|  | Qwen3-235B-A22B | 2025-04-27 | GQA 94층 (KV 4 × 128) | 125 GB (INT4 (GPTQ)) | 470 GB | 202 GB | 같음 | 40K |
+|  | Hunyuan-A13B | 2025-06-25 | GQA 32층 (KV 8 × 128) | 42.7 GB (INT4 (GPTQ)) | 161 GB | 137 GB | 같음 | 32K |
 |  | Kimi K2 | 2025-07-11 | MLA 61층 | 1.03 TB (FP8) | 2.05 TB | 73.7 GB | 같음 | 128K |
 |  | GLM-4.5 | 2025-07-20 | GQA 92층 (KV 8 × 128) | 361 GB (FP8) | 717 GB | 395 GB | 같음 | 128K |
 |  | DeepSeek-V3.1 | 2025-08-21 | MLA 61층 | 689 GB (FP8) | 1.37 TB | 73.7 GB | 같음 | 128K |
@@ -263,7 +271,7 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 |  | GLM-5.1 | 2026-04-03 | MLA + DSA 78층 (indexer 78층) | 756 GB (FP8) | 1.51 TB | 115 GB | 같음 | 200K |
 |  | DeepSeek-V4-Flash | 2026-04-22 | CSA 21층 + HCA 20층 + SWA만 2층 (모든 층 SWA 128) | 160 GB (FP4 expert + FP8) | 582 GB | 7.2 GB | 8.7 GB | 1M |
 |  | DeepSeek-V4-Pro | 2026-04-22 | CSA 30층 + HCA 31층 + SWA만 0층 (모든 층 SWA 128) | 865 GB (FP4 expert + FP8) | 3.20 TB | 10.3 GB | 12.4 GB | 1M |
-|  | MiniMax-M3 | 2026-06-02 | GQA 60층 (KV 4 × 128) · MSA 57층 + full 3층 | 854 GB (BF16) | 같음 | 144 GB | 같음 | 1M |
+|  | MiniMax-M3 | 2026-06-02 | GQA 60층 (KV 4 × 128) · MSA 57층 + full 3층 | 430 GB (MXFP8) | 854 GB | 144 GB | 같음 | 1M |
 |  | GLM-5.2 | 2026-06-16 | MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유) | 755 GB (FP8) | 1.51 TB | 99.9 GB | 같음 | 1M |
 |  | GLM-5.3 | 2026-08-25 | MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유) | 755 GB (FP8) | 1.51 TB | 99.9 GB | 같음 | 1M |
 |  | Hy4-preview | 2026-08-27 | MLA + DSA 78층 (indexer 21층, 나머지 57층은 선택 공유) | 814 GB (FP8) | 1.56 TB | 99.9 GB | 같음 | 1M |
@@ -271,7 +279,7 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 |  | MiniMax-M3.1-Flash | 2026-10-17 | GQA 60층 (KV 4 × 128) · MSA 60층 | 250 GB (8-bit) | 441 GB | 145 GB | 같음 | 1M |
 | **Sliding window + full** | MiMo-V2-Flash | 2025-12-16 | SWA 39층 (window 128, KV 8) + full 9층 (KV 4) | 313 GB (FP8) | 620 GB | 24.2 GB | 30.7 GB | 256K |
 |  | MiMo-V2.5 | 2026-04-27 | SWA 39층 (window 128, KV 8) + full 9층 (KV 4) | 315 GB (FP8) | 622 GB | 24.2 GB | 30.7 GB | 1M |
-|  | MiMo-V2.5-Pro | 2026-04-27 | SWA 60층 (window 128, KV 8) + full 10층 (KV 8) | 1.03 TB (FP8) | 2.05 TB | 53.7 GB | 63.8 GB | 1M |
+|  | MiMo-V2.5-Pro | 2026-04-27 | SWA 60층 (window 128, KV 8) + full 10층 (KV 8) | 570 GB (MXFP4) | 2.05 TB | 53.7 GB | 63.8 GB | 1M |
 |  | Muse Glimmer 30B | 2026-08-09 | SWA 39층 (window 2048) + full 13층 (KV 2 × 128) | 59.6 GB (BF16) | 같음 | 14.0 GB | 34.9 GB | 128K |
 |  | Muse Spark Open 816B-A42B | 2026-09-15 | SWA 46층 (window 2048) + full 16층 (KV 16 × 64) | 533 GB (NVFP4) | 1.64 TB | 69.1 GB | 168 GB | 1M |
 |  | MiMo-V2.6-Flash | 2026-09-21 | SWA 39층 (window 128, KV 8) + full 9층 (KV 4) | 173 GB (FP4 혼합) | 622 GB | 24.2 GB | 30.7 GB | 1M |
@@ -283,7 +291,7 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 |  | Qwen3-Next 80B-A3B | 2025-09-09 | Gated DeltaNet 36층 + GQA 12층 (KV 2 × 256) | 82.0 GB (FP8) | 163 GB | 25.8 GB | 45.6 GB | 262K |
 |  | Kimi Linear 48B-A3B | 2025-10-30 | KDA 20층 + MLA 7층 | 98.2 GB (BF16) | 같음 | 8.5 GB | 19.6 GB | 1M |
 |  | Nemotron 3 Nano 30B-A3B | 2025-12-04 | Mamba-2 23층 + GQA 6층 (KV 2 × 128) | 19.3 GB (NVFP4) | 63.2 GB | 6.5 GB | 19.0 GB | 262K |
-|  | Qwen3.5-397B-A17B | 2026-02-16 | Gated DeltaNet 45층 + GQA 15층 (KV 2 × 256) | 406 GB (FP8) | 807 GB | 32.4 GB | 81.4 GB | 262K |
+|  | Qwen3.5-397B-A17B | 2026-02-16 | Gated DeltaNet 45층 + GQA 15층 (KV 2 × 256) | 236 GB (INT4 (GPTQ)) | 807 GB | 32.4 GB | 81.4 GB | 262K |
 |  | Qwen3.5-27B | 2026-02-24 | Gated DeltaNet 48층 + GQA 16층 (KV 4 × 256) | 30.9 GB (FP8) | 55.6 GB | 68.9 GB | 108 GB | 262K |
 |  | Nemotron 3 Super 120B-A12B | 2026-03-10 | Mamba-2 40층 + GQA 8층 (KV 2 × 128) | 80.3 GB (NVFP4) | 247 GB | 8.8 GB | 52.2 GB | 262K |
 |  | Qwen3.6-35B-A3B | 2026-04-15 | Gated DeltaNet 30층 + GQA 10층 (KV 2 × 256) | 37.5 GB (FP8) | 71.9 GB | 21.5 GB | 38.0 GB | 262K |
@@ -295,9 +303,9 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 |  | Qwen3.8-2.4T-A95B | 2026-08-08 | Gated DeltaNet 69층 + GQA 23층 (KV 4 × 256) | 2.50 TB (FP8) | 4.89 TB | 99.4 GB | 249 GB | 262K |
 |  | Qwen3.8-Flash-Next | 2026-08-24 | Gated DeltaNet 36층 + sparse GQA 12층 (indexer 1/4 압축) | 186 GB (FP8) | 360 GB | 26.7 GB | 56.1 GB | 262K |
 |  | GLM-5.3-Flash | 2026-08-25 | KDA 34층 + MLA·DSA 11층 (RoPE 없음, indexer 1/4 압축) | 328 GB (FP8) | 643 GB | 12.7 GB | 50.3 GB | 1M |
-|  | Nemotron 3.5 Bolt 74B-A9B | 2026-10-09 | Mamba-2 40층 + GQA 8층 (KV 2 × 128) | 150 GB (BF16) | 같음 | 8.8 GB | 52.2 GB | 262K |
+|  | Nemotron 3.5 Bolt 74B-A9B | 2026-10-09 | Mamba-2 40층 + GQA 8층 (KV 2 × 128) | 24.1 GB (2-bit 혼합) | 150 GB | 8.8 GB | 52.2 GB | 262K |
 
-- **가중치** = 공식 저장소(같은 회사의 FP8 · NVFP4 등 변형 저장소 포함) 중 가장 작은 체크포인트. 크기는 safetensors의 dtype별 원소 수 × 바이트이고, FP4 · INT4처럼 묶어 저장하는 dtype이 있으면 index의 `total_size`(없으면 `usedStorage`)를 썼다. V4.1-Flash는 host에 두는 Engram 203 GB를 뺐다
+- **가중치** = 같은 회사가 공식 저장소로 낸 GPU 서빙용 체크포인트(FP8 · GPTQ-Int4 · NVFP4 · MXFP4 등 변형 포함) 중 가장 작은 것. Apple용 MLX · GGUF, drafter · adapter 저장소, 다른 모델(Thinking · ASR 등)은 뺐다. 크기는 safetensors의 dtype별 원소 수 × 바이트이고, FP4 · INT4처럼 묶어 저장하는 dtype이 있으면 index의 `total_size`(없으면 `usedStorage`)를 썼다. V4.1-Flash는 host에 두는 Engram 203 GB를 뺐다
 - **BF16이면** = BF16 저장소의 크기, 없으면 파라미터 수 × 2. "같음"은 공식 체크포인트가 BF16이라는 뜻이다
 - **4096 단위 저장의 "같음"** = 재개 지점을 저장해도 늘지 않는다 (KV만 있는 구조)
 - 공개일은 공식 HF 저장소 생성일, 기본 최대 길이는 config의 `max_position_embeddings`다
@@ -306,6 +314,9 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 - MiniMax-Text-01 · M1의 lightning attention state, Kimi KDA state, Nemotron-H-56B · Nano 9B v2의 SSM state는 config에 dtype이 없어 FP32로 가정했다 (BF16이면 state 부분이 절반)
 - MiniMax-M3.1-Flash의 체크포인트는 U8 저장이 대부분인데 크기가 파라미터당 약 1바이트라 "8-bit"로 적었다. MiMo-V2.6 RL 체크포인트는 파라미터당 약 0.55바이트라 "FP4 혼합"으로 적었다
 - Muse Spark Open은 접근 제한 저장소라 config는 unsloth 미러에서 읽었다
+- MoE 가중치는 전체 expert를 GPU에 올리는 조건으로 센다. 활성 파라미터 수에 저장 바이트를 곱한 값으로 계산하지 않는다
+- 4-bit 이하의 공식 체크포인트(NVFP4 · MXFP4 · INT4 · FP4 expert · 2-bit 혼합)는 2026 H1에 9개, H2에 6개다. BF16 크기를 기준으로 보면 FP8은 약 1/2, FP4는 약 1/3 ~ 1/4 수준이다
+- 그림 01의 반기별 full attention 비율은 2025 H1 40%, H2 50%, 2026 H1 25%, H2 7%다. GLM은 같은 날 GLM-5.3(sparse)과 GLM-5.3-Flash(state + DSA)를 공개했다
 - 전체 수치: [data/lineage-kv1m.csv](llm-memory-requirements/data/lineage-kv1m.csv)
 
 </details>
@@ -325,7 +336,7 @@ KV와 indexer key는 모두 BF16, recurrent state는 config의 state dtype(대�
 | Nemotron 3 Ultra | 2026-06 | 352 GB (NVFP4) | 1.12 TB | 12,288 B / 동일 | 408 MB | 2.0 GB | 262K (공식 최대 1M) |
 
 - 이 표만 KV를 **공식 dtype**으로 셌다 (V3.2 FP8, V4.1-Flash FP4). 본문 3 · 4절은 BF16이다
-- **DeepSeek 계열의 KV 축소에는 구조와 정밀도가 섞여 있다.** V3 → V3.2는 저장 구조가 같고 FP8로 줄었다. V4.1-Flash는 압축 · 층 간 공유로 구조상 1/22, FP4로 다시 1/3.6이다. 기술 보고서의 "V1 대비 1/437"도 두 효과를 합친 값이다
+- **DeepSeek 계열의 KV 축소에는 구조와 정밀도가 섞여 있다.** V3 → V3.2는 main MLA KV의 구조가 같고, sparse 선택용 indexer key가 추가되었다. BF16으로 세면 토큰당 70,272 → 85,888 B로 22% 늘고(main 70,272 + indexer 15,616), 공식 FP8 저장으로 48,068 B(main 40,016 + indexer 8,052)가 된다. V4.1-Flash는 압축 · 층 간 공유로 구조상 1/22, FP4로 다시 1/3.6이다. 기술 보고서의 "V1 대비 1/437"도 두 효과를 합친 값이다
 - 전체 수치: [data/memory-results.csv](llm-memory-requirements/data/memory-results.csv). 그림과 표는 모두 [make_figures.py](llm-memory-requirements/figures/make_figures.py) 한 파일에서 나온다
 
 ![토큰당 KV](llm-memory-requirements/figures/A1-kv-per-token.png)
@@ -348,6 +359,16 @@ Mamba-2       state = 층 수 × head × head 차원 × d_state × 4 B(FP32)  + 
 - **T**는 요청이 지금 보유한 토큰 수(입력 + 지금까지의 출력)다. 최대 지원 길이가 아니다
 - 토큰 수가 같아도 tokenizer가 다르면 같은 양의 텍스트가 아니다
 
+**4096 토큰마다 재개 지점을 저장할 때**
+
+1M 토큰에는 재개 지점이 256개다. 각 지점에서 생성을 이어 갈 수 있도록 다음과 같이 계산했다.
+
+- **Full KV · indexer key** — 과거 토큰의 항목이 그대로 남으므로 추가 저장이 필요 없다
+- **고정 state** — 매 스텝 덮어쓰므로 지점마다 사본을 남긴다. 요청 하나의 state를 256벌 저장한다
+- **Window KV** — 지점마다 최근 W 토큰을 남긴다. 층마다 `min(1M, 256 × W)` 토큰분을 저장한다
+
+요청 하나 기준으로 Nemotron 3 Ultra는 13 → 117 GB, Kimi K3는 29 → 144 GB, Qwen3.8-2.4T는 99 → 249 GB로 늘어난다. Window 모델은 MiMo(W 128)가 24 → 31 GB, Muse Spark Open(W 2048)이 69 → 168 GB다. 동시 32개에서는 Kimi K3의 합계 2.5 TB에 약 3.7 TB, Nemotron 3 Ultra의 0.78 TB에 약 3.3 TB가 더해진다.
+
 **모델별 계산 메모**
 
 | 모델 | 근거와 가정 |
@@ -368,18 +389,22 @@ Raschka KV 노트의 값과 일치한다 — DeepSeek-V3 68.6 KiB, Qwen3-Next 24
 계산값 위에 다음이 더해진다. 모델과 엔진마다 크기가 달라 일괄 비율로 더하지 않았다.
 
 - **병렬화 복제** — tensor parallel(TP)은 KV head를 GPU에 나눠 담는다. KV head가 GPU 수보다 적으면 같은 KV를 여러 GPU가 복제한다. MLA는 KV head가 사실상 1개라 TP8에서 8개 GPU가 모두 같은 latent를 들고 있다. 그래서 SGLang 등은 attention 부분만 data parallel로 돌린다(DP attention). 나눌 수 없는 embedding · norm, EP의 중복 expert도 복제된다
-- **엔진 예약** — vLLM은 GPU 메모리 사용 비율을 미리 정해 KV pool을 잡는다. `nvidia-smi`에는 예약량이 보인다. 시작 로그의 `Maximum concurrency for N tokens per request: X`가 실제로 받을 수 있는 요청 수다
+- **엔진 예약** — vLLM은 GPU 메모리 사용 비율을 미리 정해 KV pool을 잡는다. `nvidia-smi`에는 예약량이 보인다. 시작 로그의 `Maximum concurrency for N tokens per request: X`는 KV pool 용량으로 계산한 추정치다. 스케줄러 설정(최대 동시 시퀀스 수 등)과 처리 성능은 반영하지 않으므로 실제 서비스 한도와는 다르다
 - **hybrid 페이지 맞춤** — vLLM의 hybrid KV cache manager는 attention 층과 Mamba 층의 page 크기를 맞추느라 state를 padding한다. prefix caching을 켜면 블록 경계마다 state 사본을 저장한다 (3절의 4096 단위 저장)
 - **prefill 순간 최대치 · activation · CUDA graph · 통신 버퍼**
 - **speculative decoding** — MTP · drafter 가중치와 KV, recurrent state의 되돌리기용 사본
 - Hopper(H100)에는 FP4 tensor core가 없다. FP4 체크포인트를 H100에서 어떤 커널로 실행할 수 있는지는 확인하지 못했다
+
+**동시 요청과 캐시 보관**
+
+동시 1M 요청 128개에서도 37개 모델의 계산 합계는 GB200 NVL72의 명목 용량(13.4 TB) 이하다. 실제 수용 여부는 병렬화 복제와 엔진 여유분을 더해 확인해야 한다. 활성 요청은 GPU에 두고 유휴 세션의 KV를 CPU 메모리 · SSD로 내려 보관하는 구성도 쓰이며, GPU 구성과 캐시 보관 정책에 따라 선택한다.
 
 ### E. 출처
 
 **모델 설정 · 체크포인트**
 
 - 55개 모델의 config 원본: `data/raw/cfg_*.json` (2026-11-02 기준 각 공식 HF 저장소, Muse Spark Open만 unsloth 미러)
-- 체크포인트 크기: `data/raw/checkpoint-sizes-lineage.json` (2026-11-03 HF API — safetensors dtype별 원소 수, index `total_size`, `usedStorage`, revision `sha`). 대표 모델의 이전 조회분은 `data/raw/checkpoint-sizes.json` (2026-10-27)
+- 체크포인트 크기: `data/raw/checkpoint-sizes-lineage.json` (2026-11-03 HF API — 55개 모델과 같은 회사 변형 저장소 175개의 safetensors dtype별 원소 수, index `total_size`, `usedStorage`, revision `sha`). 대표 모델의 이전 조회분은 `data/raw/checkpoint-sizes.json` (2026-10-27)
 - V4.1-Flash Engram 크기: `data/raw/hdr_v41_*.json` (safetensors header)
 
 | 모델 | 저장소 | revision |

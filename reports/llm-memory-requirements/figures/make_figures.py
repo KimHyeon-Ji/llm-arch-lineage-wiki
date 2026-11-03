@@ -302,6 +302,7 @@ LINEAGE.sort(key=lambda m: (m["date"], m["name"]))
 SERIES_ORDER = ["GLM", "DeepSeek", "Hy", "MiniMax", "Qwen", "Nemotron", "Kimi", "Muse", "MiMo"]
 
 # 가중치 — (공식 체크포인트 중 가장 작은 것 GB, 그 포맷, 같은 가중치를 BF16으로 GB). 원본: ../data/raw/checkpoint-sizes-lineage.json
+# 같은 회사의 GPU 서빙용 변형(FP8 · GPTQ-Int4 · NVFP4 · MXFP4 등)을 포함한다. MLX · GGUF와 drafter · adapter 저장소는 뺐다.
 # 크기 = safetensors dtype별 원소 수 × 바이트. FP4 · INT4처럼 묶어 저장하는 dtype이 있으면 index의 total_size(없으면 usedStorage).
 # BF16 = BF16 저장소의 크기, 없으면 파라미터 수 × 2. V4.1-Flash는 host에 두는 Engram 203 GB를 뺀 GPU 상주분이다.
 WEIGHTS = {
@@ -312,23 +313,23 @@ WEIGHTS = {
     "DeepSeek-V3.2-Exp": (689.5, "FP8", 1370.8), "DeepSeek-V3.2": (689.3, "FP8", 1370.8),
     "DeepSeek-V4-Flash": (159.6, "FP4 expert + FP8", 581.8), "DeepSeek-V4-Pro": (864.7, "FP4 expert + FP8", 3197.6),
     "DeepSeek-V4.1-Flash": (307.5, "FP4 expert + FP8", 1133.2),
-    "Hunyuan-A13B": (80.9, "FP8", 160.8), "Hy3": (299.9, "FP8", 597.6), "Hy4-preview": (813.8, "FP8", 1560.0),
+    "Hunyuan-A13B": (42.7, "INT4 (GPTQ)", 160.8), "Hy3": (299.9, "FP8", 597.6), "Hy4-preview": (813.8, "FP8", 1560.0),
     "MiniMax-Text-01": (914.7, "BF16", 914.7), "MiniMax-M1": (912.2, "BF16", 912.2),
     "MiniMax-M2": (230.1, "FP8", 457.4), "MiniMax-M2.1": (230.1, "FP8", 457.4), "MiniMax-M2.5": (230.1, "FP8", 457.4),
-    "MiniMax-M2.7": (230.1, "FP8", 457.4), "MiniMax-M3": (854.2, "BF16", 854.2),
+    "MiniMax-M2.7": (230.1, "FP8", 457.4), "MiniMax-M3": (430.5, "MXFP8", 854.2),
     "MiniMax-M3.1-Flash": (250.1, "8-bit", 441.0),
-    "Qwen3-235B-A22B": (239.0, "FP8", 470.2), "Qwen3-Next 80B-A3B": (82.0, "FP8", 162.6),
-    "Qwen3.5-397B-A17B": (406.1, "FP8", 806.8), "Qwen3.5-27B": (30.9, "FP8", 55.6), "Qwen3.6-35B-A3B": (37.5, "FP8", 71.9),
+    "Qwen3-235B-A22B": (124.5, "INT4 (GPTQ)", 470.2), "Qwen3-Next 80B-A3B": (82.0, "FP8", 162.6),
+    "Qwen3.5-397B-A17B": (235.7, "INT4 (GPTQ)", 806.8), "Qwen3.5-27B": (30.9, "FP8", 55.6), "Qwen3.6-35B-A3B": (37.5, "FP8", 71.9),
     "Qwen3.6-27B": (30.9, "FP8", 55.6), "Qwen3.8-27B": (30.9, "FP8", 55.6), "Qwen3.8-2.4T-A95B": (2496.1, "FP8", 4892.4),
     "Qwen3.8-Flash-Next": (185.5, "FP8", 360.0),
     "Nemotron-H-56B": (112.6, "BF16", 112.6), "Nemotron Nano 9B v2": (7.8, "NVFP4", 17.8),
     "Nemotron 3 Nano 30B-A3B": (19.3, "NVFP4", 63.2), "Nemotron 3 Super 120B-A12B": (80.3, "NVFP4", 247.2),
     "Nemotron 3 Ultra 550B-A55B": (352.3, "NVFP4", 1121.0), "Nemotron 3.5 Lightning 30B-A3B": (21.6, "NVFP4", 65.8),
-    "Nemotron 3.5 Bolt 74B-A9B": (149.8, "BF16", 149.8),
+    "Nemotron 3.5 Bolt 74B-A9B": (24.1, "2-bit 혼합", 149.8),
     "Kimi K2": (1028.9, "FP8", 2052.8), "Kimi Linear 48B-A3B": (98.2, "BF16", 98.2), "Kimi K2.5": (595.1, "INT4", 2053.8),
     "Kimi K2.6": (595.1, "INT4", 2053.8), "Kimi K3": (1560.9, "MXFP4", 5559.9),
     "Muse Glimmer 30B": (59.6, "BF16", 59.6), "Muse Spark Open 816B-A42B": (533.0, "NVFP4", 1644.3),
-    "MiMo-V2-Flash": (313.0, "FP8", 619.6), "MiMo-V2.5": (315.0, "FP8", 621.6), "MiMo-V2.5-Pro": (1033.1, "FP8", 2046.4),
+    "MiMo-V2-Flash": (313.0, "FP8", 619.6), "MiMo-V2.5": (315.0, "FP8", 621.6), "MiMo-V2.5-Pro": (569.9, "MXFP4", 2046.4),
     "MiMo-V2.6-Flash": (172.9, "FP4 혼합", 621.6), "MiMo-V2.6-Pro": (566.0, "FP4 혼합", 2048.4),
 }
 for _m in LINEAGE:
