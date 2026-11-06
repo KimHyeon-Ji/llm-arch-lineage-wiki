@@ -1,0 +1,5 @@
+﻿batch,scope,layers,state_MiB,dedicated_state_sram_budget_MiB
+1,current_layer,1,3.05859375,32
+1,all_gdn_layers,36,110.109375,32
+8,current_layer,1,24.46875,32
+8,all_gdn_layers,36,880.875,32

@@ -1,0 +1,145 @@
+{
+  "parameters": {
+    "mla_bytes": 1152,
+    "dsa_index_bytes": 132,
+    "dsa_k": 2048,
+    "dsa_layers": 61,
+    "dsa_limit": 163840,
+    "qsa_kv_bytes": 2048,
+    "qsa_index_bytes": 256,
+    "qsa_block": 4,
+    "qsa_k": 2048,
+    "qsa_limit": 262144,
+    "qsa_layers": 12,
+    "gdn_layers": 36,
+    "gdn_state_bytes": 3207168,
+    "csa_kv_bytes": 1024,
+    "csa_index_bytes": 64,
+    "csa_k": 1024,
+    "csa_block": 4,
+    "window": 128
+  },
+  "selector_crossover_tokens": {
+    "DSA": 17873.454545454544,
+    "QSA": 65536.0,
+    "CSA": 73728.0
+  },
+  "main_context_tokens": 131072,
+  "dsa_main_kv_storage_GB_at_128k": 9.210691584,
+  "dsa_index_storage_GB_at_128k": 1.055391744,
+  "tier_scenarios": [
+    {
+      "batch": 1,
+      "target_tokens_per_second_per_request": 50,
+      "read_amplification": 1,
+      "payload_bytes_per_step_per_request": 143917056,
+      "required_aggregate_bandwidth_GBps": 7.1958528
+    },
+    {
+      "batch": 1,
+      "target_tokens_per_second_per_request": 50,
+      "read_amplification": 4,
+      "payload_bytes_per_step_per_request": 143917056,
+      "required_aggregate_bandwidth_GBps": 28.7834112
+    },
+    {
+      "batch": 8,
+      "target_tokens_per_second_per_request": 50,
+      "read_amplification": 1,
+      "payload_bytes_per_step_per_request": 143917056,
+      "required_aggregate_bandwidth_GBps": 57.5668224
+    },
+    {
+      "batch": 8,
+      "target_tokens_per_second_per_request": 50,
+      "read_amplification": 4,
+      "payload_bytes_per_step_per_request": 143917056,
+      "required_aggregate_bandwidth_GBps": 230.2672896
+    },
+    {
+      "batch": 32,
+      "target_tokens_per_second_per_request": 50,
+      "read_amplification": 1,
+      "payload_bytes_per_step_per_request": 143917056,
+      "required_aggregate_bandwidth_GBps": 230.2672896
+    },
+    {
+      "batch": 32,
+      "target_tokens_per_second_per_request": 50,
+      "read_amplification": 4,
+      "payload_bytes_per_step_per_request": 143917056,
+      "required_aggregate_bandwidth_GBps": 921.0691584
+    }
+  ],
+  "hybrid_io": [
+    {
+      "tokens": 32768,
+      "qsa_read_bytes": 75497472,
+      "state_read_bytes": 115458048,
+      "state_write_bytes": 115458048,
+      "state_io_share": 0.753609239653513,
+      "total_modelled_bytes": 306413568
+    },
+    {
+      "tokens": 131072,
+      "qsa_read_bytes": 150994944,
+      "state_read_bytes": 115458048,
+      "state_write_bytes": 115458048,
+      "state_io_share": 0.6046332046332046,
+      "total_modelled_bytes": 381911040
+    },
+    {
+      "tokens": 262144,
+      "qsa_read_bytes": 251658240,
+      "state_read_bytes": 115458048,
+      "state_write_bytes": 115458048,
+      "state_io_share": 0.4785088612752088,
+      "total_modelled_bytes": 482574336
+    }
+  ],
+  "sram_working_sets": [
+    {
+      "batch": 1,
+      "scope": "current_layer",
+      "layers": 1,
+      "state_MiB": 3.05859375,
+      "dedicated_state_sram_budget_MiB": 32
+    },
+    {
+      "batch": 1,
+      "scope": "all_gdn_layers",
+      "layers": 36,
+      "state_MiB": 110.109375,
+      "dedicated_state_sram_budget_MiB": 32
+    },
+    {
+      "batch": 8,
+      "scope": "current_layer",
+      "layers": 1,
+      "state_MiB": 24.46875,
+      "dedicated_state_sram_budget_MiB": 32
+    },
+    {
+      "batch": 8,
+      "scope": "all_gdn_layers",
+      "layers": 36,
+      "state_MiB": 880.875,
+      "dedicated_state_sram_budget_MiB": 32
+    }
+  ],
+  "provenance": [
+    {
+      "path": "reports/llm-memory-requirements/data/raw/cfg_deepseek-ai_DeepSeek-V3.2.json",
+      "sha256": "c7fa8b191e9936d8e6a57d864baab82b792fae16a116416cdd3a75ba76bc5af1"
+    },
+    {
+      "path": "reports/llm-memory-requirements/data/raw/cfg_deepseek-ai_DeepSeek-V4-Pro.json",
+      "sha256": "5fe4568daee51c208cb8a79538eaeda090ae011ade1dee2c386aa95f569c810e"
+    },
+    {
+      "path": "reports/llm-memory-requirements/data/raw/cfg_Qwen_Qwen3.8-Flash-Next.json",
+      "sha256": "889658f2508e8c61d409b02e70e0d78d8d4452ec65aaafbe129805d213d2e74b"
+    }
+  ],
+  "max_current_layer_requests_for_32MiB": 10
+}

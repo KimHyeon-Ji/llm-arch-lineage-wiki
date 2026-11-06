@@ -1,0 +1,7 @@
+﻿batch,target_tokens_per_second_per_request,read_amplification,payload_bytes_per_step_per_request,required_aggregate_bandwidth_GBps
+1,50,1,143917056,7.1958528
+1,50,4,143917056,28.7834112
+8,50,1,143917056,57.5668224
+8,50,4,143917056,230.2672896
+32,50,1,143917056,230.2672896
+32,50,4,143917056,921.0691584

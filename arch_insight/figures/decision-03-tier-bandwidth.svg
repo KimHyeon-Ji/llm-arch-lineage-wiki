@@ -1,0 +1,245 @@
+<?xml version="1.0" encoding="utf-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+  "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg xmlns:xlink="http://www.w3.org/1999/xlink" width="1008pt" height="567pt" viewBox="0 0 1008 567" xmlns="http://www.w3.org/2000/svg" version="1.1">
+ <metadata>
+  <rdf:RDF xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:cc="http://creativecommons.org/ns#" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+   <cc:Work>
+    <dc:type rdf:resource="http://purl.org/dc/dcmitype/StillImage"/>
+    <dc:date>2026-11-06T16:23:15.780013</dc:date>
+    <dc:format>image/svg+xml</dc:format>
+    <dc:creator>
+     <cc:Agent>
+      <dc:title>Matplotlib v3.11.2, https://matplotlib.org/</dc:title>
+     </cc:Agent>
+    </dc:creator>
+   </cc:Work>
+  </rdf:RDF>
+ </metadata>
+ <defs>
+  <style type="text/css">*{stroke-linejoin: round; stroke-linecap: butt}</style>
+ </defs>
+ <g id="figure_1">
+  <g id="patch_1">
+   <path d="M 0 567 
+L 1008 567 
+L 1008 0 
+L 0 0 
+z
+" style="fill: #ffffff"/>
+  </g>
+  <g id="axes_1">
+   <g id="patch_2">
+    <path d="M 90.72 425.25 
+L 917.28 425.25 
+L 917.28 96.39 
+L 90.72 96.39 
+z
+" style="fill: #ffffff"/>
+   </g>
+   <g id="matplotlib.axis_1">
+    <g id="xtick_1">
+     <g id="line2d_1"/>
+     <g id="text_1">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; fill: #6b7788" transform="translate(229.119922 445.466563)">1요청</text>
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; fill: #6b7788" transform="translate(200.949531 459.171914)">보관 KV 9.2 GB</text>
+     </g>
+    </g>
+    <g id="xtick_2">
+     <g id="line2d_2"/>
+     <g id="text_2">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; fill: #6b7788" transform="translate(487.419922 445.466563)">8요청</text>
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; fill: #6b7788" transform="translate(455.669453 459.171914)">보관 KV 73.7 GB</text>
+     </g>
+    </g>
+    <g id="xtick_3">
+     <g id="line2d_3"/>
+     <g id="text_3">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; fill: #6b7788" transform="translate(742.139844 445.466563)">32요청</text>
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; fill: #6b7788" transform="translate(710.389375 459.171914)">보관 KV 294.7 GB</text>
+     </g>
+    </g>
+   </g>
+   <g id="matplotlib.axis_2">
+    <g id="ytick_1">
+     <g id="line2d_4">
+      <path d="M 90.72 425.25 
+L 917.28 425.25 
+" clip-path="url(#p9c3f251f19)" style="fill: none; stroke: #e5eaf1; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_5"/>
+     <g id="text_4">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; text-anchor: end; fill: #25334b" x="81.72" y="430.44873" transform="rotate(-0 81.72 430.44873)">0</text>
+     </g>
+    </g>
+    <g id="ytick_2">
+     <g id="line2d_6">
+      <path d="M 90.72 393.93 
+L 917.28 393.93 
+" clip-path="url(#p9c3f251f19)" style="fill: none; stroke: #e5eaf1; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_7"/>
+     <g id="text_5">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; text-anchor: end; fill: #25334b" x="81.72" y="399.12873" transform="rotate(-0 81.72 399.12873)">100</text>
+     </g>
+    </g>
+    <g id="ytick_3">
+     <g id="line2d_8">
+      <path d="M 90.72 346.95 
+L 917.28 346.95 
+" clip-path="url(#p9c3f251f19)" style="fill: none; stroke: #e5eaf1; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_9"/>
+     <g id="text_6">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; text-anchor: end; fill: #25334b" x="81.72" y="352.14873" transform="rotate(-0 81.72 352.14873)">250</text>
+     </g>
+    </g>
+    <g id="ytick_4">
+     <g id="line2d_10">
+      <path d="M 90.72 268.65 
+L 917.28 268.65 
+" clip-path="url(#p9c3f251f19)" style="fill: none; stroke: #e5eaf1; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_11"/>
+     <g id="text_7">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; text-anchor: end; fill: #25334b" x="81.72" y="273.84873" transform="rotate(-0 81.72 273.84873)">500</text>
+     </g>
+    </g>
+    <g id="ytick_5">
+     <g id="line2d_12">
+      <path d="M 90.72 112.05 
+L 917.28 112.05 
+" clip-path="url(#p9c3f251f19)" style="fill: none; stroke: #e5eaf1; stroke-width: 0.8; stroke-linecap: square"/>
+     </g>
+     <g id="line2d_13"/>
+     <g id="text_8">
+      <text style="font-size: 13px; font-family: 'Malgun Gothic'; text-anchor: end; fill: #25334b" x="81.72" y="117.24873" transform="rotate(-0 81.72 117.24873)">1000</text>
+     </g>
+    </g>
+    <g id="text_9">
+     <text style="font-size: 13px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #6b7788" x="38.476836" y="260.82" transform="rotate(-90 38.476836 260.82)">필요한 외부 계층 합산 대역폭 (GB/s)</text>
+    </g>
+   </g>
+   <g id="patch_3">
+    <path d="M 159.1695 425.25 
+L 239.2425 425.25 
+L 239.2425 422.996259 
+L 159.1695 422.996259 
+z
+" clip-path="url(#p9c3f251f19)" style="fill: #2868c8"/>
+   </g>
+   <g id="patch_4">
+    <path d="M 417.4695 425.25 
+L 497.5425 425.25 
+L 497.5425 407.220071 
+L 417.4695 407.220071 
+z
+" clip-path="url(#p9c3f251f19)" style="fill: #2868c8"/>
+   </g>
+   <g id="patch_5">
+    <path d="M 675.7695 425.25 
+L 755.8425 425.25 
+L 755.8425 353.130285 
+L 675.7695 353.130285 
+z
+" clip-path="url(#p9c3f251f19)" style="fill: #2868c8"/>
+   </g>
+   <g id="patch_6">
+    <path d="M 252.1575 425.25 
+L 332.2305 425.25 
+L 332.2305 416.235036 
+L 252.1575 416.235036 
+z
+" clip-path="url(#p9c3f251f19)" style="fill: #d67e29"/>
+   </g>
+   <g id="patch_7">
+    <path d="M 510.4575 425.25 
+L 590.5305 425.25 
+L 590.5305 353.130285 
+L 510.4575 353.130285 
+z
+" clip-path="url(#p9c3f251f19)" style="fill: #d67e29"/>
+   </g>
+   <g id="patch_8">
+    <path d="M 768.7575 425.25 
+L 848.8305 425.25 
+L 848.8305 136.77114 
+L 768.7575 136.77114 
+z
+" clip-path="url(#p9c3f251f19)" style="fill: #d67e29"/>
+   </g>
+   <g id="line2d_14">
+    <path d="M 90.72 393.93 
+L 917.28 393.93 
+" clip-path="url(#p9c3f251f19)" style="fill: none; stroke-dasharray: 6,4.5; stroke-dashoffset: 0; stroke: #6b7788; stroke-width: 1.5"/>
+   </g>
+   <g id="text_10">
+    <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #2868c8" x="199.206" y="417.985059" transform="rotate(-0 199.206 417.985059)">7</text>
+   </g>
+   <g id="text_11">
+    <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #2868c8" x="457.506" y="402.208871" transform="rotate(-0 457.506 402.208871)">58</text>
+   </g>
+   <g id="text_12">
+    <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #2868c8" x="715.806" y="348.119085" transform="rotate(-0 715.806 348.119085)">230</text>
+   </g>
+   <g id="text_13">
+    <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #d67e29" x="292.194" y="411.223836" transform="rotate(-0 292.194 411.223836)">29</text>
+   </g>
+   <g id="text_14">
+    <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #d67e29" x="550.494" y="348.119085" transform="rotate(-0 550.494 348.119085)">230</text>
+   </g>
+   <g id="text_15">
+    <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #d67e29" x="808.794" y="131.75994" transform="rotate(-0 808.794 131.75994)">921</text>
+   </g>
+   <g id="text_16">
+    <g id="patch_9">
+     <path d="M 764.677594 394.268651 
+L 888.279 394.268651 
+L 888.279 379.126913 
+L 764.677594 379.126913 
+z
+" style="fill: #ffffff"/>
+    </g>
+    <text style="font-size: 10.5px; font-family: 'Malgun Gothic'; text-anchor: end; fill: #6b7788" x="886.284" y="390.1716" transform="rotate(-0 886.284 390.1716)">가정: 외부 계층 100 GB/s</text>
+   </g>
+   <g id="legend_1">
+    <g id="patch_10">
+     <path d="M 101.52 117.43875 
+L 125.52 117.43875 
+L 125.52 109.03875 
+L 101.52 109.03875 
+z
+" style="fill: #2868c8"/>
+    </g>
+    <g id="text_17">
+     <text style="font-size: 12px; font-family: 'Malgun Gothic'; text-anchor: start; fill: #25334b" x="135.12" y="117.43875" transform="rotate(-0 135.12 117.43875)">읽기 증폭 1배</text>
+    </g>
+    <g id="patch_11">
+     <path d="M 234.166875 117.43875 
+L 258.166875 117.43875 
+L 258.166875 109.03875 
+L 234.166875 109.03875 
+z
+" style="fill: #d67e29"/>
+    </g>
+    <g id="text_18">
+     <text style="font-size: 12px; font-family: 'Malgun Gothic'; text-anchor: start; fill: #25334b" x="267.766875" y="117.43875" transform="rotate(-0 267.766875 117.43875)">읽기 증폭 4배</text>
+    </g>
+   </g>
+  </g>
+  <g id="text_19">
+   <text style="font-size: 12px; font-family: 'Malgun Gothic'; text-anchor: start; fill: #6b7788" x="45.36" y="38.70375" transform="rotate(-0 45.36 38.70375)">설계 시나리오 · DSA 61층 · 128K · 요청당 50 token/s · 선택 KV 전부를 용량 계층에서 공급</text>
+  </g>
+  <g id="text_20">
+   <text style="font-size: 10.5px; font-family: 'Malgun Gothic'; text-anchor: start; fill: #6b7788" x="45.36" y="545.052949" transform="rotate(-0 45.36 545.052949)">모델 복제본 1개의 합산 BW 필요조건. 1GB=10^9 B. 증폭·100GB/s 예산은 가정이며 접근 지연·다른 트래픽은 별도.</text>
+  </g>
+  <g id="text_21">
+   <text style="font-weight: 700; font-size: 14px; font-family: 'Malgun Gothic'; text-anchor: middle; fill: #25334b" x="504" y="504.63" transform="rotate(-0 504 504.63)">8요청: 58 → 230 GB/s  |  조회율이 낮아도 batch·생성 속도·과다 읽기가 BW를 키운다</text>
+  </g>
+ </g>
+ <defs>
+  <clipPath id="p9c3f251f19">
+   <rect x="90.72" y="96.39" width="826.56" height="328.86"/>
+  </clipPath>
+ </defs>
+</svg>
