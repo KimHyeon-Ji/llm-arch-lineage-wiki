@@ -1,0 +1,132 @@
+{
+  "at_1m": {
+    "MLA": {
+      "method": "MLA",
+      "tokens": 1000000,
+      "index_read_bytes": 0,
+      "main_read_bytes": 1152000000,
+      "total_read_bytes": 1152000000,
+      "index_store_bytes": 0,
+      "main_store_bytes": 1152000000,
+      "total_store_bytes": 1152000000,
+      "state_write_bytes": 0,
+      "within_config": false,
+      "omitted": "allocation/padding + scratch + append traffic",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    },
+    "DSA": {
+      "method": "DSA",
+      "tokens": 1000000,
+      "index_read_bytes": 132000000,
+      "main_read_bytes": 2359296,
+      "total_read_bytes": 134359296,
+      "index_store_bytes": 132000000,
+      "main_store_bytes": 1152000000,
+      "total_store_bytes": 1284000000,
+      "state_write_bytes": 0,
+      "within_config": false,
+      "omitted": "allocation/padding + scratch + append traffic",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    },
+    "CSA": {
+      "method": "CSA",
+      "tokens": 1000000,
+      "index_read_bytes": 16000000,
+      "main_read_bytes": 1179648,
+      "total_read_bytes": 17179648,
+      "index_store_bytes": 16000000,
+      "main_store_bytes": 256131072,
+      "total_store_bytes": 272131072,
+      "state_write_bytes": 0,
+      "within_config": true,
+      "omitted": "compression state + CSA quant scales",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    },
+    "HCA": {
+      "method": "HCA",
+      "tokens": 1000000,
+      "index_read_bytes": 0,
+      "main_read_bytes": 8130560,
+      "total_read_bytes": 8130560,
+      "index_store_bytes": 0,
+      "main_store_bytes": 8130560,
+      "total_store_bytes": 8130560,
+      "state_write_bytes": 0,
+      "within_config": true,
+      "omitted": "compression state + CSA quant scales",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    },
+    "GQA": {
+      "method": "GQA",
+      "tokens": 1000000,
+      "index_read_bytes": 0,
+      "main_read_bytes": 2048000000,
+      "total_read_bytes": 2048000000,
+      "index_store_bytes": 0,
+      "main_store_bytes": 2048000000,
+      "total_store_bytes": 2048000000,
+      "state_write_bytes": 0,
+      "within_config": false,
+      "omitted": "allocation/padding + scratch + append traffic",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    },
+    "QSA": {
+      "method": "QSA",
+      "tokens": 1000000,
+      "index_read_bytes": 64000000,
+      "main_read_bytes": 4194304,
+      "total_read_bytes": 68194304,
+      "index_store_bytes": 64000000,
+      "main_store_bytes": 2048000000,
+      "total_store_bytes": 2112000000,
+      "state_write_bytes": 0,
+      "within_config": false,
+      "omitted": "allocation/padding + scratch + append traffic",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    },
+    "GDN": {
+      "method": "GDN",
+      "tokens": 1000000,
+      "index_read_bytes": 0,
+      "main_read_bytes": 3207168,
+      "total_read_bytes": 3207168,
+      "index_store_bytes": 0,
+      "main_store_bytes": 3207168,
+      "total_store_bytes": 3207168,
+      "state_write_bytes": 3207168,
+      "within_config": false,
+      "omitted": "allocation/padding + scratch + append traffic",
+      "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+    }
+  },
+  "half_year_counts": {
+    "2024 H2": {
+      "full": 1
+    },
+    "2025 H1": {
+      "state": 3,
+      "full": 2
+    },
+    "2025 H2": {
+      "full": 7,
+      "state": 4,
+      "sparse": 2,
+      "swa": 1
+    },
+    "2026 H1": {
+      "full": 5,
+      "sparse": 6,
+      "state": 7,
+      "swa": 2
+    },
+    "2026 H2": {
+      "full": 1,
+      "state": 6,
+      "swa": 4,
+      "sparse": 4
+    }
+  },
+  "gdn_state_bytes_per_layer": 3207168,
+  "qwen_state_layers": 36,
+  "scenario": "main KV BF16; DSA index FP8+FP32 scale; CSA FP4 payload; QSA index BF16 assumed; GDN matrix FP32"
+}

@@ -1,0 +1,4 @@
+﻿method,local_snapshot,sha256,source_url,scenario
+DSA,reports/llm-memory-requirements/data/raw/cfg_deepseek-ai_DeepSeek-V3.2.json,c7fa8b191e9936d8e6a57d864baab82b792fae16a116416cdd3a75ba76bc5af1,https://huggingface.co/deepseek-ai/DeepSeek-V3.2/blob/main/config.json,KV/index BF16; recurrent matrix FP32; conv BF16; MTP excluded
+CSA/HCA,reports/llm-memory-requirements/data/raw/cfg_deepseek-ai_DeepSeek-V4-Pro.json,5fe4568daee51c208cb8a79538eaeda090ae011ade1dee2c386aa95f569c810e,https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/main/config.json,KV/index BF16; recurrent matrix FP32; conv BF16; MTP excluded
+QSA/GDN,reports/llm-memory-requirements/data/raw/cfg_Qwen_Qwen3.8-Flash-Next.json,889658f2508e8c61d409b02e70e0d78d8d4452ec65aaafbe129805d213d2e74b,https://huggingface.co/Qwen/Qwen3.8-Flash-Next/blob/main/config.json,KV/index BF16; recurrent matrix FP32; conv BF16; MTP excluded
