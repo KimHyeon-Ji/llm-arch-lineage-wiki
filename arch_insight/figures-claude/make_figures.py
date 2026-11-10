@@ -1340,7 +1340,7 @@ def fig_arch():
          [(3, "100%", "길이에 비례"), (3, "103 ~ 111%", "그대로 · 압축형만 1/4 ~ 1/128"), (1, "▼ 26%", "KV 가진 층이 1/4")],
          ("동시 요청 수는 크기를 줄여야 증가", "압축 · hybrid · 용량 계층 활용")),
         ("읽기 대역폭", "디코드 1스텝 읽기",
-         [(3, "100%", "길이에 비례"), (1, "▼ 1/8 ~ 1/21", "읽기 대부분이 색인 키"), (2, "▼ 27%", "full 층 읽기는 길이에 비례")],
+         [(3, "100%", "길이에 비례"), (1, "▼ 1/8 ~ 1/21", "읽기 대부분이 색인 키"), (2, "▼ 26%", "full 층 읽기는 길이에 비례")],
          ("대역폭 주 소비가 KV → 색인 · state", "토큰당 색인 바이트 · state 크기")),
         ("저정밀 연산", "색인 점수 계산",
          [(0, "없음", "attention 연산만"), (3, "▲ attention의 3.8배", "DSA 기준 · head 수가 좌우"), (1, "state 갱신", "연산보다 메모리가 관건")],
@@ -1380,7 +1380,71 @@ def fig_arch():
     return f
 
 
-FIGS = [fig_trend, fig_write_read, fig_layers, fig_weights_kv, fig_moe, fig_sparse_mix, fig_read_store, fig_gain,
+def fig_summary():
+    """맨 앞 요약 — 행 = Full(기준) · Sparse · Hybrid, 열 = 구성 요소, 맨 아래 = 요소별 아키텍처 요구."""
+    S = K128
+    hy = qwen_config("hybrid", S)
+    hy_r = (hy[0][0] + hy[0][1] + hy[0][2] / 2) / sum(qwen_config("full", S)[0])   # 읽기만 (state 쓰기는 state 열)
+    f = Fig("00-summary", 1700, 700)
+    f.text(40, 44, "Attention 방식별 구성 요소 부담과 아키텍처 요구", 26, weight=700)
+    f.text(40, 78, "128K · 요청 1개 · 디코드 1스텝 · 본문 계산값 · 비율 = 같은 회사의 전 층 Full 대비 · ▼ 감소 · ▲ 증가 · 새 부담", 17, color=MUTED)
+    f.text(1268, 128, "부담", 15, weight=700, color=MUTED)
+    for k, lab in enumerate(("없음", "작음", "중간", "큼")):
+        x = 1316 + k * 88
+        f.rect(x, 113, 24, 18, LOAD[k], "#c9ccd6" if k == 0 else "none", 3, 1)
+        f.text(x + 30, 128, lab, 15, color=MUTED)
+    X0, W, G = 296, 264, 8
+    X = [X0 + i * (W + G) for i in range(5)]
+    cols = [("KV cache 크기", "요청당 보유량"), ("KV cache 읽기", "디코드 1스텝 (색인 키 · state 포함)"),
+            ("색인 · top-k", "읽을 KV를 고르는 비용"), ("흩어진 읽기", "선택된 KV를 모으는 읽기"),
+            ("state 갱신", "매 스텝 읽고 덮어쓰기")]
+    for x, (nm, sub) in zip(X, cols):
+        f.text(x + 4, 180, nm, 19, weight=700)
+        f.text(x + 4, 206, sub, 14, color=MUTED)
+    f.line(40, 222, 1660, 222, AXIS, 1)
+    rows = [
+        ("Full attention", "전 층 MLA · GQA (기준)", FULL, FULL_L,
+         [(3, "길이에 비례", ("기준 100%",)), (3, "매 스텝 전부", ("기준 100%",)), (0, "없음", ()),
+          (0, "없음", ("한 구간 연속 읽기",)), (0, "없음", ("KV 1줄 추가",))]),
+        ("Sparse attention", "선택 읽기 — DSA · QSA", SEL, SEL_L,
+         [(3, "그대로", ("103 ~ 111% (색인 키 추가)", "압축형(CSA · HCA)만 1/4 ~ 1/128")),
+          (1, "▼ 1/8 ~ 1/21", ("남은 읽기의 대부분이 색인 키",)),
+          (3, "▲ KV보다 큰 새 비용", ("읽기 = 선택된 KV의 2 ~ 7배", "연산 = attention의 3.8배")),
+          (3, "▲ 작고 흩어진 조각", ("1.2 KB × 2,048줄", "위치는 top-k 뒤에 결정")),
+          (0, "없음", ("KV 1줄 + 색인 키 1개",))]),
+        ("Hybrid attention", "state 36 + full 12층 (가정)", STATE, STATE_L,
+         [(1, "▼ 1/4", ("KV 가진 층이 1/4 (26%)",)),
+          (2, "▼ 1/4", (f"{hy_r * 100:.0f}% · full 층은 길이에 비례",)),
+          (0, "없음", ()), (0, "없음", ("state · KV 모두 연속 읽기",)),
+          (3, "▲ 매 스텝 전부 덮어씀", ("115 MB 읽고 같은 양 쓰기", "요청 수만큼 증가"))]),
+    ]
+    y, RH = 234, 100
+    for nm, sub, dark, light, cells in rows:
+        chip(f, 40, y + 12, 236, 40, nm, dark, light, 18)
+        f.text(40, y + 78, sub, 14, color=MUTED)
+        for x, (lv, t1, subs) in zip(X, cells):
+            f.rect(x, y, W, RH, LOAD[lv], rx=8)
+            dk = lv == 3
+            f.text(x + 16, y + 38, t1, 19, weight=700, color="#ffffff" if dk else INK)
+            for j, t2 in enumerate(subs):
+                f.text(x + 16, y + 64 + j * 22, t2, 14, color="#e6e9f2" if dk else (INK if lv == 2 else MUTED))
+        y += RH + 8
+    # 맨 아래 — 요소별 아키텍처 요구
+    y += 26
+    arch = [("메모리 용량", "동시 요청 수를 결정"), ("읽기 대역폭", "주 소비가 KV → 색인 · state"),
+            ("저정밀 연산 · 온칩 정렬", "FP8 · FP4 연산 밀도 · SRAM"), ("불규칙 접근 · 지연", "메모리 동시 요청 수 · gather"),
+            ("쓰기 대역폭 · 온칩", "state 온칩 상주")]
+    f.text(40, y + 36, "→ 아키텍처 요구", 19, weight=700)
+    f.text(40, y + 62, "요소마다 필요한 HW 특성", 14, color=MUTED)
+    for x, (t1, t2) in zip(X, arch):
+        f.arrow(x + W / 2, y - 20, x + W / 2, y - 4, MUTED, 2)
+        f.rect(x, y, W, 84, BOX[0], BOX[1], 8, 1)
+        f.text(x + 16, y + 36, t1, 17, weight=700)
+        f.text(x + 16, y + 62, t2, 14, color=MUTED)
+    return f
+
+
+FIGS = [fig_summary, fig_trend, fig_write_read, fig_layers, fig_weights_kv, fig_moe, fig_sparse_mix, fig_read_store, fig_gain,
         fig_access, fig_saturation, fig_index_compute, fig_hybrid, fig_sparse_hybrid, fig_behavior, fig_stage,
         fig_arch]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
