@@ -788,19 +788,16 @@ def fig_gain():
     return f
 
 
-# ---------------------------------------------------------------- 그림 9. KV cache 접근 패턴과 읽기 증폭
+# ---------------------------------------------------------------- 그림 9. KV cache 읽기 패턴과 GPU 메모리 특성
 def fig_access():
     S = K128
-    f = Fig("09-access-pattern", 1600, 740)
-    basis(f, "읽는 모양 = 층 1개 · 컨텍스트 128K · KV BF16 · 초당 요청 수 = 요청 1개 · 모델 전체 · 20 토큰/s (계산값)")
-    x0, x1 = 250, 720
-    heads = [(x0, "읽는 모양 (왼쪽 = 오래된 토큰)", ""), (760, "조각 × 크기", "선택 단위"), (960, "필요한 양", "층당"),
-             (1110, "4 KB 단위로 읽으면", "실제 전송량 (증폭)"), (1360, "초당 무작위 읽기", "요청 1개 · 모델 전체")]
-    for x, h, s in heads:
-        f.text(x, 100, h, 17, weight=700, color=MUTED)
-        if s:
-            f.text(x, 122, s, 14, color=MUTED)
-    f.line(40, 136, 1560, 136, AXIS, 1)
+    f = Fig("09-access-pattern", 1600, 800)
+    f.text(40, 44, "KV cache 읽기 패턴 — 읽기 단위와 위치가 정해지는 시점", 26, weight=700)
+    f.text(40, 78, "층 1개 · 컨텍스트 128K · 디코드 1스텝 · KV BF16 (계산값) · 막대 왼쪽 = 오래된 토큰, 진한 칸 = 읽는 위치", 17, color=MUTED)
+    x0, x1 = 250, 700
+    for x, h in ((40, "방식"), (x0, "읽는 위치"), (740, "읽기 단위"), (990, "읽을 위치가 정해지는 때"), (1270, "GPU 메모리 관점")):
+        f.text(x, 126, h, 17, weight=700, color=MUTED)
+    f.line(40, 140, 1560, 140, AXIS, 1)
     rnd = random.Random(11)
     n = 150
     cw = (x1 - x0) / n
@@ -808,118 +805,137 @@ def fig_access():
     qsa = set()
     for st in rnd.sample(range(0, n - 4, 6), 7):
         qsa.update(range(st, st + 4))
-    amp4k = lambda size: math.ceil(size / 4096) * 4096 / size
-    hca_amt = total(read_parts("hca", S))
-    iops_dsa = 61 * TOPK * 20
-    iops_qsa = 12 * (TOPK // 4) * 20
     rows = [
-        ("DSA", "토큰 단위 선택", dsa, SEL, "2,048 × 1.2 KB", fmt_b(MLA_B * TOPK),
-         f"{fmt_b(4096 * TOPK)} ({amp4k(MLA_B):.1f}×)", f"FP8 KV면 {amp4k(656):.1f}×", f"{iops_dsa / 1e4:,.0f}만 회", "61층 × 2,048조각 × 20"),
-        ("QSA", "4줄 블록 단위 선택", qsa, NAVY, "512 × 8 KB", fmt_b(GQA_B * TOPK),
-         f"{fmt_b(GQA_B * TOPK)} ({amp4k(4 * GQA_B):.1f}×)", "블록이 페이지보다 큼", f"{iops_qsa / 1e4:,.0f}만 회", "12층 × 512블록 × 20"),
-        ("HCA", "압축 KV 전체를 연속으로", set(range(n)), RUST, "연속 1구간", fmt_b(hca_amt),
-         f"{fmt_b(hca_amt)} (1.0×)", "순차 읽기", "층당 1회", "연속 스트림"),
+        ("Full (MLA)", "KV 전부를 순서대로", set(range(n)), FULL, ("연속 1구간", f"= {fmt_b(MLA_B * S)}"),
+         ("미리 정해짐", "0번 토큰부터 순서대로"), ("가장 효율적인 형태", "단, 읽는 양 자체가 큼")),
+        ("HCA (V4)", "압축 KV 전부를 순서대로", set(range(n)), RUST,
+         ("연속 1구간", f"= {fmt_b(total(read_parts('hca', S)))} (128줄 → 1)"),
+         ("미리 정해짐", "순서대로"), ("효율적 · 양도 작음", "대신 원본 KV 정밀 조회 불가")),
+        ("QSA (Qwen3.8)", "4줄 블록 단위 선택", qsa, NAVY, ("8 KB × 512블록", f"= {fmt_b(GQA_B * TOPK)}"),
+         ("top-k가 끝난 뒤", "매 스텝 · 층마다 바뀜"), ("흩어졌지만 조각이 큼", "연속 읽기에 가까움")),
+        ("DSA (V3.2)", "토큰 단위 선택", dsa, SEL, ("1.2 KB × 2,048줄", f"= {fmt_b(MLA_B * TOPK)}"),
+         ("top-k가 끝난 뒤", "매 스텝 · 층마다 바뀜"), ("작은 조각 · 직렬 대기", "GPU가 가장 불리한 형태")),
     ]
-    for i, (nm, sub, hit, col, pieces, need, xfer, xnote, iops, inote) in enumerate(rows):
-        y = 152 + i * 118
-        if i % 2 == 0:
-            f.rect(30, y - 4, 1540, 110, BOX[0], rx=8)
-        f.text(40, y + 44, nm, 24, weight=700)
-        f.text(40, y + 72, sub, 15, color=MUTED)
+    for i, (nm, sub, hit, col, (u1, u2), (w1, w2), (g1, g2)) in enumerate(rows):
+        y = 152 + i * 92
+        if i == 3:
+            f.rect(30, y - 2, 1540, 88, BOX[0], BOX[1], 8, 1.2)
+        f.text(40, y + 38, nm, 21, weight=700)
+        f.text(40, y + 64, sub, 14, color=MUTED)
         for k in range(n):
             on = k in hit
-            f.rect(x0 + k * cw, y + (24 if on else 34), max(cw - 1, 1), 40 if on else 20, col if on else FULL_L, rx=1)
-        f.text(760, y + 56, pieces, 19, weight=700)
-        f.text(960, y + 56, need, 19)
-        f.text(1110, y + 52, xfer, 20, weight=700, color=INK if "1.0×" not in xfer else MUTED)
-        f.text(1110, y + 80, xnote, 14, color=MUTED)
-        f.text(1360, y + 52, iops, 20, weight=700, color=INK if i == 0 else MUTED)
-        f.text(1360, y + 80, inote, 14, color=MUTED)
-    # 아래 — 무엇에 영향을 주나
-    boxes = [("읽기 증폭이란", ["필요한 조각보다 큰 단위로 가져와 생기는 낭비",
-                              "1.2 KB가 필요해도 4 KB 페이지 단위면 4 KB 전송",
-                              "→ 전송량 3.6배, 그만큼 링크 대역폭 소모"], None),
-             ("HBM (전송 단위 64 B)", ["조각(1.2 KB)이 전송 단위보다 커서 증폭 1.0×",
-                                    "대신 top-k가 끝나야 읽기 시작 — 직렬 대기",
-                                    "→ 영향: 메모리 지연 · 동시 요청 처리 수"], SEL),
-             ("대용량 계층 (CXL · SSD, 4 KB 페이지)", ["증폭만큼 링크 대역폭 소모 (DSA 3.6×)",
-                                                 f"요청 1개가 초당 {iops_dsa / 1e4:,.0f}만 회 무작위 읽기",
-                                                 "→ Gen5 NVMe 1개 최대 IOPS(약 250만) 수준"], CMP)]
-    bx, bw_ = 30, 503
-    for k, (title, lines, col) in enumerate(boxes):
-        x = bx + k * (bw_ + 15)
-        f.rect(x, 520, bw_, 196, BOX[0], BOX[1], 10, 1.2)
-        if col:
-            f.rect(x, 520, 8, 196, col, rx=3)
-        f.text(x + 24, 560, title, 19, weight=700)
+            f.rect(x0 + k * cw, y + (20 if on else 30), max(cw - 1, 1), 40 if on else 20, col if on else FULL_L, rx=1)
+        late = "top-k" in w1
+        for x, t1, t2, strong in ((740, u1, u2, True), (990, w1, w2, late), (1270, g1, g2, i == 3)):
+            f.text(x, y + 40, t1, 19, weight=700 if strong else 400, color=INK if strong else MUTED)
+            f.text(x, y + 66, t2, 15, color=MUTED)
+    # 아래 — 흩어진 읽기의 특징이 GPU에서 무엇으로 이어지나
+    pages = 1 - (1 - 1 / (K128 // 64)) ** TOPK
+    f.text(40, 548, "GPU가 흩어진 읽기에 약한 이유 — DSA 기준", 20, weight=700)
+    boxes = [("① 조각이 작다", ["HBM은 큰 연속 구간을 읽을 때 대역폭이 최대",
+                              f"DSA는 디코드 1스텝에 조각 {61 * TOPK / 1e4:.1f}만 개 (61층)",
+                              "→ 메모리 요청 수 증가 · 달성 대역폭 저하"]),
+             ("② 위치를 늦게 안다", ["색인 훑기 → top-k가 끝나야 읽을 줄이 정해짐",
+                                  "미리 읽기(prefetch) 불가 — 단계가 직렬로 이어짐",
+                                  "→ 메모리 지연이 그대로 시간에 노출"]),
+             ("③ 넓게 흩어져 있다", ["KV는 64토큰 페이지 단위로 관리 (paged KV)",
+                                  f"선택한 1.6%가 페이지의 {pages * 100:.0f}%에 흩어짐 (균등 가정)",
+                                  "→ 페이지 단위 이동 · 계층 배치 이점 감소"])]
+    for k, (title, lines) in enumerate(boxes):
+        x = 30 + k * 518
+        f.rect(x, 566, 503, 200, BOX[0], BOX[1], 10, 1.2)
+        f.rect(x, 566, 8, 200, SEL, rx=3)
+        f.text(x + 24, 606, title, 19, weight=700)
         for j, t in enumerate(lines):
-            f.text(x + 24, 604 + j * 40, t, 16, weight=700 if t.startswith("→") else 400,
-                   color=INK if t.startswith("→") else MUTED)
+            arrow = t.startswith("→")
+            f.text(x + 24, 650 + j * 38, t, 16, weight=700 if arrow else 400, color=INK if arrow else MUTED)
     return f
 
 
 # ---------------------------------------------------------------- 그림 10. 색인 키 읽기와 절감 포화
 def fig_saturation():
-    f = Fig("10-index-saturation", 1600, 740)
-    basis(f, "DSA(V3.2) 층 1개 · 디코드 1스텝 · KV BF16 1,152 B/줄 · 색인 키 132 B/줄 (계산값)")
-    x0, x1, top, bot = 130, 960, 140, 620
-    lo, hi = 1024, M
-    X = lambda s: x0 + (math.log10(s) - math.log10(lo)) / (math.log10(hi) - math.log10(lo)) * (x1 - x0)
-    vmax = 1400
-    Y = lambda v: bot - v / vmax * (bot - top)
-    f.text(40, 102, "컨텍스트 토큰 1개당 읽는 바이트", 21, weight=700)
-    for v in (0, 200, 400, 600, 800, 1000, 1200, 1400):
-        f.line(x0, Y(v), x1, Y(v), GRID, 1)
-        f.text(x0 - 12, Y(v) + 5, f"{v:,} B" if v else "0", 14, "end", color=MUTED)
-    for s, lab in ((1024, "1K"), (8192, "8K"), (32768, "32K"), (K128, "128K"), (M, "1M")):
-        f.line(X(s), top, X(s), bot, GRID, 1)
-        f.text(X(s), bot + 28, lab, 17, "middle", color=MUTED)
-    f.text((x0 + x1) / 2, bot + 58, "컨텍스트 길이 (토큰, 로그)", 16, "middle", color=MUTED)
-    pts = logspace(lo, hi, 200)
-    sel = lambda s: MLA_B * min(s, TOPK) / s
-    f.area([(X(lo), Y(0))] + [(X(s), Y(DSA_IDX)) for s in pts] + [(X(hi), Y(0))], SEL_L)
-    f.area([(X(s), Y(DSA_IDX)) for s in pts] + [(X(s), Y(DSA_IDX + sel(s))) for s in reversed(pts)], SEL)
-    f.poly([(X(s), Y(DSA_IDX + sel(s))) for s in pts], NAVY, 3)
-    f.line(x0, Y(MLA_B), x1, Y(MLA_B), FULL, 4)
-    f.text(X(30000), Y(MLA_B) - 14, "Full (MLA) — 토큰마다 KV 1,152 B를 전부 읽음", 17, "middle", 700, halo=True)
-    lim = SUPPORT["dsa"]
-    f.rect(X(lim), top, x1 - X(lim), bot - top, "#ffffff", opacity=0.55)
-    f.line(X(lim), top, X(lim), bot, AXIS, 1.5, "5 4")
-    f.text(X(lim) + 8, top + 20, "V3.2 지원 길이 밖 (외삽)", 14, color=MUTED)
-    for s, lab in ((8192, "8K"), (K128, "128K")):
-        v = DSA_IDX + sel(s)
-        f.dot(X(s), Y(v), 7, NAVY)
-        if s == 8192:
-            f.text(X(s) + 12, Y(v) - 14, f"{lab}: {v:.0f} B → {MLA_B / v:.1f}×", 17, weight=700, halo=True)
-        else:
-            f.text(X(s) - 8, Y(v) - 46, f"{lab}: {v:.0f} B → {MLA_B / v:.1f}×", 17, "end", 700, halo=True)
-    f.text(X(1100), Y(560), "선택된 2,048줄 ÷ 길이", 16, weight=700, color="#ffffff")
-    f.text(X(1100), Y(560) + 22, "길어질수록 0에 수렴", 14, color="#ffffff")
-    f.text(X(30000), Y(DSA_IDX / 2) + 6, "바닥 = 색인 키 132 B — 길이와 무관하게 남음", 16, "middle", 700)
-    f.text(x1 - 6, Y(330), f"상한 1,152 ÷ 132 = {MLA_B / DSA_IDX:.1f}×", 18, "end", 700, NAVY, halo=True)
-    f.arrow(x1 - 60, Y(310), x1 - 60, Y(DSA_IDX) - 6, NAVY, 2)
-    # 오른쪽 — 바닥을 낮추는 설계
-    rx0 = 1040
-    f.line(1000, 90, 1000, 700, GRID, 2, "6 6")
-    f.text(rx0, 102, "바닥(토큰당 색인 바이트)을 낮추는 설계", 21, weight=700)
-    f.text(rx0, 128, "상한 = KV 1줄 ÷ 토큰당 색인 바이트", 15, color=MUTED)
-    rows = [("DSA · V3.2", "FP8 키 + scale", DSA_IDX, MLA_B, SEL, False),
-            ("색인 키 FP4", "가정", 66, MLA_B, SEL_L, True),
-            ("QSA · 4줄 블록 색인", "블록 키 256 B ÷ 4", QSA_IDX / 4, GQA_B, NAVY, False),
-            ("CSA · 블록 + FP4", "64 B ÷ 4", CSA_IDX / 4, MLA_B, CMP, False)]
-    bx, bwid, bmax = rx0, 250, 140
-    for i, (nm, sub, b, kv, col, hyp) in enumerate(rows):
-        y = 160 + i * 96
-        f.text(bx, y + 20, nm, 18, weight=700, color=MUTED if hyp else INK)
-        f.text(bx + 210, y + 20, sub, 14, color=MUTED)
-        f.rect(bx, y + 34, b / bmax * bwid, 28, col, SEL if hyp else "none", 4, 1.5, "5 4" if hyp else None)
-        f.text(bx + b / bmax * bwid + 10, y + 55, f"{b:.0f} B → 상한 {kv / b:.0f}×" if kv / b >= 10 else
-               f"{b:.0f} B → 상한 {kv / b:.1f}×", 18, weight=700)
-    f.rect(rx0 - 10, 556, 540, 150, BOX[0], BOX[1], 8, 1.2)
-    f.text(rx0 + 6, 590, "KV를 FP8(656 B)로 줄이면 상한은 오히려 감소", 16, weight=700)
-    f.text(rx0 + 6, 620, f"656 ÷ 132 = {656 / DSA_IDX:.1f}× — 색인 키가 KV 1줄의 {DSA_IDX / 656 * 100:.0f}%", 16, color=MUTED)
-    f.text(rx0 + 6, 656, "→ KV와 색인 키를 함께 줄여야 상한 유지", 16, weight=700)
-    f.text(rx0 + 6, 684, "QSA 상한은 GQA 2,048 B, 나머지는 MLA 1,152 B 기준", 13, color=MUTED)
+    f = Fig("10-index-saturation", 1600, 800)
+    f.text(40, 44, "Full 대비 KV cache 읽기 비율 — 길어질수록 색인 키만 바닥으로 남음", 26, weight=700)
+    f.text(40, 78, "DSA(V3.2) 층 1개 · 디코드 1스텝 읽기 바이트 기준 (같은 길이의 Full = 100%) · KV BF16 1,152 B/줄 · 색인 키 132 B/줄 (계산값)",
+           17, color=MUTED)
+    for (nm, col), lx in zip((("Full — KV 전부", FULL), ("선택된 KV 2,048줄", SEL), ("색인 키 (토큰마다 132 B)", SEL_L)),
+                             (40, 220, 420)):
+        f.rect(lx, 113, 18, 18, col, rx=3)
+        f.text(lx + 26, 128, nm, 16, color=MUTED)
+    x0, top, bot = 110, 180, 640
+    Y = lambda v: bot - v / 100 * (bot - top)
+    for v in (0, 25, 50, 75, 100):
+        f.line(x0, Y(v), 950, Y(v), GRID, 1)
+        f.text(x0 - 12, Y(v) + 5, f"{v}%", 15, "end", color=MUTED)
+    floor = DSA_IDX / MLA_B * 100
+    cols = [("Full", None), ("8K", 8192), ("32K", 32768), ("128K", K128), ("1M*", M), ("∞", None)]
+    bw, slot = 92, 136
+    xs = [x0 + 34 + j * slot for j in range(len(cols))]
+    f.line(xs[1] - 14, Y(floor), 950, Y(floor), NAVY, 2, "6 5")
+    for j, (lab, S) in enumerate(cols):
+        x = xs[j]
+        if lab == "Full":
+            f.rect(x, Y(100), bw, Y(0) - Y(100), FULL, rx=3)
+            f.text(x + bw / 2, Y(100) - 14, "100%", 18, "middle", 700)
+            f.text(x + bw / 2, Y(52), "KV 전부", 15, "middle", 700, "#ffffff")
+            f.text(x + bw / 2, Y(52) + 22, "길이 무관", 14, "middle", color="#ffffff")
+            f.text(x + bw / 2, bot + 30, "Full", 18, "middle", 700)
+            f.text(x + bw / 2, bot + 52, "MLA", 14, "middle", color=MUTED)
+            continue
+        kv = TOPK / S * 100 if S else 0
+        out = lab in ("1M*", "∞")
+        stroke, dash = (AXIS, "5 4") if out else ("none", None)
+        f.rect(x, Y(floor), bw, Y(0) - Y(floor), SEL_L, stroke, 3, 1.5, dash)
+        f.text(x + bw / 2, (Y(floor) + Y(0)) / 2 + 6, f"{floor:.1f}%", 15, "middle", 700)
+        if kv:
+            h = max(Y(floor) - Y(floor + kv) - 2, 2.5)
+            f.rect(x, Y(floor) - 2 - h, bw, h, SEL, rx=2)
+            if h > 26:
+                f.text(x + bw / 2, Y(floor) - 2 - h / 2 + 5, f"KV {kv:.0f}%", 14, "middle", 700, "#ffffff")
+        tot = floor + kv
+        top_y = Y(tot) - 4
+        f.text(x + bw / 2, top_y - 34, f"{tot:.0f}%" if tot >= 20 else f"{tot:.1f}%", 18, "middle", 700)
+        f.text(x + bw / 2, top_y - 12, f"→ {100 / tot:.1f}×", 16, "middle", 700, NAVY)
+        f.text(x + bw / 2, bot + 30, lab, 18, "middle", 700, INK if lab == "128K" else MUTED)
+        if lab == "∞":
+            f.text(x + bw / 2, bot + 52, "상한", 14, "middle", color=MUTED)
+        elif lab == "1M*":
+            f.text(x + bw / 2, bot + 52, "외삽", 14, "middle", color=MUTED)
+    # 설명 — 줄어드는 몫과 남는 바닥
+    cx = xs[1]
+    f.text(cx, Y(84), "선택된 KV 몫 = 2,048줄 ÷ 길이", 17, weight=700)
+    f.text(cx, Y(84) + 24, "8K 25% → 128K 1.6% → 0에 수렴", 15, color=MUTED)
+    cx2 = xs[3] - 40
+    f.text(cx2, Y(60), "남는 바닥 = 색인 키 ÷ KV 1줄", 17, weight=700, color=NAVY)
+    f.text(cx2, Y(60) + 24, f"132 B ÷ 1,152 B = {floor:.1f}%", 15, color=MUTED)
+    f.text(cx2, Y(60) + 46, f"→ 절감 상한 100 ÷ {floor:.1f} = {100 / floor:.1f}×", 15, weight=700)
+    f.arrow(xs[5] + bw / 2, Y(60) + 56, xs[5] + bw / 2, Y(floor) - 64, NAVY, 2)
+    f.text(x0, 740, "* 1M은 V3.2 지원 길이(160K) 밖 — 외삽 · 2K 이하는 전부 선택되어 Full보다 읽기가 큼 (100% + 11.5%)", 14, color=MUTED)
+    # 오른쪽 — 토큰당 색인 바이트가 바닥을 정함
+    rx0 = 1010
+    f.line(985, 104, 985, 760, GRID, 2, "6 6")
+    f.text(rx0, 128, "바닥을 낮추는 설계 — 토큰당 색인 바이트", 21, weight=700)
+    f.text(rx0, 156, "막대 = KV 1줄(100%) 중 색인 키 몫 = 왼쪽 그래프의 바닥", 14, color=MUTED)
+    rows = [("DSA · V3.2 (현재)", "FP8 키 + scale 132 B ÷ KV 1,152 B", DSA_IDX, MLA_B, False),
+            ("색인 키 FP4 (가정)", "66 B ÷ KV 1,152 B", 66, MLA_B, True),
+            ("QSA · 4줄 블록 색인", "블록 키 256 B ÷ 4 = 64 B ÷ KV 2,048 B", QSA_IDX / 4, GQA_B, False),
+            ("CSA · 블록 + FP4", "64 B ÷ 4 = 16 B ÷ KV 1,152 B", CSA_IDX / 4, MLA_B, False),
+            ("KV만 FP8로 축소", "색인 132 B ÷ KV 656 B", DSA_IDX, 656, False)]
+    tw = 300
+    for i, (nm, sub, b, kv, hyp) in enumerate(rows):
+        y = 186 + i * 84 + (26 if i == 4 else 0)
+        if i == 4:
+            f.line(rx0, y - 14, 1570, y - 14, BOX[1], 1.5)
+        share = b / kv
+        lim = kv / b
+        f.text(rx0, y + 18, nm, 17, weight=700, color=MUTED if hyp else INK)
+        f.text(rx0 + 190, y + 18, sub, 13, color=MUTED)
+        f.rect(rx0, y + 30, tw, 24, "#ffffff", "#c9ccd6", 4, 1.2)
+        f.rect(rx0, y + 30, max(share * tw, 3), 24, SEL_L, SEL, 4, 1.5, "5 4" if hyp else None)
+        f.text(rx0 + tw + 16, y + 49, f"{share * 100:.1f}% → 상한 {lim:.1f}×" if lim < 10 else
+               f"{share * 100:.1f}% → 상한 {lim:.0f}×", 18, weight=700, color=RUST if i == 4 else INK)
+    f.text(rx0, 676, "→ 차기 경쟁 포인트는 토큰당 색인 바이트 (정밀도 · 블록화)", 16, weight=700)
+    f.text(rx0, 704, "KV만 줄이면 색인 몫이 커져 상한 감소 — 함께 줄여야 함", 15, color=MUTED)
     return f
 
 
@@ -928,30 +944,30 @@ def fig_index_compute():
     S = K128
     f = Fig("11-index-compute", 1600, 760)
     basis(f, "층 1개 · 컨텍스트 128K · 디코드 1스텝 · H200 (HBM 4.8 TB/s, FP8 1,979 · BF16 989 TFLOPS dense) 이론 시간 (계산값)")
-    rows = [("DSA (V3.2)", "head 64 · FP8 키", DSA_IDX * S, DSA_FLOP * S, FP8_PK, SEL),
-            ("DSA + MTP 2토큰", "쿼리 2개가 같은 키를 읽음", DSA_IDX * S, 2 * DSA_FLOP * S, FP8_PK, SEL),
-            ("CSA (V4)", "head 64 · FP4 키 · 1/4 압축", CSA_IDX * S / 4, CSA_FLOP * S / 4, FP8_PK, CMP),
-            ("CSA + MTP 2토큰", "쿼리 2개가 같은 키를 읽음", CSA_IDX * S / 4, 2 * CSA_FLOP * S / 4, FP8_PK, CMP),
-            ("QSA (Qwen3.8)", "head 4 · BF16 블록 키", QSA_IDX * S / 4, QSA_FLOP * S / 4, BF16_PK, NAVY)]
+    rows = [("DSA (V3.2)", "head 64 · FP8 키", DSA_IDX * S, DSA_FLOP * S, FP8_PK, SEL, SEL_L),
+            ("DSA + MTP 2토큰", "쿼리 2개가 같은 키를 읽음", DSA_IDX * S, 2 * DSA_FLOP * S, FP8_PK, SEL, SEL_L),
+            ("CSA (V4)", "head 64 · FP4 키 · 1/4 압축", CSA_IDX * S / 4, CSA_FLOP * S / 4, FP8_PK, CMP, CMP_L),
+            ("CSA + MTP 2토큰", "쿼리 2개가 같은 키를 읽음", CSA_IDX * S / 4, 2 * CSA_FLOP * S / 4, FP8_PK, CMP, CMP_L),
+            ("QSA (Qwen3.8)", "head 4 · BF16 블록 키", QSA_IDX * S / 4, QSA_FLOP * S / 4, BF16_PK, NAVY, SEL_L)]
     x0, xw, tmax = 330, 440, 4.0
     X = lambda t: x0 + t / tmax * xw
     f.text(40, 104, "디코드 — 색인 키 읽기 시간 vs 연산 시간", 21, weight=700)
-    f.rect(40, 122, 16, 16, SEL, rx=3)
-    f.text(62, 136, "HBM 읽기", 15, color=MUTED)
-    f.rect(160, 122, 16, 16, SLATE, rx=3)
-    f.text(182, 136, "연산", 15, color=MUTED)
+    f.rect(40, 122, 16, 16, SEL_L, SEL, 3, 1.2)
+    f.text(62, 136, "색인 키 읽기 (HBM)", 15, color=MUTED)
+    f.rect(230, 122, 16, 16, SLATE, rx=3)
+    f.text(252, 136, "색인 연산 (FP8 · BF16)", 15, color=MUTED)
     f.text(880, 104, "연산 ÷ 읽기", 17, weight=700, color=MUTED)
     f.text(880, 126, "100% 넘으면 연산 병목", 13, color=MUTED)
     for t in (0, 1, 2, 3, 4):
         f.line(X(t), 150, X(t), 640, GRID, 1)
         f.text(X(t), 664, f"{t} µs", 14, "middle", color=MUTED)
-    for i, (nm, sub, b, fl, pk, col) in enumerate(rows):
+    for i, (nm, sub, b, fl, pk, dark, light) in enumerate(rows):
         y = 160 + i * 96
         tr, tc = b / HBM_BW * 1e6, fl / pk * 1e6
-        f.text(40, y + 30, nm, 19, weight=700)
-        f.text(40, y + 54, sub, 14, color=MUTED)
-        f.text(40, y + 76, f"{fmt_b(b)} · {fl / 1e9:.2f} GFLOP · {fl / b:.0f} FLOP/B", 13, color=MUTED)
-        f.rect(x0, y + 12, max(X(tr) - x0, 3), 26, col, rx=3)
+        chip(f, 40, y + 4, 250, 34, nm, dark, light, 17)
+        f.text(40, y + 60, sub, 14, color=MUTED)
+        f.text(40, y + 80, f"{fmt_b(b)} · {fl / 1e9:.2f} GFLOP · {fl / b:.0f} FLOP/B", 13, color=MUTED)
+        f.rect(x0, y + 12, max(X(tr) - x0, 3), 26, SEL_L, SEL, 3, 1.2)
         f.text(X(tr) + 8, y + 31, f"{tr:.2f} µs", 15)
         f.rect(x0, y + 44, max(X(tc) - x0, 3), 26, SLATE, rx=3)
         f.text(X(tc) + 8, y + 63, f"{tc:.2f} µs", 15)
@@ -963,46 +979,41 @@ def fig_index_compute():
     # 오른쪽 — 색인 연산 vs 본 attention
     rx0 = 1090
     f.line(1050, 90, 1050, 730, GRID, 2, "6 6")
-    f.text(rx0, 104, "색인 연산 vs 본 attention 연산 (DSA)", 20, weight=700)
+    f.text(rx0, 104, "색인 연산은 본 attention보다 큼", 21, weight=700)
+    f.text(rx0, 132, "DSA · 층당 · 128K · 디코드 1스텝", 15, color=MUTED)
     idx_fl, att_fl = DSA_FLOP * S, MLA_ATT_FLOP * TOPK
-    f.text(rx0, 146, "디코드 · 층당 · 128K", 16, weight=700, color=MUTED)
-    sc = 210 / idx_fl
-    for k, (nm, v, col) in enumerate((("색인 (128K개 키)", idx_fl, SEL_L), ("attention (2,048줄)", att_fl, SEL))):
-        y = 166 + k * 50
-        f.text(rx0, y + 24, nm, 15)
-        f.rect(rx0 + 160, y + 6, v * sc, 28, col, rx=3)
-        f.text(rx0 + 168 + v * sc, y + 26, f"{v / 1e9:.2f} GFLOP", 15, weight=700)
-    f.text(rx0, 296, f"→ 색인 연산이 본 attention의 {idx_fl / att_fl:.1f}배", 17, weight=700)
-    f.text(rx0, 360, "Prefill · 61층 합계 · Full dense = 100", 16, weight=700, color=MUTED)
-    dense_pair = 128 * (192 + 128) * 2
-    idx_share = DSA_FLOP / dense_pair * 100
-    psc = 300 / 100
-    items = [("Full dense", [(100, FULL)], "100"), ]
-    for S_, lab in ((K128, "DSA · 128K"), (M, "DSA · 1M*")):
-        sel_share = (S_ * TOPK) / (S_ * S_ / 2) * 100
-        items.append((lab, [(idx_share, SEL_L), (sel_share, SEL)], f"{idx_share + sel_share:.1f} → {100 / (idx_share + sel_share):.1f}배 감소"))
-    for k, (lab, segs, txt) in enumerate(items):
-        y = 380 + k * 56
-        f.text(rx0, y + 26, lab, 15)
-        x = rx0 + 120
-        for v, col in segs:
-            f.rect(x, y + 8, v * psc, 28, col, rx=3)
-            x += v * psc + 2
-        f.text(x + 8, y + 28, txt, 15, weight=700)
-    f.text(rx0, 580, f"색인 {idx_share:.0f} (전 쌍) + 선택 attention", 15, color=MUTED)
-    f.text(rx0, 612, "→ prefill도 색인이 절감 상한(약 5배)을 정함", 17, weight=700)
-    f.text(rx0, 650, "* 1M은 V3.2 지원 길이 밖 (외삽)", 13, color=MUTED)
+    sc = 300 / idx_fl
+    for k, (nm, sub, v, col, stroke) in enumerate((("색인", "키 128K개 × head 64", idx_fl, SEL_L, SEL),
+                                                   ("attention", "선택된 KV 2,048줄 × head 128", att_fl, SEL, "none"))):
+        y = 172 + k * 104
+        f.text(rx0, y + 20, nm, 18, weight=700)
+        f.text(rx0 + 104, y + 20, sub, 14, color=MUTED)
+        f.rect(rx0, y + 34, v * sc, 40, col, stroke, 4, 1.2)
+        f.text(rx0 + v * sc + 12, y + 61, f"{v / 1e9:.2f} GFLOP", 18, weight=700)
+    f.text(rx0, 420, f"→ 색인 연산이 본 attention의 {idx_fl / att_fl:.1f}배", 22, weight=700)
+    f.text(rx0, 454, "색인 키는 작아도 모든 토큰을 head 64개가 곱함", 15, color=MUTED)
+    f.line(rx0, 500, 1560, 500, BOX[1], 1.5)
+    f.text(rx0, 538, "색인 ÷ attention — 길이에 비례해 커짐", 16, weight=700, color=MUTED)
+    for j, (S_, lab) in enumerate(((32768, "32K"), (K128, "128K"), (M, "1M*"))):
+        x = rx0 + j * 160
+        r = DSA_FLOP * S_ / att_fl
+        f.text(x, 580, lab, 16, weight=700 if S_ == K128 else 400, color=INK if S_ == K128 else MUTED)
+        f.text(x, 618, f"{r:.1f}배" if r < 10 else f"{r:.0f}배", 26, weight=700)
+    f.text(rx0, 670, "* 1M은 V3.2 지원 길이 밖 (외삽)", 13, color=MUTED)
     return f
 
 
 # ---------------------------------------------------------------- 그림 12. Hybrid 모델 전체 합산 (Qwen3.8-Flash-Next)
 def fig_hybrid():
-    f = Fig("12-hybrid-total", 1600, 720)
-    basis(f, "Qwen3.8-Flash-Next 모델 전체 (QSA 12층 + DeltaNet 36층) · 요청 1개 · 디코드 1스텝 · KV BF16 · state FP32 (계산값)")
+    f = Fig("12-hybrid-total", 1600, 770)
+    f.text(40, 44, "디코드 1스텝 메모리 읽기 · 쓰기량 — 모델 전체 48층 합계, 컨텍스트 길이별", 26, weight=700)
+    f.text(40, 78, "Qwen3.8-Flash-Next (QSA 12층 + DeltaNet 36층) · 요청 1개 · KV BF16 · state FP32 (계산값) · 막대 = 1스텝에 읽고 쓰는 바이트 합계",
+           17, color=MUTED)
     lens = [(8192, "8K"), (32768, "32K"), (K128, "128K"), (262144, "256K"), (M, "1M")]
-    x0, top, bot = 150, 130, 600
+    x0, top, bot = 150, 170, 640
     vmax = 1.2e9
     Y = lambda v: bot - v / vmax * (bot - top)
+    f.text(x0 - 12, top - 28, "읽기 + 쓰기", 15, "end", 700, MUTED)
     for v in (0, 0.4e9, 0.8e9, 1.2e9):
         f.line(x0, Y(v), 1120, Y(v), GRID, 1)
         f.text(x0 - 12, Y(v) + 6, f"{v / 1e9:.1f} GB" if v else "0", 15, "end", color=MUTED)
@@ -1034,23 +1045,23 @@ def fig_hybrid():
         f.line(last[0] + 4, my, last[0] + 24, y, AXIS, 1.2)
         f.rect(last[0] + 30, y - 8, 14, 14, col, rx=2)
         f.text(last[0] + 50, y + 5, nm, 15)
-    f.text(150, 670, "* 지원 길이(256K) 밖 — 외삽", 14, color=MUTED)
-    bx = 1260
-    f.rect(bx - 20, 120, 340, 470, BOX[0], BOX[1], 10, 1.2)
+    f.text(150, 712, "* 지원 길이(256K) 밖 — 외삽", 14, color=MUTED)
+    bx, dy = 1260, 40
+    f.rect(bx - 20, 120 + dy, 340, 470, BOX[0], BOX[1], 10, 1.2)
     full128 = 48 * GQA_B * K128
     hyb128 = sum(hybrid_parts(K128))
-    f.text(bx, 165, "128K에서 비교", 19, weight=700)
-    f.text(bx, 205, "전 층 full GQA(48층)라면", 16, color=MUTED)
-    f.text(bx, 237, fmt_b(full128), 26, weight=700)
-    f.text(bx, 277, "hybrid (현재 구성)", 16, color=MUTED)
-    f.text(bx, 309, f"{fmt_b(hyb128)} (1/{full128 / hyb128:.0f})", 26, weight=700)
-    f.text(bx, 365, "디코드 1스텝 쓰기량", 19, weight=700)
-    f.text(bx, 403, "state 덮어쓰기", 16, color=MUTED)
-    f.text(bx, 433, fmt_b(36 * GDN_STATE), 24, weight=700)
+    f.text(bx, 165 + dy, "128K · 모델 전체", 19, weight=700)
+    f.text(bx, 205 + dy, "전 층 full GQA(48층)라면", 16, color=MUTED)
+    f.text(bx, 237 + dy, fmt_b(full128), 26, weight=700)
+    f.text(bx, 277 + dy, "hybrid (현재 구성)", 16, color=MUTED)
+    f.text(bx, 309 + dy, f"{fmt_b(hyb128)} (1/{full128 / hyb128:.0f})", 26, weight=700)
+    f.text(bx, 365 + dy, "디코드 1스텝 쓰기량", 19, weight=700)
+    f.text(bx, 403 + dy, "state 덮어쓰기 (36층)", 16, color=MUTED)
+    f.text(bx, 433 + dy, fmt_b(36 * GDN_STATE), 24, weight=700)
     kv_write = 12 * (GQA_B + QSA_IDX / 4)
-    f.text(bx, 473, "KV · 색인 추가 (12층)", 16, color=MUTED)
-    f.text(bx, 503, fmt_b(kv_write), 24, weight=700)
-    f.text(bx, 545, f"→ 쓰기는 state가 약 {round(36 * GDN_STATE / kv_write, -2):,.0f}배", 16, weight=700, color=INK)
+    f.text(bx, 473 + dy, "KV · 색인 추가 (12층)", 16, color=MUTED)
+    f.text(bx, 503 + dy, fmt_b(kv_write), 24, weight=700)
+    f.text(bx, 545 + dy, f"→ 쓰기는 state가 약 {round(36 * GDN_STATE / kv_write, -2):,.0f}배", 16, weight=700, color=INK)
     return f
 
 
@@ -1124,125 +1135,178 @@ def fig_behavior():
     q_kv, q_idx, q_sel = 12 * GQA_B * S, 12 * QSA_IDX * (S // 4), 12 * GQA_B * TOPK
     st = 36 * GDN_STATE
     w1, w32 = weight_read(1), weight_read(32)
+    IDX_BG = "#e4eefb"
+    PART, ALL, RW = "크지만 일부만 읽음", "작지만 매번 전부 읽음", "매번 전부 읽고 덮어씀"
+    # (이름, 형식, 진한 색, 옅은 색, 특성, 보유량, 공유, 읽기, 읽기 표기, 읽기 설명, 쓰기, 쓰기 설명, 메모리 요구, 설명)
     groups = [
         ("Sparse 기준 모델 — DeepSeek-V3.2 (DSA 61층 · 실제 배포 형식)", [
-            ("가중치", "FP8 체크포인트", SLATE, 689e9,
-             (w1 * 1e9, f"{w1:.0f} / 689 GB ({w1 / 689 * 100:.0f}%)", f"배치 1 · 배치 32면 {w32:.0f} / 689 GB ({w32 / 689 * 100:.0f}%)"),
-             (0, "0", "바뀌지 않음"), "모든 요청 공유", "HBM — 대역폭"),
-            ("KV cache", "FP8 656 B/줄", SEL, v_kv, (v_sel, None, "선택된 2,048줄 × 61층"),
-             (61 * 656, None, "끝에 1줄 추가"), "요청마다 × N", "용량 계층 후보"),
-            ("색인 키", "FP8 + scale 132 B/줄", SEL_L, v_idx, (v_idx, None, "매번 전부 훑음"),
-             (61 * DSA_IDX, None, "끝에 1개 추가"), "요청마다 × N", "HBM — 순차 스캔")]),
+            ("가중치", "FP8 체크포인트", SLATE, "#dfe2ec", "공유 · 일부만 읽음", 689e9, "모든 요청이 공유",
+             w1 * 1e9, f"{w1:.0f} / 689 GB ({w1 / 689 * 100:.0f}%)", f"배치 1 · 배치 32면 {w32:.0f} / 689 GB ({w32 / 689 * 100:.0f}%)",
+             "없음", "바뀌지 않음", "HBM 대역폭", "배치가 클수록 읽는 양 증가"),
+            ("KV cache", "FP8 656 B/줄", SEL, SEL_L, PART, v_kv, "요청마다 따로",
+             v_sel, None, "선택된 2,048줄 × 61층",
+             "1줄 추가", f"{fmt_b(61 * 656)} (보유량의 <0.01%)", "용량", "대용량 계층 배치 후보"),
+            ("색인 키", "FP8 + scale 132 B/줄", SEL_L, IDX_BG, ALL, v_idx, "요청마다 따로",
+             v_idx, None, "매 스텝 처음부터 끝까지 순차로",
+             "1개 추가", fmt_b(61 * DSA_IDX), "HBM 대역폭", "순차 스캔 · 요청 수만큼 증가")]),
         ("Hybrid 기준 모델 — Qwen3.8-Flash-Next (QSA 12층 + DeltaNet 36층)", [
-            ("KV cache", "BF16 2,048 B/줄 · 12층", SEL, q_kv, (q_sel, None, "선택된 2,048줄 × 12층"),
-             (12 * GQA_B, None, "끝에 1줄 추가"), "요청마다 × N", "용량 계층 후보"),
-            ("블록 색인 키", "256 B / 4토큰 (BF16 가정)", SEL_L, q_idx, (q_idx, None, "매번 전부 훑음"),
-             (12 * QSA_IDX / 4, None, "4토큰마다 1개 (평균)"), "요청마다 × N", "HBM — 순차 스캔"),
-            ("Linear state", "FP32 · 36층", STATE, st, (st, None, "매번 전부"),
-             (st, None, "매번 전부 덮어씀"), "요청마다 × N", "온칩 + 쓰기 대역폭")]),
+            ("KV cache", "BF16 2,048 B/줄 · 12층", SEL, SEL_L, PART, q_kv, "요청마다 따로",
+             q_sel, None, "선택된 2,048줄 × 12층",
+             "1줄 추가", f"{fmt_b(12 * GQA_B)} (보유량의 <0.01%)", "용량", "대용량 계층 배치 후보"),
+            ("블록 색인 키", "256 B / 4토큰 (BF16 가정)", SEL_L, IDX_BG, ALL, q_idx, "요청마다 따로",
+             q_idx, None, "매 스텝 처음부터 끝까지 순차로",
+             "4토큰마다 1개", f"평균 {fmt_b(12 * QSA_IDX / 4)}", "HBM 대역폭", "순차 스캔 · 요청 수만큼 증가"),
+            ("Linear state", "FP32 · 36층", STATE, STATE_L, RW, st, "요청마다 따로",
+             st, None, "매 스텝 전부",
+             "전부 덮어씀", f"{fmt_b(st)} (100%)", "쓰기 대역폭 · 온칩", "읽기와 같은 양을 매번 씀")]),
     ]
-    f = Fig("14-memory-behavior", 1700, 860)
-    basis(f, "요청 1개 · 컨텍스트 128K · 디코드 1스텝 · 막대 = 보유량 중 매 스텝 읽거나 쓰는 비율 (계산값)")
-    cols = [(40, "데이터"), (300, "보유량"), (450, "매 스텝 읽기 (읽기 / 보유)"), (940, "매 스텝 쓰기 (쓰기 / 보유)"),
-            (1360, "공유 범위"), (1510, "어울리는 메모리")]
+    f = Fig("14-memory-behavior", 1700, 880)
+    f.text(40, 44, "데이터별 보유량과 디코드 1스텝 읽기 · 쓰기 — 모델 전체 합계", 26, weight=700)
+    f.text(40, 78, "요청 1개 · 컨텍스트 128K (계산값) · 막대 = 보유량 중 1스텝에 읽는 비율 · 특성 = 읽는 비율로 본 데이터 성격", 17, color=MUTED)
+    cols = [(40, "데이터"), (280, "특성"), (600, "요청당 보유량"), (780, "디코드 1스텝 읽기 (읽기 / 보유량)"),
+            (1240, "디코드 1스텝 쓰기"), (1470, "요구되는 메모리 특성")]
     for x, h in cols:
-        f.text(x, 100, h, 18, weight=700, color=MUTED)
-    f.line(40, 116, 1660, 116, AXIS, 1)
-    y = 128
+        f.text(x, 126, h, 17, weight=700, color=MUTED)
+    f.line(40, 140, 1660, 140, AXIS, 1)
+    y = 150
     for title, rows in groups:
         f.text(40, y + 30, title, 19, weight=700)
         y += 46
-        for i, (nm, sub, col, size, (rv, rlab, rnote), (wv, wlab, wnote), share, mem) in enumerate(rows):
+        for i, (nm, sub, dark, light, trait, size, share, rv, rlab, rnote, w1_, w2_, m1, m2) in enumerate(rows):
             if i % 2 == 0:
                 f.rect(30, y - 6, 1640, 96, BOX[0], rx=8)
             f.text(40, y + 34, nm, 22, weight=700)
             f.text(40, y + 62, sub, 14, color=MUTED)
-            f.text(300, y + 42, fmt_b(size), 21, weight=700)
-            for X, v, lab, note, strong in ((450, rv, rlab, rnote, True), (940, wv, wlab, wnote, False)):
-                frac = v / size
-                f.rect(X, y + 22, 150, 24, "#e3e6ee", rx=4)
-                if v > 0:
-                    f.rect(X, y + 22, max(150 * frac, 3), 24, col, rx=4)
-                txt = lab if lab else f"{fmt_b(v)} / {fmt_b(size)} ({pct(frac)})"
-                f.text(X + 164, y + 41, txt, 17, weight=700 if (strong or frac > 0.5) else 400)
-                f.text(X, y + 72, note, 14, color=MUTED)
-            f.text(1360, y + 42, share, 17, weight=700 if share != "모든 요청 공유" else 400)
-            f.text(1510, y + 42, mem, 17, weight=700)
+            chip(f, 280, y + 14, len(trait) * 17 + 44, 38, trait, dark, light, 17)
+            f.text(600, y + 40, fmt_b(size), 21, weight=700)
+            f.text(600, y + 66, share, 14, color=MUTED)
+            frac = rv / size
+            f.rect(780, y + 22, 180, 24, "#e3e6ee", rx=4)
+            f.rect(780, y + 22, max(180 * frac, 3), 24, dark, rx=4)
+            f.text(976, y + 41, rlab if rlab else f"{fmt_b(rv)} / {fmt_b(size)} ({pct(frac)})", 17, weight=700)
+            f.text(780, y + 72, rnote, 14, color=MUTED)
+            big_w = w1_ == "전부 덮어씀"
+            f.text(1240, y + 40, w1_, 17, weight=700 if big_w else 400, color=INK if big_w else MUTED)
+            f.text(1240, y + 66, w2_, 14, color=MUTED)
+            f.text(1470, y + 40, m1, 18, weight=700)
+            f.text(1470, y + 66, m2, 14, color=MUTED)
             y += 100
         y += 10
     return f
 
 
 # ---------------------------------------------------------------- 그림 15. 단계별 특성과 예상 제약
+def stage_reads(kind, S):
+    """디코드 1스텝 attention 단계별 읽기 바이트 (층당) — (색인 키 훑기, top-k 점수 기록 · 읽기, KV gather)."""
+    if kind == "dsa":                       # V3.2 배포 형식: KV FP8 656 B
+        return DSA_IDX * S, 2 * SCORE_B * S, 656 * TOPK
+    if kind == "qsa":                       # 블록 키 BF16 가정, KV BF16
+        nb = S // QSA_BLOCK
+        return QSA_IDX * nb, 2 * SCORE_B * nb, GQA_B * TOPK
+    if kind == "csa":                       # 색인 FP4, KV BF16, 선택 1,024 + 최근 128
+        nb = S / 4
+        return CSA_IDX * nb, 2 * SCORE_B * nb, V4_B * (min(nb, CSA_K) + min(S, RECENT))
+    raise KeyError(kind)
+
+
 def fig_stage():
     S = K128
-    f = Fig("15-stage-summary", 1700, 790)
-    basis(f, "DSA(V3.2) 디코드 1스텝 · 층 1개 · 컨텍스트 128K · 실제 배포 형식 (KV FP8 656 B, 색인 132 B) · 시간 = H200 사양으로 나눈 이론값")
-    cols = [(40, "단계"), (250, "특징 — 데이터 · 연산량"), (680, "이론 시간 (H200)"), (990, "예상 제약"),
+    f = Fig("15-stage-summary", 1700, 950)
+    f.text(40, 44, "디코드 attention 단계별 데이터 · 연산량과 예상 제약 — DSA(V3.2) 층당", 26, weight=700)
+    f.text(40, 78, "DeepSeek-V3.2 층 1개 · 요청 1개 · 컨텍스트 128K · 디코드 1스텝 · 실제 배포 형식 (KV FP8 656 B, 색인 132 B) · 시간 = H200 사양으로 나눈 이론값",
+           17, color=MUTED)
+    cols = [(40, "단계"), (250, "특징 — 층당 데이터 · 연산량"), (680, "층당 이론 시간 (H200)"), (990, "예상 제약"),
             (1225, "검증 지표"), (1440, "관련 HW · 시스템 요소")]
     for x, h in cols:
-        f.text(x, 100, h, 18, weight=700, color=MUTED)
-    f.line(40, 116, 1660, 116, AXIS, 1)
-    idx_b, idx_fl = DSA_IDX * S, DSA_FLOP * S
-    score_b = 2 * SCORE_B * S
-    gat_b = 656 * TOPK
+        f.text(x, 126, h, 17, weight=700, color=MUTED)
+    f.line(40, 140, 1660, 140, AXIS, 1)
+    idx_b, score_b, gat_b = stage_reads("dsa", S)
+    idx_fl = DSA_FLOP * S
     att_fl = MLA_ATT_FLOP * TOPK
     t = lambda b: b / HBM_BW * 1e6
     rows = [
         ("1", "색인 키 훑기", "대역폭 + 연산", SEL, SEL_L,
-         (f"{fmt_b(idx_b)} 순차 읽기 · {idx_fl / 1e9:.1f} GFLOP", f"키 1 B당 {idx_fl / idx_b:.0f} FLOP · 본 attention 연산의 {idx_fl / att_fl:.1f}배"),
-         [("HBM", t(idx_b), SEL), ("FP8", idx_fl / FP8_PK * 1e6, SLATE)],
+         (f"{fmt_b(idx_b)} 순차 읽기 · {idx_fl / 1e9:.1f} GFLOP", f"61층 {fmt_b(61 * idx_b)} · 본 attention 연산의 {idx_fl / att_fl:.1f}배"),
+         [("HBM", t(idx_b), SEL_L), ("FP8", idx_fl / FP8_PK * 1e6, SLATE)],
          ("HBM 대역폭 · FP8 연산", f"연산이 읽기 시간의 {idx_fl / FP8_PK / (idx_b / HBM_BW) * 100:.0f}%"),
          ("단계 시간 · 달성 대역폭", "연산기 사용률"), ("HBM 대역폭 · FP8 연산기", "메모리 근처 처리는 연산 밀도가 관건")),
         ("2", "top-k 선택", "비교 · 동기화", SEL, SEL_L,
-         (f"점수 128K개 기록 · 읽기 ({fmt_b(score_b)})", "비교 · 정렬 — FLOP에 안 잡힘"),
+         (f"점수 128K개 기록 · 읽기 ({fmt_b(score_b)})", "비교 · 정렬 — FLOP · 바이트에 안 잡힘"),
          [("HBM", t(score_b), OTHER)],
          ("비교 처리 · 동기화", "정렬 시간은 실측 필요"), ("top-k 시간 비중", ""), ("온칩 SRAM · reduction", "스레드 간 동기화")),
-        ("3", "KV gather", "지연 · 불규칙 접근", SEL, SEL_L,
+        ("3", "KV gather", "지연 · 흩어진 읽기", SEL, SEL_L,
          (f"656 B 조각 2,048개 = {fmt_b(gat_b)}", "top-k가 끝나야 시작 (직렬)"),
          [("HBM", t(gat_b), SEL)],
-         ("지연 · 의존성", "계층에서는 증폭 · IOPS"), ("달성 대역폭 · 메모리 요청 수", ""), ("메모리 동시 요청 수 · DMA", "paged KV 주소 변환")),
+         ("지연 · 의존성", "작은 조각 · 흩어진 위치 (2.3)"), ("달성 대역폭 · 메모리 요청 수", ""), ("메모리 동시 요청 수 · DMA", "paged KV 주소 변환")),
         ("4", "attention", "연산 소형", FULL, FULL_L,
          (f"선택된 2,048줄 · {att_fl / 1e9:.2f} GFLOP", f"색인 연산의 1/{idx_fl / att_fl:.1f}"),
          [("BF16", att_fl / BF16_PK * 1e6, SLATE)],
          ("FP8 KV 역양자화", "연산량 자체는 작음"), ("커널 시간 · 역양자화 비중", ""), ("텐서 코어 · 역양자화 경로", "")),
     ]
     tx, tw, tmax = 680, 150, 4.0
-    y = 128
+    y = 152
     for num, step, tag, dark, light, (a1, a2), bars, (b1, b2), (c1, c2), (d1, d2) in rows:
-        f.rect(30, y, 1640, 116, BOX[0] if int(num) % 2 else "#ffffff", rx=8)
-        f.rect(44, y + 38, 40, 40, dark, rx=8)
-        f.text(64, y + 66, num, 20, "middle", 700, "#ffffff")
-        f.text(100, y + 66, step, 20, weight=700)
-        chip(f, 250, y + 12, len(tag) * 16 + 44, 32, tag, dark, light, 16)
-        f.text(250, y + 74, a1, 17, weight=700)
-        f.text(250, y + 100, a2, 14, color=MUTED)
+        f.rect(30, y, 1640, 108, BOX[0] if int(num) % 2 else "#ffffff", rx=8)
+        f.rect(44, y + 34, 40, 40, dark, rx=8)
+        f.text(64, y + 62, num, 20, "middle", 700, "#ffffff")
+        f.text(100, y + 62, step, 20, weight=700)
+        chip(f, 250, y + 10, len(tag) * 16 + 44, 32, tag, dark, light, 16)
+        f.text(250, y + 70, a1, 17, weight=700)
+        f.text(250, y + 95, a2, 14, color=MUTED)
         for k, (lab, tv, col) in enumerate(bars):
-            by = y + 22 + k * 36 if len(bars) > 1 else y + 40
+            by = y + 20 + k * 36 if len(bars) > 1 else y + 40
             f.text(tx, by + 17, lab, 13, color=MUTED)
-            f.rect(tx + 44, by, max(tv / tmax * tw, 3), 24, col, rx=3)
+            f.rect(tx + 44, by, max(tv / tmax * tw, 3), 24, col, SEL if col == SEL_L else "none", 3, 1.2)
             f.text(tx + 52 + tv / tmax * tw, by + 18, f"{tv:.2f} µs", 15, weight=700)
         for x, t1, t2 in ((990, b1, b2), (1225, c1, c2), (1440, d1, d2)):
-            f.text(x, y + 52, t1, 16, weight=700)
+            f.text(x, y + 50, t1, 16, weight=700)
             if t2:
-                f.text(x, y + 80, t2, 14, color=MUTED)
-        y += 124
-    y += 10
+                f.text(x, y + 78, t2, 14, color=MUTED)
+        y += 116
+    y += 6
     f.line(40, y - 4, 1660, y - 4, AXIS, 1.2, "6 5")
-    f.rect(30, y + 6, 1640, 116, BOX[0], rx=8)
-    f.rect(44, y + 44, 40, 40, SEL, rx=8)
-    f.text(64, y + 71, "+", 22, "middle", 700, "#ffffff")
-    f.text(100, y + 72, "KV cache 보관", 20, weight=700)
-    chip(f, 250, y + 18, 16 * 2 + 44, 32, "용량", SEL, SEL_L, 16)
+    f.rect(30, y + 6, 1640, 108, BOX[0], rx=8)
+    f.rect(44, y + 40, 40, 40, SEL, rx=8)
+    f.text(64, y + 67, "+", 22, "middle", 700, "#ffffff")
+    f.text(100, y + 68, "KV cache 보관", 20, weight=700)
+    chip(f, 250, y + 16, 16 * 2 + 44, 32, "용량", SEL, SEL_L, 16)
     kv_req, idx_req = 61 * 656 * S, 61 * DSA_IDX * S
-    f.text(250, y + 80, f"요청당 KV {fmt_b(kv_req)} + 색인 {fmt_b(idx_req)}", 17, weight=700)
-    f.text(250, y + 106, "61층 합계 · × 동시 요청 수", 14, color=MUTED)
-    f.text(tx, y + 72, "— (용량 문제)", 15, color=MUTED)
+    f.text(250, y + 76, f"요청당 KV {fmt_b(kv_req)} + 색인 {fmt_b(idx_req)}", 17, weight=700)
+    f.text(250, y + 101, "61층 합계 · × 동시 요청 수", 14, color=MUTED)
+    f.text(tx, y + 68, "— (시간이 아닌 용량 문제)", 15, color=MUTED)
     for x, t1, t2 in ((990, "HBM 용량", "분산 방식(복제 여부)에 좌우"), (1225, "동시 요청 수 · HBM 사용량", ""),
                       (1440, "HBM 용량 · 메모리 계층", "KV 할당 · 계층 간 이동")):
-        f.text(x, y + 58, t1, 16, weight=700)
+        f.text(x, y + 56, t1, 16, weight=700)
         if t2:
-            f.text(x, y + 86, t2, 14, color=MUTED)
+            f.text(x, y + 84, t2, 14, color=MUTED)
+    # 아래 — 색인 훑기 비중은 모델 · 길이마다 다름
+    y += 150
+    f.text(40, y, "참고 — 색인 키 훑기 비중은 모델 · 길이마다 다름 (attention 단계 읽기 바이트 · 층당)", 19, weight=700)
+    for (nm, col, stroke), lx in zip((("색인 키 훑기", SEL_L, SEL), ("top-k 점수", OTHER, "none"), ("KV gather", SEL, "none")),
+                                     (1130, 1300, 1450)):
+        f.rect(lx, y - 15, 16, 16, col, stroke, 3, 1.2)
+        f.text(lx + 22, y, nm, 15, color=MUTED)
+    models = [("dsa", "DSA (V3.2)", "KV FP8 · 색인 FP8 132 B/토큰", SEL, SEL_L),
+              ("qsa", "QSA (Qwen3.8)", "KV BF16 · 블록 키 BF16 가정 64 B/토큰", NAVY, SEL_L),
+              ("csa", "CSA (V4)", "KV BF16 · 색인 FP4 16 B/토큰", CMP, CMP_L)]
+    bw_ = 300
+    for m, (kind, nm, sub, dark, light) in enumerate(models):
+        x = 40 + m * 550
+        chip(f, x, y + 20, 200, 32, nm, dark, light, 16)
+        f.text(x + 212, y + 42, sub, 13, color=MUTED)
+        for k, (S_, lab) in enumerate(((32768, "32K"), (K128, "128K"))):
+            by = y + 68 + k * 42
+            parts = stage_reads(kind, S_)
+            tot = sum(parts)
+            f.text(x, by + 20, lab, 15, weight=700, color=INK if S_ == K128 else MUTED)
+            bx = x + 56
+            for v, col, stroke in zip(parts, (SEL_L, OTHER, SEL), (SEL, "none", "none")):
+                w = v / tot * bw_
+                f.rect(bx, by + 2, max(w - 2, 1.5), 26, col, stroke, 3, 1.2)
+                bx += w
+            share = parts[0] / tot * 100
+            f.text(x + 56 + bw_ + 12, by + 21, f"색인 {share:.0f}%", 16, weight=700 if share >= 50 else 400,
+                   color=INK if share >= 50 else MUTED)
     return f
 
 
@@ -1280,6 +1344,10 @@ def print_summary():
     print("색인 연산 (128K, 층당): DSA read µs", round(DSA_IDX * S / HBM_BW * 1e6, 2), "comp µs", round(DSA_FLOP * S / FP8_PK * 1e6, 2),
           "| attention GFLOP", round(MLA_ATT_FLOP * TOPK / 1e9, 2), "ratio", round(DSA_FLOP * S / (MLA_ATT_FLOP * TOPK), 2))
     print("가중치 읽기 GB: 배치 1", round(weight_read(1), 1), "배치 32", round(weight_read(32), 1))
+    print("attention 단계 색인 훑기 비중 (32K, 128K):", {k: [round(stage_reads(k, s_)[0] / sum(stage_reads(k, s_)) * 100)
+                                                  for s_ in (32768, S)] for k in ("dsa", "qsa", "csa")})
+    print("3.1 Full 대비 읽기 %:", {s_: round(total(read_parts("dsa", s_)) / total(read_parts("mla", s_)) * 100, 1)
+                                  for s_ in (8192, 32768, S, M)})
 
 
 def main():
