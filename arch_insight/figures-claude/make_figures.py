@@ -1310,8 +1310,79 @@ def fig_stage():
     return f
 
 
+# ---------------------------------------------------------------- 그림 16. Sparse · Hybrid 특성과 아키텍처 부담
+LOAD = ["#f4f5f9", "#dde1ec", "#a3adc7", SLATE]     # 부담 없음 · 작음 · 중간 · 큼 (한 색 계열, 옅음 → 진함)
+
+
+def fig_arch():
+    f = Fig("16-arch-summary", 1700, 930)
+    f.text(40, 44, "Attention 방식별 아키텍처 부담 — 무엇이 줄고 무엇이 새로 생기나", 26, weight=700)
+    f.text(40, 78, "128K · 요청 1개 · 디코드 1스텝 · 본문 계산값 기준 · 비율 = 전 층 Full 대비 · 칸 색 = 그 자원의 상대 부담", 17, color=MUTED)
+    f.text(1268, 128, "부담", 15, weight=700, color=MUTED)
+    for k, lab in enumerate(("없음", "작음", "중간", "큼")):
+        x = 1316 + k * 88
+        f.rect(x, 113, 24, 18, LOAD[k], "#c9ccd6" if k == 0 else "none", 3, 1)
+        f.text(x + 30, 128, lab, 15, color=MUTED)
+    X = [310, 645, 980]
+    W = 320
+    IX = 1320
+    f.text(40, 172, "아키텍처 요소", 17, weight=700, color=MUTED)
+    heads = [("Full attention", "전 층 MLA · GQA (기준)", FULL, FULL_L),
+             ("Sparse attention", "선택 읽기 — DSA · QSA", SEL, SEL_L),
+             ("Hybrid attention", "linear state + full 층 (예: 36 + 12층)", STATE, STATE_L)]
+    for x, (nm, sub, dark, light) in zip(X, heads):
+        chip(f, x, 146, W, 40, nm, dark, light, 18)
+        f.text(x, 210, sub, 14, color=MUTED)
+    f.text(IX, 172, "아키텍처 시사점", 17, weight=700)
+    f.line(40, 226, 1660, 226, AXIS, 1)
+    rows = [
+        ("메모리 용량", "요청당 KV cache · state",
+         [(3, "100%", "길이에 비례"), (3, "103 ~ 111%", "그대로 · 압축형만 1/4 ~ 1/128"), (1, "▼ 26%", "KV 가진 층이 1/4")],
+         ("동시 요청 수는 크기를 줄여야 증가", "압축 · hybrid · 용량 계층 활용")),
+        ("읽기 대역폭", "디코드 1스텝 읽기",
+         [(3, "100%", "길이에 비례"), (1, "▼ 1/8 ~ 1/21", "읽기 대부분이 색인 키"), (2, "▼ 27%", "full 층 읽기는 길이에 비례")],
+         ("대역폭 주 소비가 KV → 색인 · state", "토큰당 색인 바이트 · state 크기")),
+        ("저정밀 연산", "색인 점수 계산",
+         [(0, "없음", "attention 연산만"), (3, "▲ attention의 3.8배", "DSA 기준 · head 수가 좌우"), (1, "state 갱신", "연산보다 메모리가 관건")],
+         ("색인용 FP8 · FP4 연산 밀도", "메모리 근처 처리도 연산이 관건")),
+        ("불규칙 접근 · 지연", "흩어진 KV gather",
+         [(0, "연속 읽기", "주소가 미리 정해짐"), (3, "▲ 1.2 KB × 2,048줄", "top-k 뒤 직렬 · 블록 선택은 완화"), (0, "연속 읽기", "state · KV 모두 순차")],
+         ("작은 조각 · 늦게 정해지는 주소", "메모리 동시 요청 수 · gather 엔진")),
+        ("온칩 처리 · 동기화", "top-k · state 갱신",
+         [(1, "작음", "online softmax"), (3, "▲ top-k 128K개", "비교 · 정렬 · 스레드 간 동기화"), (2, "▲ state 3.2 MB/층", "요청 수만큼 증가")],
+         ("top-k · state 갱신을 온칩에서", "SRAM 용량 · 스레드 간 동기화")),
+        ("쓰기 대역폭", "매 스텝 쓰기",
+         [(0, "1줄 추가", "무시 가능"), (0, "1줄 + 색인 키 1개", "무시 가능"), (3, "▲ state 전부 덮어씀", "115 MB · 읽기와 같은 양")],
+         ("읽은 만큼 다시 쓰는 state", "쓰기 대역폭 · state 온칩 상주")),
+    ]
+    y = 238
+    for nm, sub, cells, (i1, i2) in rows:
+        f.text(40, y + 40, nm, 19, weight=700)
+        f.text(40, y + 66, sub, 14, color=MUTED)
+        for x, (lv, t1, t2) in zip(X, cells):
+            f.rect(x, y, W, 88, LOAD[lv], rx=8)
+            dark = lv == 3
+            f.text(x + 18, y + 39, t1, 19, weight=700, color="#ffffff" if dark else INK)
+            f.text(x + 18, y + 67, t2, 15, color="#e6e9f2" if dark else (INK if lv == 2 else MUTED))
+        f.rect(IX - 10, y, 350, 88, BOX[0], BOX[1], 8, 1)
+        f.text(IX + 6, y + 39, i1, 16, weight=700)
+        f.text(IX + 6, y + 66, i2, 14, color=MUTED)
+        y += 96
+    # 아래 — 부담 이동
+    y += 18
+    f.text(40, y + 30, "부담 이동", 19, weight=700)
+    chip(f, 170, y + 8, 330, 38, "Full — 용량 · 읽기 대역폭", FULL, FULL_L, 17)
+    f.arrow(512, y + 27, 562, y + 27, MUTED, 2.5)
+    chip(f, 574, y + 8, 380, 38, "Sparse — 연산 · 흩어진 읽기 · top-k", SEL, SEL_L, 17)
+    chip(f, 968, y + 8, 300, 38, "Hybrid — 쓰기 · 온칩", STATE, STATE_L, 17)
+    f.text(IX - 4, y + 24, "→ 대역폭 하나만 키워서는 부족", 16, weight=700)
+    f.text(IX - 4, y + 50, "연산 · 지연 · 온칩 · 쓰기의 균형 설계", 14, color=MUTED)
+    return f
+
+
 FIGS = [fig_trend, fig_write_read, fig_layers, fig_weights_kv, fig_moe, fig_sparse_mix, fig_read_store, fig_gain,
-        fig_access, fig_saturation, fig_index_compute, fig_hybrid, fig_sparse_hybrid, fig_behavior, fig_stage]
+        fig_access, fig_saturation, fig_index_compute, fig_hybrid, fig_sparse_hybrid, fig_behavior, fig_stage,
+        fig_arch]
 CHROME = [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
           r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"]
 
