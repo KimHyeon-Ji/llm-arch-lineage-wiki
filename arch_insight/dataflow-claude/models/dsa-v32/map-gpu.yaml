@@ -18,6 +18,7 @@ hw:
 kernels:
   - id: K1
     label: 입력 투영 GEMM
+    plain: "x로 q latent · KV latent 만들기"
     impl: "fused q_a + kv_a GEMM — x를 한 번 읽고 W_qa | W_kva를 이어 붙여 곱함 (SGLang fused_qkv_a_proj_with_mqa)"
     steps: [p1]
     notes:
@@ -28,6 +29,7 @@ kernels:
 
   - id: K2
     label: KV 정규화 · 캐시 쓰기
+    plain: "KV 1줄을 완성해 KV cache 끝에 붙이기"
     impl: "RMSNorm + RoPE + FP8 양자화 + paged KV cache 쓰기 (융합)"
     steps: [p2, p3]
     notes:
@@ -39,6 +41,7 @@ kernels:
 
   - id: K3
     label: q 업투영 GEMM
+    plain: "q latent를 head 128개로 펼치기"
     impl: "RMSNorm → q_b GEMM"
     steps: [p4]
     notes:
@@ -49,6 +52,7 @@ kernels:
 
   - id: K4
     label: q 흡수 BMM
+    plain: "q를 latent 공간으로 바꾸기 (KV를 풀지 않으려고)"
     impl: "RoPE + head별 BMM [192] × W_UK[128×512] (SGLang w_kc)"
     steps: [p5]
     notes:
@@ -59,6 +63,7 @@ kernels:
 
   - id: K5
     label: 색인 투영
+    plain: "색인용 q · k · 가중치 만들기, 색인 키 1줄 붙이기"
     impl: "wq_b · wk · weights_proj GEMM + LayerNorm · RoPE · Hadamard · FP8 양자화 + 색인 K 쓰기"
     steps: [i1, i2, i3, i4]
     notes:
@@ -70,6 +75,7 @@ kernels:
 
   - id: K6
     label: 색인 점수 커널
+    plain: "새 토큰 vs 지난 모든 토큰의 색인 키 → 토큰별 점수"
     impl: "DeepGEMM fp8_paged_mqa_logits — 색인 키를 타일로 읽어 FP8 MMA, head 64개 점수를 레지스터에서 ReLU · 가중합해 [T]만 기록"
     steps: [i5, i6]
     notes:
@@ -82,6 +88,7 @@ kernels:
 
   - id: K7
     label: top-k 커널
+    plain: "점수 상위 2,048개 위치 고르기"
     impl: "T개 점수에서 상위 2,048개 선택 (radix select 계열)"
     steps: [s1]
     notes:
@@ -93,6 +100,7 @@ kernels:
 
   - id: K8
     label: Sparse MLA 커널
+    plain: "고른 2,048줄만 모아 attention 계산"
     impl: "FlashMLA sparse decode — idx로 KV 줄을 직접 SMEM에 모아 QK · online softmax · PV를 한 커널에서 (FP8 KV를 BF16으로 풀어 계산)"
     steps: [a1, a2, a3, a4]
     notes:
@@ -105,6 +113,7 @@ kernels:
 
   - id: K9
     label: 출력 투영
+    plain: "head 출력을 hidden 폭으로 되돌리기"
     impl: "head별 BMM × W_UV (SGLang w_vc) → o_proj GEMM (커널 2개)"
     steps: [o1, o2]
     notes:
