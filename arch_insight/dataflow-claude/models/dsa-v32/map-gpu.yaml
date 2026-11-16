@@ -1,0 +1,115 @@
+# 배치 — 현재 GPU 실행 (as-is)
+#
+# 커널 하나 = 한 번에 실행되는 연산 묶음. 커널 안의 중간값은 온칩(SRAM · 레지스터)에 머물고,
+# 커널 경계를 넘는 값은 HBM에 썼다가 다음 커널이 다시 읽는다.
+# hbm_read / hbm_write 항목:  t = 표시할 텐서,  via = 실제 이동 바이트를 정하는 텐서(없으면 t),
+#                             pat = stream(연속) · gather(흩어진 행) · row(1줄 쓰기) · small(작은 벡터)
+# 커널 묶음은 SGLang · vLLM의 V3.2 경로를 대표로 단순화했다. 융합 경계는 프레임워크 · 버전마다 다르다.
+
+name: GPU 현재 실행 (H200 기준)
+hw:
+  label: H200
+  hbm_bw: 4.8e12       # B/s
+  peak:
+    fp8:  1979e12      # FLOP/s, dense
+    bf16: 989e12
+  note: "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 · 불규칙 접근 비효율 미포함"
+
+kernels:
+  - id: K1
+    label: 입력 투영 GEMM
+    impl: "fused q_a + kv_a GEMM — x를 한 번 읽고 W_qa | W_kva를 이어 붙여 곱함 (SGLang fused_qkv_a_proj_with_mqa)"
+    steps: [p1]
+    notes:
+      - "가중치 읽기가 전부 — 동시 요청 수(B)가 늘면 같은 가중치로 더 많은 토큰 처리"
+      - "같은 x로 q · KV · 색인 k · w를 만듦 → K1 · K5 투영 융합 여지"
+    hbm_read:  [{t: x, pat: small}, {t: W_qa, pat: stream}, {t: W_kva, pat: stream}]
+    hbm_write: [{t: q_a, pat: small}, {t: kv_a, pat: small}]
+
+  - id: K2
+    label: KV 정규화 · 캐시 쓰기
+    impl: "RMSNorm + RoPE + FP8 양자화 + paged KV cache 쓰기 (융합)"
+    steps: [p2, p3]
+    notes:
+      - "요청당 1줄(656 B) 쓰기 — 대역폭보다 페이지 주소 계산 · 작은 쓰기 지연이 문제"
+      - "새 줄이 K8 gather 대상에 포함될 수 있어 K8 전에 끝나야 함"
+    hbm_read:  [{t: kv_a, pat: small}]
+    hbm_write: [{t: kv_cache, via: kv_new, pat: row}]
+    on_chip: [kv_new]
+
+  - id: K3
+    label: q 업투영 GEMM
+    impl: "RMSNorm → q_b GEMM"
+    steps: [p4]
+    notes:
+      - "W_qb 가중치 읽기 위주, 연산은 작음"
+      - "qr은 MLA와 색인(K5)이 함께 씀 → HBM 왕복 대신 온칩 공유 후보"
+    hbm_read:  [{t: q_a, pat: small}, {t: W_qb, pat: stream}]
+    hbm_write: [{t: qr, pat: small}, {t: q, pat: small}]
+
+  - id: K4
+    label: q 흡수 BMM
+    impl: "RoPE + head별 BMM [192] × W_UK[128×512] (SGLang w_kc)"
+    steps: [p5]
+    notes:
+      - "흡수형 MLA라 KV를 head별로 풀지 않음 → K8이 KV 줄 576값만 읽으면 됨"
+      - "대가로 head마다 [128 × 512] 흡수 행렬(W_UK)을 읽음"
+    hbm_read:  [{t: q, pat: small}, {t: W_UK, pat: stream}]
+    hbm_write: [{t: q_full, pat: small}]
+
+  - id: K5
+    label: 색인 투영
+    impl: "wq_b · wk · weights_proj GEMM + LayerNorm · RoPE · Hadamard · FP8 양자화 + 색인 K 쓰기"
+    steps: [i1, i2, i3, i4]
+    notes:
+      - "색인 전용 가중치 약 14 MB — DSA가 추가한 투영"
+      - "Hadamard 회전 · FP8 양자화는 벡터 연산. 새 키 1줄 132 B 기록"
+    hbm_read:  [{t: qr, pat: small}, {t: x, pat: small}, {t: W_Iq, pat: stream}, {t: W_Ik, pat: stream}, {t: W_Iw, pat: stream}]
+    hbm_write: [{t: qI, pat: small}, {t: wI, pat: small}, {t: idx_cache, via: kI, pat: row}]
+    on_chip: [kI]
+
+  - id: K6
+    label: 색인 점수 커널
+    impl: "DeepGEMM fp8_paged_mqa_logits — 색인 키를 타일로 읽어 FP8 MMA, head 64개 점수를 레지스터에서 ReLU · 가중합해 [T]만 기록"
+    steps: [i5, i6]
+    notes:
+      - "요청마다 색인 키 T줄을 전부 스트리밍 — T · B에 비례하는 유일한 대량 읽기"
+      - "키 1 B당 124 FLOP(head 64개가 같은 키 재사용) → 메모리 근처로 옮기면 FP8 연산 성능이 관건"
+      - "head별 점수 [64 × T]는 온칩에서 바로 축약 → HBM에 쓰지 않음"
+    hbm_read:  [{t: qI, pat: small}, {t: wI, pat: small}, {t: idx_cache, pat: stream}]
+    hbm_write: [{t: s, pat: stream}]
+    on_chip: [logits]
+
+  - id: K7
+    label: top-k 커널
+    impl: "T개 점수에서 상위 2,048개 선택 (radix select 계열)"
+    steps: [s1]
+    notes:
+      - "T개 점수 → 2,048개 선택: 비교 · 선택 위주라 행렬곱 유닛을 못 씀"
+      - "[T] 점수를 HBM에 썼다 다시 읽음 → K6와 융합하면 왕복 제거"
+      - "K8이 이 결과를 기다림 — 직렬 경로의 동기화 지점"
+    hbm_read:  [{t: s, pat: stream}]
+    hbm_write: [{t: idx, pat: small}]
+
+  - id: K8
+    label: Sparse MLA 커널
+    impl: "FlashMLA sparse decode — idx로 KV 줄을 직접 SMEM에 모아 QK · online softmax · PV를 한 커널에서 (FP8 KV를 BF16으로 풀어 계산)"
+    steps: [a1, a2, a3, a4]
+    notes:
+      - "읽는 KV는 2,048줄 고정 — T가 늘어도 일정"
+      - "656 B 줄 2,048개를 흩어진 주소에서 읽음 → gather 효율 · 페이지 배치가 실효 대역폭 결정"
+      - "head 128개가 같은 줄을 공유 → 연산 강도가 높아 이론상 연산 한계 쪽"
+    hbm_read:  [{t: q_full, pat: small}, {t: idx, pat: small}, {t: kv_cache, via: kv_sel, pat: gather}]
+    hbm_write: [{t: o_lat, pat: small}]
+    on_chip: [kv_sel, sc, p]
+
+  - id: K9
+    label: 출력 투영
+    impl: "head별 BMM × W_UV (SGLang w_vc) → o_proj GEMM (커널 2개)"
+    steps: [o1, o2]
+    notes:
+      - "W_o 117 MB — 층에서 가장 큰 가중치 읽기"
+      - "요청별 데이터와 무관 → B로 분할 상환"
+    hbm_read:  [{t: o_lat, pat: small}, {t: W_UV, pat: stream}, {t: W_o, pat: stream}]
+    hbm_write: [{t: y, pat: small}]
+    on_chip: [o]
