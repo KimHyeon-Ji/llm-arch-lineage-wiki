@@ -7,10 +7,10 @@
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: 결론 문장 → 5단계 흐름 카드 → 커널×메모리 레인(View A) + 단계 확대(View B) → T 변화.
-   색 = 데이터 종류(무엇이 움직이나). 연산기는 배지 글자. 선택 · 병목은 진한 잉크로. */
+/* Layout: 결론 → 5단계 흐름 → 커널×메모리(View A) + 단계 확대(View B) → T 변화.
+   모든 패널은 굵은 이름표(.blk)로 시작한다. 색 = 데이터 종류, 진한 잉크 = 선택 · 병목 · HBM. */
 :root {
   --bg: #f4f6f8; --surface: #ffffff; --surface2: #eef1f5;
   --ink: #12161c; --ink2: #464f5d; --muted: #7b8494; --line: #d6dbe3; --line2: #e6e9ee;
@@ -41,12 +41,12 @@ body {
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   padding-block: 20px 48px;
 }
-.wrap { max-width: 1480px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-h1 { font-size: 24px; font-weight: 700; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
-h2 { font-size: 15px; font-weight: 600; margin: 0; text-wrap: balance; }
+.wrap { max-width: 1560px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 25px; font-weight: 700; margin: 0; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 16px; font-weight: 700; margin: 0; text-wrap: balance; }
 .mono, .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 .muted { color: var(--muted); }
-.sub { color: var(--ink2); margin: 2px 0 0; max-width: 72ch; }
+.sub { color: var(--ink2); margin: 4px 0 0; max-width: 74ch; }
 .eyebrow { font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 600; }
 button:focus-visible, input:focus-visible, [tabindex]:focus-visible, summary:focus-visible { outline: 2px solid var(--k-kv); outline-offset: 2px; }
 
@@ -54,67 +54,76 @@ header.top { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: flex-e
 .badge-ok { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; color: var(--ink2); border: 1px solid var(--line); background: var(--surface); padding: 4px 10px; border-radius: 999px; }
 .badge-ok b { color: var(--k-act); font-weight: 600; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-.panel-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 16px; flex-wrap: wrap; margin-bottom: 10px; }
 .cap { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
 
+/* 패널 이름표 */
+.blk { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; margin: 0 0 10px; }
+.blk .name { display: inline-flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 700; color: var(--ink); }
+.blk .name::before { content: ""; width: 4px; height: 15px; border-radius: 2px; background: var(--ink); flex: none; }
+.blk .what { font-size: 12.5px; color: var(--muted); }
+
 /* 조건 */
-.controls { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: flex-start; }
+.controls-row { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: flex-start; }
 .ctl { display: flex; flex-direction: column; gap: 3px; min-width: 200px; flex: 1 1 220px; }
-.ctl label { font-size: 12.5px; color: var(--ink2); display: flex; justify-content: space-between; gap: 8px; }
-.ctl label .num { color: var(--ink); font-weight: 600; }
-.ctl .hint { font-size: 11.5px; color: var(--muted); }
+.ctl label { font-size: 13px; color: var(--ink); font-weight: 600; display: flex; justify-content: space-between; gap: 8px; }
+.ctl label .num { color: var(--ink); font-weight: 700; }
+.ctl .hint { font-size: 12px; color: var(--muted); }
 input[type=range] { width: 100%; accent-color: var(--ink2); }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
-.seg button { font: inherit; font-size: 12px; padding: 5px 10px; border: 0; background: var(--surface); color: var(--ink2); cursor: pointer; }
+.seg button { font: inherit; font-size: 12.5px; padding: 5px 10px; border: 0; background: var(--surface); color: var(--ink2); cursor: pointer; }
 .seg button + button { border-left: 1px solid var(--line); }
 .seg button[aria-pressed=true] { background: var(--ink); color: var(--surface); }
 
 /* 결론 + 숫자 */
 .overview { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); gap: 14px 24px; align-items: start; }
-.headline { font-size: 16.5px; line-height: 1.6; margin: 0; text-wrap: pretty; }
+.overview > .blk { grid-column: 1 / -1; margin-bottom: 0; }
+.headline { font-size: 17px; line-height: 1.6; margin: 0; text-wrap: pretty; }
 .headline b { font-weight: 700; }
 .headline .k { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 3px 0 1px; vertical-align: 0; }
-.headline + .headline { margin-top: 6px; font-size: 14.5px; color: var(--ink2); }
+.headline + .headline { margin-top: 6px; font-size: 15px; color: var(--ink2); }
 .stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
-.stat { display: flex; flex-direction: column; gap: 1px; padding-left: 10px; border-left: 2px solid var(--line); }
-.stat .l { font-size: 12px; color: var(--ink2); }
-.stat .v { font-family: var(--font-mono); font-size: 19px; font-weight: 600; font-variant-numeric: tabular-nums; }
-.stat .h { font-size: 11.5px; color: var(--muted); }
+.stat { display: flex; flex-direction: column; gap: 1px; padding-left: 10px; border-left: 3px solid var(--line); }
+.stat .l { font-size: 12.5px; color: var(--ink); font-weight: 600; }
+.stat .v { font-family: var(--font-mono); font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.stat .h { font-size: 12px; color: var(--muted); }
 .mixbar { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 6px; }
-.bar { display: flex; height: 14px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--surface); }
+.mixbar .lbl { font-size: 12.5px; font-weight: 600; }
+.bar { display: flex; height: 16px; border-radius: 4px; overflow: hidden; gap: 2px; background: var(--surface); }
 .bar span { display: block; height: 100%; min-width: 2px; }
-.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--ink2); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ink2); }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-.legend .num { color: var(--ink); }
+.legend .num { color: var(--ink); font-weight: 600; }
 
 /* 5단계 흐름 */
 .phases { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 22px; }
-.phase { position: relative; display: flex; flex-direction: column; gap: 6px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 11px 12px 12px; cursor: pointer; }
+.phase { position: relative; display: flex; flex-direction: column; gap: 8px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 9px; padding: 12px 13px 13px; cursor: pointer; }
 .phase:hover { border-color: var(--ink2); }
 .phase.on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
 .phase.dsa { background: var(--surface2); border-style: dashed; }
 .phase.dsa.on { border-style: solid; }
-.phase:not(:last-child)::after { content: "→"; position: absolute; right: -18px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 16px; }
+.phase:not(:last-child)::after { content: "→"; position: absolute; right: -18px; top: 50%; transform: translateY(-50%); color: var(--muted); font-size: 17px; }
 .phase .ph-top { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.phase .ph-n { font-size: 13.5px; font-weight: 700; }
-.tag { font-size: 10.5px; font-weight: 600; padding: 1px 7px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
+.phase .ph-n { font-size: 14.5px; font-weight: 700; }
+.tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); }
 .tag.dsa { background: var(--ink); border-color: var(--ink); color: var(--surface); }
 .tag.chg { border-color: var(--ink); color: var(--ink); }
-.phase .ph-plain { font-size: 12.5px; color: var(--ink2); line-height: 1.45; min-height: 3.6em; }
-.phase .ph-main { font-size: 12.5px; display: flex; align-items: baseline; gap: 6px; }
-.phase .ph-main i { width: 9px; height: 9px; border-radius: 2px; flex: none; align-self: center; }
-.phase .ph-main .num { font-weight: 600; }
-.phase .ph-time { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted); }
-.phase .ph-time .track { flex: 1; height: 5px; background: var(--line2); border-radius: 3px; overflow: hidden; }
-.phase .ph-time .fill { height: 100%; background: var(--ink2); border-radius: 3px; }
+.phase .ph-plain { font-size: 13px; color: var(--ink2); line-height: 1.45; min-height: 3.7em; }
+.phase .ph-k { display: flex; flex-direction: column; gap: 2px; }
+.phase .ph-lbl { font-size: 11px; font-weight: 700; color: var(--muted); letter-spacing: 0.02em; }
+.phase .ph-v { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.phase .ph-v i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.phase .ph-v b { font-family: var(--font-mono); font-weight: 700; }
+.phase .track { flex: 1; height: 6px; background: var(--line2); border-radius: 3px; overflow: hidden; }
+.phase .fill { display: block; height: 100%; background: var(--ink2); border-radius: 3px; }
 
 /* main */
-.main { display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 16px; align-items: start; }
-.vlegend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12px; color: var(--ink2); margin: 0 0 10px; }
+.main { display: grid; grid-template-columns: minmax(0, 1fr) 430px; gap: 16px; align-items: start; }
+.vlegend { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: 12.5px; color: var(--ink2); margin: 0 0 10px; padding: 8px 10px; background: var(--surface2); border-radius: 8px; }
+.vlegend .lt { font-weight: 700; color: var(--ink); }
 .vlegend span { display: inline-flex; align-items: center; gap: 6px; }
 .vlegend svg { flex: none; }
 .flowwrap { overflow-x: auto; }
-.flowwrap svg { display: block; width: 100%; min-width: 960px; height: auto; }
+.flowwrap svg { display: block; width: 100%; min-width: 880px; height: auto; }
 .viewB { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
 
 svg text { fill: var(--ink); font-family: var(--font-text); }
@@ -124,68 +133,75 @@ svg .t-muted { fill: var(--muted); }
 svg .t-inv { fill: var(--surface); }
 svg .lane-bg { fill: var(--surface2); }
 svg .kbox { fill: var(--surface); stroke: var(--line); stroke-width: 1; cursor: pointer; }
-svg .kbox.on { stroke: var(--ink); stroke-width: 1.6; }
+svg .kbox.on { stroke: var(--ink); stroke-width: 2.2; }
 svg .chip { fill: var(--surface2); stroke: var(--line); cursor: pointer; }
 svg .chip.on { fill: var(--selbg); stroke: var(--ink); stroke-width: 2; }
 svg .chip-hit:hover .chip { stroke: var(--ink2); }
 svg .divider { stroke: var(--line); stroke-dasharray: 2 3; }
-svg .phase-rule { stroke: var(--ink2); stroke-width: 1; }
+svg .hrule { stroke: var(--line); }
 svg .grid-line { stroke: var(--line2); }
 svg .axis { stroke: var(--line); }
 svg .hit { stroke: transparent; fill: transparent; }
 
 /* step panel */
-.ph-chip { font-size: 12px; color: var(--ink2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+.ph-chip { font-size: 12.5px; color: var(--ink2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.step-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
 .step-title { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-.step-title h2 { font-size: 17px; }
-.ubadge { font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; border: 1px solid var(--ink2); color: var(--ink2); border-radius: 4px; padding: 1px 5px; }
-.desc { margin: 6px 0 0; color: var(--ink); font-size: 14px; }
+.step-title h2 { font-size: 20px; }
+.ubadge { font-family: var(--font-mono); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; border: 1.5px solid var(--ink2); color: var(--ink2); border-radius: 4px; padding: 1px 6px; }
+.desc { margin: 8px 0 0; color: var(--ink); font-size: 14px; }
 .nav { display: flex; gap: 6px; }
-.nav button { font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+.nav button { font: inherit; font-size: 12.5px; border: 1px solid var(--line); background: var(--surface); color: var(--ink2); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 .nav button:hover { border-color: var(--ink2); color: var(--ink); }
-.moves { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: stretch; margin-top: 12px; }
-.mv { border: 1px solid var(--line); border-radius: 8px; padding: 8px 9px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.mv h4 { margin: 0; font-size: 11px; font-weight: 600; color: var(--muted); letter-spacing: 0.04em; }
-.mv .it { font-size: 12px; display: flex; gap: 5px; align-items: baseline; flex-wrap: wrap; }
-.mv .it i { width: 8px; height: 8px; border-radius: 2px; flex: none; align-self: center; }
-.mv .it .num { color: var(--ink2); font-size: 11.5px; }
-.mv .loc { font-size: 10.5px; color: var(--muted); }
-.mv .loc.hbm { color: var(--ink); font-weight: 600; }
-.mv-op { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 11px; color: var(--ink2); text-align: center; max-width: 92px; }
-.mv-op .arrow { font-size: 16px; color: var(--muted); line-height: 1; }
+.flow3 { display: flex; flex-direction: column; }
+.f-row { display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 10px; align-items: start; border: 1px solid var(--line); border-radius: 8px; padding: 10px 11px; }
+.f-row.in { border-left: 5px solid var(--ink2); }
+.f-row.op { background: var(--surface2); border-style: dashed; }
+.f-row.out { border-left: 5px solid var(--ink); }
+.f-lab { font-size: 14px; font-weight: 700; line-height: 1.25; }
+.f-lab small { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); margin-top: 2px; }
+.f-items { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.f-it { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 13.5px; }
+.f-it i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+.f-it .num { font-size: 12.5px; color: var(--ink2); }
+.f-op { font-size: 13.5px; display: flex; flex-direction: column; gap: 3px; }
+.f-op .num { font-size: 12.5px; color: var(--ink2); }
+.pill { font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink2); white-space: nowrap; }
+.pill.hbm { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.f-arrow { text-align: center; color: var(--muted); font-size: 15px; line-height: 1; padding: 4px 0; }
 #grid svg { display: block; width: 100%; height: auto; }
-.callout { border-left: 3px solid var(--ink); background: var(--surface2); border-radius: 0 8px 8px 0; padding: 9px 12px; }
-.callout h3 { margin: 0 0 4px; font-size: 12.5px; }
-ul.notes { margin: 0; padding-left: 18px; color: var(--ink); font-size: 13px; }
-ul.notes li + li { margin-top: 3px; }
-details { font-size: 12.5px; }
-details summary { cursor: pointer; color: var(--ink2); font-weight: 600; font-size: 12.5px; }
-details[open] summary { margin-bottom: 8px; }
-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.callout { border-left: 5px solid var(--ink); background: var(--surface2); }
+ul.notes { margin: 0; padding-left: 18px; color: var(--ink); font-size: 13.5px; }
+ul.notes li + li { margin-top: 4px; }
+details summary { cursor: pointer; list-style: none; }
+details summary::-webkit-details-marker { display: none; }
+details summary .blk { margin: 0; }
+details summary .blk .name::after { content: "펼치기 ▾"; font-size: 12px; font-weight: 500; color: var(--muted); margin-left: 6px; }
+details[open] summary .blk .name::after { content: "접기 ▴"; }
+details[open] summary { margin-bottom: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
 th, td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line2); vertical-align: top; }
-th { color: var(--muted); font-weight: 500; font-size: 11px; }
+th { color: var(--muted); font-weight: 600; font-size: 11.5px; }
 td.r, th.r { text-align: right; }
-.where { font-size: 11px; padding: 1px 6px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink2); white-space: nowrap; }
-.where.hbm { border-color: var(--ink2); color: var(--ink); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
-.kv-list { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12px; margin: 10px 0 0; }
+.kv-list { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 12.5px; margin: 10px 0 0; }
 .kv-list dt { color: var(--muted); }
 .kv-list dd { margin: 0; }
-.impl { color: var(--ink2); font-size: 12.5px; margin: 0 0 8px; }
+.impl { color: var(--ink2); font-size: 13px; margin: 0 0 8px; }
 
 /* lower */
 .lower { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
 #sweep svg { display: block; width: 100%; height: auto; }
-.info h3 { font-size: 13px; margin: 12px 0 4px; }
+.info h3 { font-size: 13.5px; margin: 12px 0 4px; }
 .info h3:first-child { margin-top: 0; }
 .info ul { margin: 0; padding-left: 18px; color: var(--ink2); font-size: 13px; }
 .info li + li { margin-top: 3px; }
 .info code { font-family: var(--font-mono); font-size: 12px; }
 
-#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--ink); color: var(--surface); font-size: 12px; padding: 7px 9px; border-radius: 6px; max-width: 300px; line-height: 1.45; display: none; }
-#tip .mono { font-size: 11.5px; }
+#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--ink); color: var(--surface); font-size: 12.5px; padding: 7px 9px; border-radius: 6px; max-width: 320px; line-height: 1.45; display: none; }
+#tip .mono { font-size: 12px; }
 
-@media (max-width: 1180px) {
+@media (max-width: 1240px) {
   .main { grid-template-columns: minmax(0, 1fr); }
   .viewB { position: static; max-height: none; }
   .lower { grid-template-columns: minmax(0, 1fr); }
@@ -197,7 +213,7 @@ td.r, th.r { text-align: right; }
   .phases { grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .phase:not(:last-child)::after { content: "↓"; right: auto; left: 50%; top: auto; bottom: -17px; transform: translateX(-50%); }
   .phase:nth-child(3)::after { content: "↓"; }
-  h1 { font-size: 20px; }
+  h1 { font-size: 21px; }
 }
 @media (prefers-reduced-motion: no-preference) {
   svg .chip, svg .kbox, .phase { transition: stroke 120ms, fill 120ms, border-color 120ms; }
@@ -217,28 +233,32 @@ td.r, th.r { text-align: right; }
     <span class="badge-ok" id="verify"></span>
   </header>
 
-  <section class="panel controls" aria-label="조건">
-    <div class="ctl">
-      <label for="tsl">컨텍스트 길이 T <span class="num" id="tval"></span></label>
-      <input type="range" id="tsl" min="0" max="8" step="1" value="5">
-      <span class="hint">길수록 색인 키 읽기가 비례해서 늘어난다</span>
-    </div>
-    <div class="ctl">
-      <label for="bsl">동시 요청 수 B <span class="num" id="bval"></span></label>
-      <input type="range" id="bsl" min="0" max="8" step="1" value="0">
-      <span class="hint">가중치는 모든 요청이 같이 쓰고, KV · 색인 키는 요청마다 따로</span>
-    </div>
-    <div class="ctl" style="flex:0 1 auto;min-width:0">
-      <label>KV cache 1줄 형식</label>
-      <div class="seg" role="group" aria-label="KV 형식">
-        <button type="button" id="fmt-fp8" aria-pressed="true">FP8 656 B (배포)</button>
-        <button type="button" id="fmt-bf16" aria-pressed="false">BF16 1,152 B (비교 기준)</button>
+  <section class="panel" aria-label="조건 바꾸기">
+    <div class="blk"><span class="name">조건 바꾸기</span><span class="what">움직이면 아래 숫자와 그림이 모두 다시 계산된다</span></div>
+    <div class="controls-row">
+      <div class="ctl">
+        <label for="tsl">컨텍스트 길이 T <span class="num" id="tval"></span></label>
+        <input type="range" id="tsl" min="0" max="8" step="1" value="5">
+        <span class="hint">길수록 색인 키 읽기가 비례해서 늘어난다</span>
       </div>
-      <span class="hint" id="hwnote"></span>
+      <div class="ctl">
+        <label for="bsl">동시 요청 수 B <span class="num" id="bval"></span></label>
+        <input type="range" id="bsl" min="0" max="8" step="1" value="0">
+        <span class="hint">가중치는 모든 요청이 같이 쓰고, KV · 색인 키는 요청마다 따로</span>
+      </div>
+      <div class="ctl" style="flex:0 1 auto;min-width:0">
+        <label>KV cache 1줄 형식</label>
+        <div class="seg" role="group" aria-label="KV 형식">
+          <button type="button" id="fmt-fp8" aria-pressed="true">FP8 656 B (배포)</button>
+          <button type="button" id="fmt-bf16" aria-pressed="false">BF16 1,152 B (비교 기준)</button>
+        </div>
+        <span class="hint" id="hwnote"></span>
+      </div>
     </div>
   </section>
 
-  <section class="panel overview" aria-label="결론과 요약">
+  <section class="panel overview" aria-label="지금 조건의 결론">
+    <div class="blk"><span class="name">지금 조건의 결론</span><span class="what">층 1개 · decode 1스텝 기준</span></div>
     <div>
       <p class="headline" id="hl1"></p>
       <p class="headline" id="hl2"></p>
@@ -250,58 +270,59 @@ td.r, th.r { text-align: right; }
       <div class="stat"><span class="l">요청 몇 개부터 가중치보다 무거워지나</span><span class="v" id="s-cross"></span><span class="h" id="s-cross-h"></span></div>
     </div>
     <div class="mixbar">
+      <span class="lbl">HBM 이동 구성 — 무엇을 옮기나</span>
       <div class="bar" id="mix" role="img"></div>
       <div class="legend" id="mixlegend"></div>
     </div>
   </section>
 
   <section class="panel" aria-label="흐름 한눈에">
-    <div class="panel-head">
-      <h2>흐름 한눈에 — DSA는 ②③을 더하고 ④를 바꾼다</h2>
-      <span class="muted" style="font-size:12px">카드를 누르면 아래 그림에서 그 단계로 이동</span>
-    </div>
+    <div class="blk"><span class="name">흐름 한눈에 — DSA는 ②③을 더하고 ④를 바꾼다</span><span class="what">카드를 누르면 아래 그림에서 그 단계로 이동</span></div>
     <div class="phases" id="phases"></div>
   </section>
 
   <section class="main">
     <figure class="panel" style="margin:0">
-      <div class="panel-head">
-        <h2>커널별 데이터 이동 — 어디서 읽고, 어디에 머물고, 무엇이 계산하나</h2>
-      </div>
+      <div class="blk"><span class="name">커널별 데이터 이동</span><span class="what">위에서 아래로 실행 순서. 커널 = GPU가 한 번에 실행하는 연산 묶음. 커널이 바뀔 때마다 결과를 HBM에 썼다가 다시 읽는다.</span></div>
       <div class="vlegend" aria-label="그림 읽는 법">
+        <span class="lt">읽는 법</span>
         <span><svg width="22" height="16" aria-hidden="true"><line x1="11" y1="1" x2="11" y2="15" style="stroke:var(--k-kv)" stroke-width="4" stroke-linecap="round"/></svg>HBM에 계속 있는 데이터</span>
         <span><svg width="22" height="16" aria-hidden="true"><line x1="11" y1="1" x2="11" y2="15" style="stroke:var(--k-act)" stroke-width="1.6"/><circle cx="11" cy="5" r="3.4" style="fill:var(--surface);stroke:var(--k-act)" stroke-width="1.6"/><circle cx="11" cy="12" r="2.8" style="fill:var(--k-act)"/></svg>○ 커널이 씀 · ● 커널이 읽음</span>
-        <span><svg width="34" height="16" aria-hidden="true"><rect x="1" y="4" width="22" height="8" style="fill:var(--k-idxk)"/><path d="M23 1 L32 8 L23 15 Z" style="fill:var(--ink2)"/></svg>HBM → 칩 읽기 (굵을수록 많이)</span>
+        <span><svg width="34" height="16" aria-hidden="true"><rect x="1" y="4" width="22" height="8" style="fill:var(--k-idxk)"/><path d="M23 1 L32 8 L23 15 Z" style="fill:var(--ink2)"/></svg>HBM → 칩 (굵을수록 많이)</span>
         <span><svg width="40" height="16" aria-hidden="true"><rect x="1" y="2" width="38" height="12" rx="6" style="fill:var(--surface);stroke:var(--k-inter)" stroke-width="1.3" stroke-dasharray="4 2"/></svg>칩 안에서 쓰고 버림</span>
-        <span><span class="ubadge">GEMM</span>계산 단계 — 누르면 오른쪽에 확대</span>
-        <span><svg width="30" height="16" aria-hidden="true"><rect x="1" y="2" width="28" height="5" rx="2" style="fill:var(--ink2)"/><rect x="1.5" y="9.5" width="16" height="4" rx="2" style="fill:var(--surface);stroke:var(--ink2)"/></svg>이론 시간 (채움 메모리 · 외곽선 연산)</span>
+        <span><span class="ubadge">GEMM</span>계산 단계 (누르면 오른쪽에 확대)</span>
+        <span><svg width="30" height="16" aria-hidden="true"><rect x="1" y="3" width="28" height="4" rx="2" style="fill:var(--ink2)"/><rect x="1.5" y="9.5" width="16" height="4" rx="2" style="fill:var(--surface);stroke:var(--ink2)"/></svg>시간 막대 (위 채움 = 메모리 · 아래 외곽선 = 연산)</span>
       </div>
       <div class="flowwrap"><svg id="flow" role="img" aria-label="DSA decode 커널 9개의 HBM 읽기·쓰기, 칩 안 데이터, 계산 단계와 이론 시간"></svg></div>
-      <figcaption class="cap">위에서 아래로 실행 순서. 커널이 끝날 때마다 결과를 HBM에 쓰고 다음 커널이 다시 읽는다. 마우스를 올리면 shape · 크기가 나온다.</figcaption>
+      <figcaption class="cap">마우스를 올리면 shape · 크기가 나온다. 시간은 이론 하한(바이트 ÷ 대역폭, FLOP ÷ 피크 중 큰 값).</figcaption>
     </figure>
 
     <aside class="viewB" aria-label="선택한 단계">
       <div class="panel">
+        <div class="blk"><span class="name">선택한 단계</span><span class="what">← → 키로도 넘길 수 있다</span></div>
         <div class="ph-chip" id="b-phase"></div>
-        <div class="panel-head" style="margin-bottom:0">
+        <div class="step-head">
           <div class="step-title"><span class="ubadge" id="b-unit"></span><h2 id="b-title"></h2></div>
           <div class="nav"><button type="button" id="prev" aria-label="이전 단계">← 이전</button><button type="button" id="next" aria-label="다음 단계">다음 →</button></div>
         </div>
         <p class="desc" id="b-desc"></p>
-        <div class="moves" id="b-moves"></div>
       </div>
       <div class="panel">
-        <h2 style="font-size:13px;margin-bottom:8px">텐서 모양 — 위 입력 → 아래 출력</h2>
+        <div class="blk"><span class="name">데이터 이동</span><span class="what">가져오기 → 계산 → 내보내기</span></div>
+        <div class="flow3" id="b-moves"></div>
+      </div>
+      <div class="panel">
+        <div class="blk"><span class="name">텐서 모양</span><span class="what">위가 입력, 아래가 출력</span></div>
         <div id="grid"></div>
         <p class="cap" id="b-gridcap"></p>
       </div>
       <div class="panel callout">
-        <h3 id="b-callhead"></h3>
+        <div class="blk"><span class="name" id="b-callhead"></span></div>
         <ul class="notes" id="b-notes"></ul>
       </div>
       <div class="panel">
         <details>
-          <summary>상세 — 텐서 표 · 커널 수치 · 구현</summary>
+          <summary><div class="blk"><span class="name">상세 — 텐서 표 · 커널 수치 · 구현</span></div></summary>
           <p class="impl" id="b-impl"></p>
           <div style="overflow-x:auto"><table id="b-table"></table></div>
           <dl class="kv-list" id="b-nums"></dl>
@@ -312,11 +333,12 @@ td.r, th.r { text-align: right; }
 
   <section class="lower">
     <figure class="panel" style="margin:0">
-      <div class="panel-head"><h2>T가 길어지면 무엇이 늘어나나 (층 1개)</h2><span class="muted" style="font-size:12px" id="sweep-b"></span></div>
+      <div class="blk"><span class="name">T가 길어지면 무엇이 늘어나나</span><span class="what" id="sweep-b"></span></div>
       <div id="sweep"></div>
-      <figcaption class="cap">막대 = HBM 읽기 + 쓰기. 가중치(회색)는 T와 무관하고 색인 키(주황)는 T에 비례한다. KV(파랑)는 2,048줄만 읽어 거의 일정하다. 막대를 누르면 T가 바뀐다.</figcaption>
+      <figcaption class="cap">막대 = 층 1개의 HBM 읽기 + 쓰기. 가중치(회색)는 T와 무관하고 색인 키(주황)는 T에 비례한다. KV(파랑)는 2,048줄만 읽어 거의 일정하다. 막대를 누르면 T가 바뀐다.</figcaption>
     </figure>
     <div class="panel info">
+      <div class="blk"><span class="name">범위 · 검증 · 출처</span></div>
       <h3>범위 · 가정</h3>
       <ul>
         <li>DeepSeek-V3.2 차원 · 층 1개 · decode 1스텝 · attention 블록만. 잔차 · MoE · FFN · 집합통신 제외</li>
@@ -480,7 +502,6 @@ function renderOverview() {
   const ks = [...tot.ks].sort((a, b) => b.t - a.t);
   document.getElementById("hl2").innerHTML =
     `DSA는 ${sw("kv")}KV를 <b>${fmtN(d.k)}줄(${fmtB(kvsel)})만</b> 읽는다. 대신 그 줄을 고르려고 ${sw("idxk")}<b>색인 키 ${fmtN(d.T)}줄(${fmtB(idxAll)})</b>을 매 스텝 전부 읽는다${d.B > 1 ? ` (요청 ${d.B}개 합계)` : ""}. 시간이 가장 긴 커널은 ${esc(ks[0].k.id)} ${esc(ks[0].k.label)}(${pct(ks[0].t, tot.t)})와 ${esc(ks[1].k.id)} ${esc(ks[1].k.label)}(${pct(ks[1].t, tot.t)}).`;
-
   document.getElementById("s-tot").textContent = fmtB(tot.tot);
   document.getElementById("s-tot-h").textContent = `HBM 읽기 ${fmtB(tot.rd)} · 쓰기 ${fmtB(tot.wr)}`;
   document.getElementById("s-time").textContent = fmtT(tot.t);
@@ -511,8 +532,8 @@ function renderPhases() {
     return `<button type="button" class="phase${cls === "dsa" ? " dsa" : ""}${i === selP ? " on" : ""}" data-i="${i}">
       <div class="ph-top"><span class="ph-n">${CIRC[i]} ${esc(p.label)}</span><span class="tag ${cls}">${esc(p.tag)}</span></div>
       <div class="ph-plain">${esc(p.plain)}</div>
-      <div class="ph-main"><i style="background:${kc(main)}"></i><span>${esc(mainLabel)} 읽기</span><span class="num">${fmtB(rk[main])}</span></div>
-      <div class="ph-time"><span>시간 ${pct(t, tot.t)}</span><span class="track"><span class="fill" style="display:block;width:${(100 * t / tot.t).toFixed(1)}%"></span></span></div>
+      <div class="ph-k"><span class="ph-lbl">주로 읽는 것</span><span class="ph-v"><i style="background:${kc(main)}"></i>${esc(mainLabel)} <b>${fmtB(rk[main])}</b></span></div>
+      <div class="ph-k"><span class="ph-lbl">시간 비중</span><span class="ph-v"><b>${pct(t, tot.t)}</b><span class="track"><span class="fill" style="width:${(100 * t / tot.t).toFixed(1)}%"></span></span></span></div>
     </button>`;
   }).join("");
   host.querySelectorAll(".phase").forEach(b => b.addEventListener("click", () => {
@@ -545,19 +566,18 @@ function lifelines() {
 }
 const LINES = lifelines();
 
-function listItems(k, d) {
-  const items = [];
+function hbmGroups(k, d) {
+  const reads = [];
   const wts = k.hbm_read.filter(e => TENS[e.t].kind === "weight");
-  if (wts.length) items.push({ label: "가중치 " + wts.map(e => TENS[e.t].label).join(" · "), b: wts.reduce((s, e) => s + bytesOf(e.t, d), 0), kind: "weight" });
-  const rs = k.hbm_read.filter(e => TENS[e.t].kind !== "weight").map(e => ({ label: e.pat === "gather" ? `KV ${fmtN(d.k)}줄` : TENS[e.t].label, b: bytesOf(via(e), d), kind: TENS[e.t].kind }));
-  const ws = (k.hbm_write || []).map(e => ({ label: TENS[e.t].label + (e.pat === "row" ? " 1줄" : ""), b: bytesOf(via(e), d), kind: TENS[e.t].kind, w: true }));
+  if (wts.length) reads.push({ label: "가중치 " + wts.map(e => TENS[e.t].label).join(" · "), b: wts.reduce((s, e) => s + bytesOf(e.t, d), 0), kind: "weight" });
+  const rs = k.hbm_read.filter(e => TENS[e.t].kind !== "weight").map(e => ({ label: e.pat === "gather" ? `KV ${fmtN(d.k)}줄 (골라 읽기)` : TENS[e.t].label, b: bytesOf(via(e), d), kind: TENS[e.t].kind }));
   const big = x => x.b >= 64e3 || x.kind !== "act";
-  rs.filter(big).sort((a, b) => b.b - a.b).forEach(x => items.push(x));
+  rs.filter(big).sort((a, b) => b.b - a.b).forEach(x => reads.push(x));
   const smallR = rs.filter(x => !big(x));
-  if (smallR.length) items.push({ label: `작은 활성값 ${smallR.length}개`, b: smallR.reduce((s, x) => s + x.b, 0), kind: "act", small: true, names: smallR.map(x => x.label) });
-  ws.sort((a, b) => b.b - a.b).forEach(x => items.push(x));
-  for (const it of items) it.short = clip(it.label, 11, 76);
-  return items;
+  if (smallR.length) reads.push({ label: `작은 활성값 ${smallR.length}개`, b: smallR.reduce((s, x) => s + x.b, 0), kind: "act", small: true, names: smallR.map(x => x.label) });
+  const writes = (k.hbm_write || []).map(e => ({ label: TENS[e.t].label + (e.pat === "row" ? " 1줄" : ""), b: bytesOf(via(e), d), kind: TENS[e.t].kind })).sort((a, b) => b.b - a.b);
+  for (const it of [...reads, ...writes]) it.short = clip(it.label, 12, 112);
+  return { reads, writes, rd: reads.reduce((s, x) => s + x.b, 0), wr: writes.reduce((s, x) => s + x.b, 0) };
 }
 
 /* ── View A ── */
@@ -565,59 +585,60 @@ function renderFlow() {
   const d = dims(), tot = totals(d), ks = tot.ks;
   const svg = document.getElementById("flow");
   svg.textContent = "";
-  const W = 1050, HEAD = 128, PHH = 28;
-  const LX0 = 14, LDX = 12, XL = 196, XB0 = 352, XK0 = 400, XK1 = 892, XS = 600, XT = 904;
+  const W = 968, HEAD = 136, PHH = 40;
+  const LX0 = 12, LDX = 11, XL = 182, XB0 = 372, XK0 = 418, XK1 = 958, XS = 644;
   const rows = [], phaseRows = [];
   let y = HEAD, prevP = -1;
   KERN.forEach(k => {
     const p = kPhase(k);
     if (p !== prevP) { phaseRows.push({ p, y }); y += PHH; prevP = p; }
+    const g = hbmGroups(k, d);
+    const listH = 26 + 18 + g.reads.length * 17 + (g.writes.length ? 10 + 18 + g.writes.length * 17 : 0) + 6;
     const nChipRows = Math.ceil(k.steps.length / 2), nPills = Math.max(1, (k.on_chip || []).length);
-    const nList = listItems(k, d).length;
-    const h = Math.max(92, 46 + Math.max(nChipRows * 28, nPills * 24) + 8, 16 + nList * 15 + 10);
-    rows.push({ y, h, cy: y + h / 2 + 6 });
+    const h = Math.max(128, 92 + Math.max(nChipRows * 32, nPills * 28) + 12, listH);
+    rows.push({ y, h, cy: y + h / 2 + 8, g });
     y += h;
   });
-  const H = y + 46;
+  const H = y + 50;
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
 
+  // 레인
   const lanes = [
-    { x: 4, w: XB0 - 8, t: "HBM (메모리)", s: "→ 읽기  ← 쓰기" },
-    { x: XK0, w: XS - XK0 - 10, t: "칩 안 (SRAM · 레지스터)", s: "커널 안에서만 쓰고 버리는 것" },
-    { x: XS, w: XK1 - XS, t: "계산", s: "단계 · 연산기 종류" },
-    { x: XT, w: W - XT - 4, t: "이론 시간", s: "막대 = 메모리 · 연산" },
+    { x: 4, w: XB0 + 34, t: "HBM (메모리)", s: "세로줄 = HBM에 놓인 텐서 · 목록 = 이 커널이 읽고 쓰는 것" },
+    { x: XK0 - 4, w: W - XK0, t: "커널 (칩 안에서 실행)", s: "칩 안에 두는 것 · 계산 단계 · 이론 시간" },
   ];
   for (const l of lanes) {
-    el("rect", { x: l.x, y: 4, width: l.w, height: H - 8, rx: 8, class: "lane-bg", opacity: 0.55 }, svg);
-    el("text", { x: l.x + 10, y: 22, "font-size": 12.5, "font-weight": 600 }, svg, l.t);
-    el("text", { x: l.x + 10, y: 37, "font-size": 11, class: "t-muted" }, svg, l.s);
+    el("rect", { x: l.x, y: 4, width: l.w, height: H - 8, rx: 8, class: "lane-bg", opacity: 0.6 }, svg);
+    el("text", { x: l.x + 12, y: 26, "font-size": 15, "font-weight": 700 }, svg, l.t);
+    el("text", { x: l.x + 12, y: 44, "font-size": 12, class: "t-ink2" }, svg, l.s);
   }
+  // 단계 묶음 제목
   for (const pr of phaseRows) {
     const p = PH[pr.p], cls = TAGCLS[p.tag], ttl = `${CIRC[pr.p]} ${p.label}`;
-    el("line", { x1: XL - 4, x2: W - 8, y1: pr.y + 2, y2: pr.y + 2, class: "phase-rule" }, svg);
-    el("text", { x: XL, y: pr.y + 20, "font-size": 12.5, "font-weight": 700 }, svg, ttl);
-    el("text", { x: XL + textW(ttl, 12.5) + 12, y: pr.y + 20, "font-size": 11.5, class: "t-ink2" }, svg, p.plain);
-    const tw = textW(p.tag, 10.5) + 14, tx = XT + 8;
-    el("rect", { x: tx, y: pr.y + 8, width: tw, height: 16, rx: 8, fill: cls === "dsa" ? "var(--ink)" : "var(--surface)", stroke: cls ? "var(--ink)" : "var(--line)" }, svg);
-    el("text", { x: tx + 7, y: pr.y + 20, "font-size": 10.5, "font-weight": 600, class: cls === "dsa" ? "t-inv" : cls ? "" : "t-muted" }, svg, p.tag);
+    el("rect", { x: XL - 6, y: pr.y + 6, width: W - XL, height: 28, rx: 6, fill: "var(--surface)", stroke: "var(--ink2)" }, svg);
+    el("text", { x: XL + 4, y: pr.y + 25, "font-size": 14.5, "font-weight": 700 }, svg, ttl);
+    el("text", { x: XL + 4 + textW(ttl, 14.5) + 12, y: pr.y + 25, "font-size": 12.5, class: "t-ink2" }, svg, p.plain);
+    const tw = textW(p.tag, 11) + 16, tx = W - 12 - tw;
+    el("rect", { x: tx, y: pr.y + 11, width: tw, height: 18, rx: 9, fill: cls === "dsa" ? "var(--ink)" : "var(--surface)", stroke: cls ? "var(--ink)" : "var(--line)" }, svg);
+    el("text", { x: tx + 8, y: pr.y + 24, "font-size": 11, "font-weight": 700, class: cls === "dsa" ? "t-inv" : cls ? "" : "t-muted" }, svg, p.tag);
   }
-
+  // 수명선
   LINES.forEach((l, j) => {
     const x = LX0 + j * LDX;
-    const y1 = l.from < 0 ? HEAD - 4 : rows[l.from].cy, y2 = l.to >= KERN.length ? H - 40 : rows[l.to].cy;
+    const y1 = l.from < 0 ? HEAD - 4 : rows[l.from].cy, y2 = l.to >= KERN.length ? H - 44 : rows[l.to].cy;
     const g = el("g", {}, svg);
     el("line", { x1: x, x2: x, y1, y2, stroke: kc(l.kind), "stroke-width": l.persistent ? 4 : 1.5, "stroke-linecap": "round", opacity: l.persistent ? 0.95 : 0.75 }, g);
-    el("text", { x: x + 4, y: HEAD - 8, "font-size": l.persistent ? 10.5 : 9.5, transform: `rotate(-90 ${x + 4} ${HEAD - 8})`, class: l.persistent ? "" : "t-muted", "font-weight": l.persistent ? 600 : 400 }, g, l.label);
+    el("text", { x: x + 4, y: HEAD - 8, "font-size": l.persistent ? 11 : 10, transform: `rotate(-90 ${x + 4} ${HEAD - 8})`, class: l.persistent ? "" : "t-muted", "font-weight": l.persistent ? 700 : 400 }, g, l.label);
     for (const t of l.taps) {
       const cy = rows[t.ki].cy;
       if (t.mode === "w") el("circle", { cx: x, cy, r: 3.6, fill: "var(--surface)", stroke: kc(l.kind), "stroke-width": 1.8 }, g);
       else el("circle", { cx: x, cy, r: t.mode === "gather" ? 3.8 : 3, fill: kc(l.kind) }, g);
     }
-    el("rect", { x: x - 6, y: y1 - 4, width: 12, height: y2 - y1 + 8, class: "hit" }, g);
+    el("rect", { x: x - 5, y: y1 - 4, width: 10, height: y2 - y1 + 8, class: "hit" }, g);
     bindTip(g, () => {
       const td = l.id === "__w" ? null : l.id;
       const head = td ? `<b>${esc(TENS[td].label)}</b> <span class="mono">${esc(shapeStr(td, d))}</span><br>${fmtB(bytesOf(td, d))} · ${esc(A.kinds[l.kind].label)} (${esc(A.kinds[l.kind].share)})` : `<b>가중치</b> · 모든 요청이 공유 · 이 층 attention ${fmtB(weightBytes(d))}`;
-      const taps = l.taps.map(t => `${KERN[t.ki].id} ${t.mode === "w" ? "씀" : t.mode === "gather" ? "모아 읽음" : "읽음"}${l.id === "__w" ? " " + esc(TENS[t.tid].label) : ""}`).join(" · ");
+      const taps = l.taps.map(t => `${KERN[t.ki].id} ${t.mode === "w" ? "씀" : t.mode === "gather" ? "골라 읽음" : "읽음"}${l.id === "__w" ? " " + esc(TENS[t.tid].label) : ""}`).join(" · ");
       return head + `<br><span style="opacity:.8">${taps}</span>`;
     });
   });
@@ -629,80 +650,101 @@ function renderFlow() {
   const selK = KOF[state.sel];
 
   KERN.forEach((k, i) => {
-    const r = rows[i], n = ks[i];
-    listItems(k, d).forEach((it, j) => {
-      const ty = r.y + 20 + j * 15;
-      const g = el("g", {}, svg);
-      el("rect", { x: XL, y: ty - 8, width: 8, height: 8, rx: 2, fill: kc(it.kind), opacity: it.small ? 0.6 : 1 }, g);
-      el("text", { x: XL + 13, y: ty, "font-size": 11, class: it.w || it.small ? "t-ink2" : "", "font-weight": !it.w && !it.small && it.b >= 1e6 ? 600 : 400 }, g, (it.w ? "← " : "→ ") + it.short);
-      el("text", { x: XB0 - 6, y: ty, "font-size": 10.5, "text-anchor": "end", class: "t-mono t-ink2" }, g, fmtB(it.b));
-      if (it.names || it.short !== it.label) bindTip(g, `${esc(it.label)}${it.names ? ": " + esc(it.names.join(", ")) : ""} · ${fmtB(it.b)}`);
-    });
-    let by = r.cy - 6 - th(n.rd) / 2;
+    const r = rows[i], n = ks[i], g0 = r.g;
+    // HBM 목록: 읽기 / 쓰기
+    let ly = r.y + 26;
+    const group = (title, items, total) => {
+      el("text", { x: XL, y: ly, "font-size": 12.5, "font-weight": 700 }, svg, title);
+      el("text", { x: XB0 - 8, y: ly, "font-size": 12, "font-weight": 700, "text-anchor": "end", class: "t-mono" }, svg, fmtB(total));
+      el("line", { x1: XL, x2: XB0 - 8, y1: ly + 5, y2: ly + 5, class: "hrule" }, svg);
+      ly += 20;
+      for (const it of items) {
+        const g = el("g", {}, svg);
+        el("rect", { x: XL + 2, y: ly - 9, width: 9, height: 9, rx: 2, fill: kc(it.kind), opacity: it.small ? 0.6 : 1 }, g);
+        el("text", { x: XL + 17, y: ly, "font-size": 12, class: it.small ? "t-ink2" : "" }, g, it.short);
+        el("text", { x: XB0 - 8, y: ly, "font-size": 11.5, "text-anchor": "end", class: "t-mono t-ink2" }, g, fmtB(it.b));
+        if (it.names || it.short !== it.label) bindTip(g, `${esc(it.label)}${it.names ? ": " + esc(it.names.join(", ")) : ""} · ${fmtB(it.b)}`);
+        ly += 17;
+      }
+    };
+    group("읽기", g0.reads, g0.rd);
+    if (g0.writes.length) { ly += 8; group("쓰기", g0.writes, g0.wr); }
+    // 띠
+    let by = r.cy - 8 - th(n.rd) / 2;
     const gR = el("g", {}, svg);
     for (const kd of KIND_ORDER) {
       const b = n.rk[kd]; if (!b) continue;
       const h = th(n.rd) * b / n.rd;
-      el("rect", { x: XB0, y: by, width: XK0 - XB0 - 9, height: Math.max(h, 0.6), fill: kc(kd) }, gR);
+      el("rect", { x: XB0, y: by, width: XK0 - XB0 - 10, height: Math.max(h, 0.6), fill: kc(kd) }, gR);
       by += h;
     }
-    const ac = r.cy - 6, ah = Math.max(5, th(n.rd) / 2 + 2);
-    el("path", { d: `M${XK0 - 9} ${ac - ah} L${XK0 - 1} ${ac} L${XK0 - 9} ${ac + ah} Z`, fill: "var(--ink2)" }, gR);
+    const ac = r.cy - 8, ah = Math.max(5, th(n.rd) / 2 + 2);
+    el("path", { d: `M${XK0 - 10} ${ac - ah} L${XK0 - 1} ${ac} L${XK0 - 10} ${ac + ah} Z`, fill: "var(--ink2)" }, gR);
     bindTip(gR, () => `<b>${k.id} HBM 읽기 ${fmtB(n.rd)}</b><br>` + KIND_ORDER.filter(kd => n.rk[kd]).map(kd => `${esc(A.kinds[kd].label)} ${fmtB(n.rk[kd])}`).join("<br>"));
     if (n.wr > 0) {
       const gW = el("g", {}, svg);
-      const wh = th(n.wr), wy = r.cy + 16;
+      const wh = th(n.wr), wy = r.cy + 18;
       let yy = wy - wh / 2;
-      for (const kd of KIND_ORDER) { const b = n.wk[kd]; if (!b) continue; const h = wh * b / n.wr; el("rect", { x: XB0 + 9, y: yy, width: XK0 - XB0 - 10, height: Math.max(h, 0.6), fill: kc(kd) }, gW); yy += h; }
+      for (const kd of KIND_ORDER) { const b = n.wk[kd]; if (!b) continue; const h = wh * b / n.wr; el("rect", { x: XB0 + 10, y: yy, width: XK0 - XB0 - 11, height: Math.max(h, 0.6), fill: kc(kd) }, gW); yy += h; }
       const a2 = Math.max(4, wh / 2 + 2);
-      el("path", { d: `M${XB0 + 9} ${wy - a2} L${XB0 + 1} ${wy} L${XB0 + 9} ${wy + a2} Z`, fill: "var(--ink2)" }, gW);
+      el("path", { d: `M${XB0 + 10} ${wy - a2} L${XB0 + 1} ${wy} L${XB0 + 10} ${wy + a2} Z`, fill: "var(--ink2)" }, gW);
       bindTip(gW, () => `<b>${k.id} HBM 쓰기 ${fmtB(n.wr)}</b><br>` + KIND_ORDER.filter(kd => n.wk[kd]).map(kd => `${esc(A.kinds[kd].label)} ${fmtB(n.wk[kd])}`).join("<br>"));
     }
-    const box = el("rect", { x: XK0, y: r.y + 6, width: XK1 - XK0, height: r.h - 12, rx: 7, class: "kbox" + (i === selK ? " on" : "") }, svg);
+    // 커널 상자
+    const box = el("rect", { x: XK0, y: r.y + 6, width: XK1 - XK0, height: r.h - 12, rx: 8, class: "kbox" + (i === selK ? " on" : "") }, svg);
     box.addEventListener("click", () => select(k.steps[0]));
-    el("text", { x: XK0 + 10, y: r.y + 23, "font-size": 12.5, "font-weight": 600 }, svg, `${k.id} · ${k.label}`);
-    el("text", { x: XK0 + 10, y: r.y + 39, "font-size": 11.5, class: "t-ink2" }, svg, k.plain || "");
-    el("line", { x1: XS - 8, x2: XS - 8, y1: r.y + 48, y2: r.y + r.h - 12, class: "divider" }, svg);
-    el("path", { d: `M${XS - 13} ${r.cy + 4} L${XS - 3} ${r.cy + 4} M${XS - 7} ${r.cy} L${XS - 3} ${r.cy + 4} L${XS - 7} ${r.cy + 8}`, stroke: "var(--muted)", fill: "none", "stroke-width": 1.2 }, svg);
+    el("rect", { x: XK0 + 12, y: r.y + 16, width: 32, height: 21, rx: 5, fill: "var(--ink)" }, svg);
+    el("text", { x: XK0 + 28, y: r.y + 31, "font-size": 12.5, "font-weight": 700, "text-anchor": "middle", class: "t-inv t-mono" }, svg, k.id);
+    el("text", { x: XK0 + 54, y: r.y + 32, "font-size": 15.5, "font-weight": 700 }, svg, k.label);
+    el("text", { x: XK0 + 12, y: r.y + 56, "font-size": 12.5, class: "t-ink2" }, svg, k.plain || "");
+    // 시간 (상자 오른쪽 위)
+    const tx1 = XK1 - 14, tv = fmtT(n.t), share = n.t / tot.t, rk = rank.indexOf(k.id);
+    el("text", { x: tx1, y: r.y + 31, "font-size": 15, "font-weight": 700, "text-anchor": "end", class: "t-mono" }, svg, tv);
+    const pw = textW(tv, 15) + 10;
+    el("text", { x: tx1 - pw, y: r.y + 31, "font-size": 12, "text-anchor": "end", class: "t-ink2" }, svg, pct(n.t, tot.t));
+    if (rk < 2 && share > 0.12) {
+      const bx = tx1 - pw - textW(pct(n.t, tot.t), 12) - 52;
+      el("rect", { x: bx, y: r.y + 18, width: 42, height: 18, rx: 9, fill: "var(--ink)" }, svg);
+      el("text", { x: bx + 21, y: r.y + 31, "font-size": 11, "font-weight": 700, "text-anchor": "middle", class: "t-inv" }, svg, "병목");
+    }
+    const bw = 120, bx0 = tx1 - bw;
+    el("rect", { x: bx0, y: r.y + 40, width: bw, height: 5, rx: 2, fill: "var(--line2)" }, svg);
+    el("rect", { x: bx0, y: r.y + 40, width: Math.max(1, bw * n.tm / maxT), height: 5, rx: 2, fill: "var(--ink2)" }, svg);
+    el("rect", { x: bx0, y: r.y + 48, width: bw, height: 5, rx: 2, fill: "var(--line2)" }, svg);
+    el("rect", { x: bx0 + 0.5, y: r.y + 48.5, width: Math.max(1, bw * n.tc / maxT - 1), height: 4, rx: 2, fill: "var(--surface)", stroke: "var(--ink2)" }, svg);
+    el("text", { x: tx1, y: r.y + 66, "font-size": 11, "text-anchor": "end", class: "t-ink2", "font-weight": 600 }, svg, n.tm >= n.tc ? "메모리가 결정" : "연산이 결정");
+    el("line", { x1: XK0 + 12, x2: XK1 - 12, y1: r.y + 72, y2: r.y + 72, class: "hrule" }, svg);
+    // 칸 이름표
+    el("text", { x: XK0 + 12, y: r.y + 88, "font-size": 11.5, "font-weight": 700, class: "t-ink2" }, svg, "칩 안에 두는 것");
+    el("text", { x: XS + 2, y: r.y + 88, "font-size": 11.5, "font-weight": 700, class: "t-ink2" }, svg, "계산 단계");
+    el("line", { x1: XS - 10, x2: XS - 10, y1: r.y + 78, y2: r.y + r.h - 14, class: "divider" }, svg);
     const oc = k.on_chip || [];
-    if (!oc.length) el("text", { x: XK0 + 10, y: r.y + 64, "font-size": 11, class: "t-muted" }, svg, "읽은 값을 바로 계산 (남기는 것 없음)");
+    if (!oc.length) el("text", { x: XK0 + 12, y: r.y + 110, "font-size": 12, class: "t-muted" }, svg, "없음 — 읽은 값을 바로 계산");
     oc.forEach((tid, j) => {
-      const py = r.y + 50 + j * 24;
+      const py = r.y + 96 + j * 28;
       const g = el("g", {}, svg);
-      el("rect", { x: XK0 + 10, y: py, width: XS - XK0 - 30, height: 19, rx: 9.5, fill: "var(--surface)", stroke: kc(TENS[tid].kind), "stroke-width": 1.3, "stroke-dasharray": "4 2" }, g);
-      el("text", { x: XK0 + 20, y: py + 13.5, "font-size": 11 }, g, TENS[tid].label);
-      el("text", { x: XS - 28, y: py + 13.5, "font-size": 10.5, "text-anchor": "end", class: "t-mono t-ink2" }, g, fmtB(bytesOf(tid, d)));
+      el("rect", { x: XK0 + 12, y: py, width: XS - XK0 - 34, height: 22, rx: 11, fill: "var(--surface)", stroke: kc(TENS[tid].kind), "stroke-width": 1.4, "stroke-dasharray": "4 2" }, g);
+      el("text", { x: XK0 + 23, y: py + 15.5, "font-size": 12 }, g, TENS[tid].label);
+      el("text", { x: XS - 32, y: py + 15.5, "font-size": 11.5, "text-anchor": "end", class: "t-mono t-ink2" }, g, fmtB(bytesOf(tid, d)));
       bindTip(g, () => `<b>${esc(TENS[tid].label)}</b> <span class="mono">${esc(shapeStr(tid, d))}</span><br>칩 안에서 쓰고 버림 — HBM에 쓰지 않는다.<br>${fmtB(bytesOf(tid, d))}는 HBM에 썼다면 생길 크기. 실제로는 조각(타일) 단위로 계산하자마자 축약 · 사용한다.`);
     });
     k.steps.forEach((sid, j) => {
       const s = STEP[sid];
-      const cx = XS + 2 + (j % 2) * 144, cy = r.y + 48 + Math.floor(j / 2) * 28;
+      const cx = XS + 2 + (j % 2) * 152, cy = r.y + 96 + Math.floor(j / 2) * 32;
       const g = el("g", { class: "chip-hit", tabindex: 0, role: "button", "aria-label": `${s.label} 단계 보기` }, svg);
-      el("rect", { x: cx, y: cy, width: 140, height: 23, rx: 5, class: "chip" + (sid === state.sel ? " on" : "") }, g);
-      el("text", { x: cx + 7, y: cy + 15.5, "font-size": 9.5, "font-weight": 600, class: "t-mono t-ink2" }, g, UNIT[s.unit]);
-      const lx = cx + 7 + UNIT[s.unit].length * 6.4 + 6;
-      el("text", { x: lx, y: cy + 15.5, "font-size": 10.5 }, g, clip(s.label, 10.5, cx + 136 - lx));
+      el("rect", { x: cx, y: cy, width: 147, height: 26, rx: 6, class: "chip" + (sid === state.sel ? " on" : "") }, g);
+      el("text", { x: cx + 8, y: cy + 17.5, "font-size": 10, "font-weight": 700, class: "t-mono t-ink2" }, g, UNIT[s.unit]);
+      const lx = cx + 8 + UNIT[s.unit].length * 6.6 + 7;
+      el("text", { x: lx, y: cy + 17.5, "font-size": 12 }, g, clip(s.label, 12, cx + 142 - lx));
       g.addEventListener("click", ev_ => { ev_.stopPropagation(); select(sid); });
       g.addEventListener("keydown", ev_ => { if (ev_.key === "Enter" || ev_.key === " ") { ev_.preventDefault(); select(sid); } });
       bindTip(g, () => `<b>${esc(s.label)}</b> · ${esc(UNIT_KO[s.unit])}${s.flops ? "<br>" + fmtF(ev(s.flops, d)) + (s.prec ? " · " + s.prec.toUpperCase() : "") : ""}`);
     });
-    const bw = 124, rk = rank.indexOf(k.id), share = n.t / tot.t;
-    el("text", { x: XT + 8, y: r.y + 23, "font-size": 12.5, "font-weight": 600, class: "t-mono" }, svg, fmtT(n.t));
-    el("text", { x: XT + 8 + textW(fmtT(n.t), 12.5) + 8, y: r.y + 23, "font-size": 11, class: "t-ink2" }, svg, pct(n.t, tot.t));
-    if (rk < 2 && share > 0.12) {
-      el("rect", { x: W - 50, y: r.y + 11, width: 40, height: 17, rx: 8.5, fill: "var(--ink)" }, svg);
-      el("text", { x: W - 30, y: r.y + 23.5, "font-size": 10.5, "font-weight": 700, "text-anchor": "middle", class: "t-inv" }, svg, "병목");
-    }
-    el("rect", { x: XT + 8, y: r.y + 32, width: bw, height: 6, rx: 2, fill: "var(--line2)" }, svg);
-    el("rect", { x: XT + 8, y: r.y + 32, width: Math.max(1, bw * n.tm / maxT), height: 6, rx: 2, fill: "var(--ink2)" }, svg);
-    el("rect", { x: XT + 8, y: r.y + 42, width: bw, height: 6, rx: 2, fill: "var(--line2)" }, svg);
-    el("rect", { x: XT + 8.5, y: r.y + 42.5, width: Math.max(1, bw * n.tc / maxT - 1), height: 5, rx: 2, fill: "var(--surface)", stroke: "var(--ink2)" }, svg);
-    el("text", { x: XT + 8, y: r.y + 64, "font-size": 11, class: "t-muted" }, svg, n.tm >= n.tc ? "메모리가 결정" : "연산이 결정");
   });
   const ty = H - 22;
-  el("text", { x: XL, y: ty, "font-size": 12, "font-weight": 600 }, svg, `층 1개 HBM 이동 ${fmtB(tot.tot)}`);
-  el("text", { x: XK0 + 10, y: ty, "font-size": 11.5, class: "t-ink2" }, svg, `커널 ${KERN.length}개를 차례로 실행 — 앞 커널이 HBM에 쓴 값을 다음 커널이 읽는다`);
-  el("text", { x: XT + 8, y: ty, "font-size": 12, "font-weight": 600, class: "t-mono" }, svg, "합 " + fmtT(tot.t));
+  el("text", { x: XL, y: ty, "font-size": 13, "font-weight": 700 }, svg, `층 1개 HBM 이동 ${fmtB(tot.tot)}`);
+  el("text", { x: XK0 + 12, y: ty, "font-size": 12, class: "t-ink2" }, svg, `커널 ${KERN.length}개를 차례로 실행`);
+  el("text", { x: XK1 - 14, y: ty, "font-size": 13, "font-weight": 700, "text-anchor": "end", class: "t-mono" }, svg, "합 " + fmtT(tot.t));
 }
 
 /* ── View B: 텐서 격자 ── */
@@ -739,11 +781,11 @@ function drawTensor(g, tid, x, y, d, mode, where) {
   const t = TENS[tid], gm = gridModel(tid, d);
   const cs = gm.long ? 7 : (gm.hN > 12 ? 9 : 11);
   const gw = gm.hN * cs, gh = gm.vN * cs, sheets = gm.s ? 3 : 1, off = 4;
-  el("rect", { x, y: y - 1, width: 9, height: 9, rx: 2, fill: kc(t.kind) }, g);
-  el("text", { x: x + 14, y: y + 8, "font-size": 12, "font-weight": 600 }, g, t.label);
-  el("text", { x: x + 14 + textW(t.label, 12) + 8, y: y + 8, "font-size": 11, class: "t-mono t-ink2" }, g, fmtB(bytesOf(tid, d)));
-  if (where) el("text", { x: 404, y: y + 8, "font-size": 10.5, "text-anchor": "end", class: where.includes("HBM") ? "" : "t-muted", "font-weight": where.includes("HBM") ? 600 : 400 }, g, where);
-  const gy = y + 18 + (sheets - 1) * off;
+  el("rect", { x, y: y - 1, width: 10, height: 10, rx: 2, fill: kc(t.kind) }, g);
+  el("text", { x: x + 15, y: y + 9, "font-size": 13, "font-weight": 700 }, g, t.label);
+  el("text", { x: x + 15 + textW(t.label, 13) + 8, y: y + 9, "font-size": 11.5, class: "t-mono t-ink2" }, g, fmtB(bytesOf(tid, d)));
+  if (where) el("text", { x: 404, y: y + 9, "font-size": 11, "text-anchor": "end", class: where.includes("HBM") ? "" : "t-muted", "font-weight": where.includes("HBM") ? 700 : 400 }, g, where);
+  const gy = y + 20 + (sheets - 1) * off;
   const hp = gm.long ? null : splitParts(gm.h.e, d), vp = gm.v ? splitParts(gm.v.e, d) : null;
   for (let sIdx = sheets - 1; sIdx >= 0; sIdx--) {
     const ox = x + sIdx * off, oy = gy - sIdx * off;
@@ -770,10 +812,10 @@ function drawTensor(g, tid, x, y, d, mode, where) {
   const ax = [`가로 ${axisName(gm.h, d)}` + (gm.h.v > gm.hN ? ` (1칸 ≈ ${fmtC(gm.h.v / gm.hN)})` : "")];
   if (gm.v) ax.push(`세로 ${axisName(gm.v, d)}`);
   if (gm.s) ax.push(`× ${axisName(gm.s, d)}장`);
-  el("text", { x, y: gy + gh + 16, "font-size": 10.5, class: "t-ink2" }, g, ax.join("  ·  "));
+  el("text", { x, y: gy + gh + 17, "font-size": 11, class: "t-ink2" }, g, ax.join("  ·  "));
   const side = { append: "← 새 줄", select: "진할수록 많이 뽑힘", gather: "진한 칸만 읽음" }[mode];
-  if (side) el("text", { x: x + gw + 6, y: gy + gh / 2 + 4, "font-size": 10.5, "font-weight": 600 }, g, side);
-  return gy + gh + 24 - y;
+  if (side) el("text", { x: x + gw + 6, y: gy + gh / 2 + 4, "font-size": 11, "font-weight": 700 }, g, side);
+  return gy + gh + 26 - y;
 }
 function opText(s, d) {
   if (s.viz === "select") return `${fmtN(d.T)}개 점수 중 상위 ${fmtN(Math.min(d.k, d.T))}개 위치`;
@@ -788,10 +830,10 @@ function opRow(g, y, s, d) {
   const u = UNIT[s.unit];
   el("line", { x1: 12, x2: 12, y1: y - 6, y2: y + 22, stroke: "var(--ink2)", "stroke-width": 1.2 }, g);
   el("path", { d: `M8 ${y + 18} L12 ${y + 25} L16 ${y + 18}`, fill: "none", stroke: "var(--ink2)", "stroke-width": 1.2 }, g);
-  el("rect", { x: 26, y, width: u.length * 7 + 12, height: 18, rx: 4, fill: "var(--surface)", stroke: "var(--ink2)" }, g);
-  el("text", { x: 32, y: y + 13, "font-size": 10.5, "font-weight": 600, class: "t-mono" }, g, u);
-  el("text", { x: 26 + u.length * 7 + 20, y: y + 13, "font-size": 11.5, class: "t-ink2" }, g, opText(s, d));
-  return 34;
+  el("rect", { x: 26, y, width: u.length * 7.2 + 12, height: 19, rx: 4, fill: "var(--surface)", stroke: "var(--ink2)" }, g);
+  el("text", { x: 32, y: y + 13.5, "font-size": 11, "font-weight": 700, class: "t-mono" }, g, u);
+  el("text", { x: 26 + u.length * 7.2 + 20, y: y + 13.5, "font-size": 12, class: "t-ink2" }, g, opText(s, d));
+  return 36;
 }
 function whereOf(tid, k) {
   const r = k.hbm_read.find(e => e.t === tid);
@@ -812,16 +854,23 @@ function renderStep() {
   document.getElementById("b-unit").textContent = UNIT[s.unit];
   document.getElementById("b-title").textContent = s.label;
   document.getElementById("b-desc").textContent = s.desc || "";
+  // 가져오기 → 계산 → 내보내기
   const item = (tid, dir) => {
     const w = whereOf(tid, k), hbm = w.includes("HBM");
     const lbl = tid === "kv_cache" && s.viz === "gather" ? `KV cache 중 ${fmtN(d.k)}줄`
       : (tid === "kv_cache" || tid === "idx_cache") && dir === "out" ? `${TENS[tid].label}에 1줄` : TENS[tid].label;
-    return `<div class="it"><i style="background:${kc(TENS[tid].kind)}"></i><span>${esc(lbl)}</span><span class="num">${fmtB(moved(tid, k, d))}</span><span class="loc${hbm ? " hbm" : ""}">${hbm ? "HBM" : "칩 안"}</span></div>`;
+    const loc = dir === "in"
+      ? (hbm ? (w.includes("골라") ? "HBM에서 골라 읽음" : "HBM에서 읽음") : "칩 안 (앞 단계 결과)")
+      : (hbm ? "HBM에 씀" : "칩 안에 둠");
+    return `<div class="f-it"><i style="background:${kc(TENS[tid].kind)}"></i><span>${esc(lbl)}</span><span class="num mono">${fmtB(moved(tid, k, d))}</span><span class="pill${hbm ? " hbm" : ""}">${loc}</span></div>`;
   };
   document.getElementById("b-moves").innerHTML =
-    `<div class="mv"><h4>가져오는 것</h4>${s.in.map(t => item(t, "in")).join("")}</div>
-     <div class="mv-op"><span class="ubadge">${UNIT[s.unit]}</span><span>${esc(UNIT_KO[s.unit])}</span><span class="arrow">→</span></div>
-     <div class="mv"><h4>내보내는 것</h4>${s.out.map(t => item(t, "out")).join("")}</div>`;
+    `<div class="f-row in"><div class="f-lab">가져오는 것<small>입력</small></div><div class="f-items">${s.in.map(t => item(t, "in")).join("")}</div></div>
+     <div class="f-arrow" aria-hidden="true">↓</div>
+     <div class="f-row op"><div class="f-lab">계산<small>${esc(UNIT_KO[s.unit])}</small></div><div class="f-op"><span><span class="ubadge">${UNIT[s.unit]}</span></span><span>${esc(opText(s, d))}</span></div></div>
+     <div class="f-arrow" aria-hidden="true">↓</div>
+     <div class="f-row out"><div class="f-lab">내보내는 것<small>출력</small></div><div class="f-items">${s.out.map(t => item(t, "out")).join("")}</div></div>`;
+  // 격자
   const host = document.getElementById("grid");
   host.textContent = "";
   const svg = el("svg", { role: "img", "aria-label": `${s.label}: 입력 ${s.in.map(t => TENS[t].label).join(", ")} → 출력 ${s.out.map(t => TENS[t].label).join(", ")}` }, host);
@@ -835,12 +884,12 @@ function renderStep() {
   document.getElementById("b-gridcap").textContent =
     "칸 색 = 데이터 종류, 진할수록 이번에 쓰이는 부분. 요청 1개 기준. 긴 축은 40칸으로 줄여 그림." +
     (s.viz === "select" || s.viz === "gather" ? " 선택 위치는 설명용 예시 패턴." : "");
-  document.getElementById("b-callhead").textContent = `아키텍처 포인트 — 커널 ${k.id}`;
+  document.getElementById("b-callhead").textContent = `아키텍처 포인트 — 커널 ${k.id} ${k.label}`;
   document.getElementById("b-notes").innerHTML = (k.notes || []).map(n => `<li>${esc(n)}</li>`).join("");
   document.getElementById("b-impl").textContent = "구현: " + k.impl;
   const rowsH = [...s.in.map(t => [t, "입력"]), ...s.out.map(t => [t, "출력"])].map(([tid, io]) => {
     const w = whereOf(tid, k);
-    return `<tr><td><span class="dot" style="background:${kc(TENS[tid].kind)}"></span>${esc(TENS[tid].label)} <span class="muted">${io}</span></td><td class="mono">${esc(shapeStr(tid, d))}</td><td class="r mono">${fmtB(bytesOf(tid, d))}</td><td><span class="where${w.includes("HBM") ? " hbm" : ""}">${esc(w)}</span></td></tr>`;
+    return `<tr><td><span class="dot" style="background:${kc(TENS[tid].kind)}"></span>${esc(TENS[tid].label)} <span class="muted">${io}</span></td><td class="mono">${esc(shapeStr(tid, d))}</td><td class="r mono">${fmtB(bytesOf(tid, d))}</td><td><span class="pill${w.includes("HBM") ? " hbm" : ""}">${esc(w)}</span></td></tr>`;
   }).join("");
   document.getElementById("b-table").innerHTML = `<thead><tr><th>텐서</th><th>shape</th><th class="r">크기</th><th>위치</th></tr></thead><tbody>${rowsH}</tbody>`;
   const kn = kernelNums(d)[KOF[s.id]];
@@ -858,7 +907,7 @@ function niceStep(x) { const p = Math.pow(10, Math.floor(Math.log10(x))); const 
 function renderSweep() {
   const host = document.getElementById("sweep");
   host.textContent = "";
-  const Wd = 720, Hd = 290, PL = 64, PR = 12, PT = 14, PB = 40;
+  const Wd = 720, Hd = 290, PL = 66, PR = 12, PT = 14, PB = 40;
   const svg = el("svg", { viewBox: `0 0 ${Wd} ${Hd}`, role: "img" }, host);
   const data = T_OPTS.map(T => ({ T, ...totals(dims({ T })) }));
   const maxV = Math.max(...data.map(x => x.tot));
@@ -866,7 +915,7 @@ function renderSweep() {
   const yv = v => PT + (Hd - PT - PB) * (1 - v / top);
   for (let v = 0; v <= top + 1; v += step) {
     el("line", { x1: PL, x2: Wd - PR, y1: yv(v), y2: yv(v), class: v ? "grid-line" : "axis" }, svg);
-    el("text", { x: PL - 8, y: yv(v) + 4, "font-size": 11, "text-anchor": "end", class: "t-mono t-muted" }, svg, fmtB(v));
+    el("text", { x: PL - 8, y: yv(v) + 4, "font-size": 12, "text-anchor": "end", class: "t-mono t-muted" }, svg, fmtB(v));
   }
   const bwAll = (Wd - PL - PR) / data.length, bw = Math.min(46, bwAll * 0.62);
   data.forEach((x, i) => {
@@ -880,17 +929,17 @@ function renderSweep() {
       if (h > 0) el("rect", { x: cx - bw / 2, y: y1, width: bw, height: h, fill: kc(kd), rx: j === parts.length - 1 ? 3 : 0 }, g);
       acc += v;
     });
-    if (i === state.ti) el("rect", { x: cx - bw / 2 - 3, y: yv(x.tot) - 3, width: bw + 6, height: yv(0) - yv(x.tot) + 3, fill: "none", stroke: "var(--ink)", "stroke-width": 1.6, rx: 4 }, g);
-    el("text", { x: cx, y: Hd - PB + 16, "font-size": 11.5, "text-anchor": "middle", class: "t-mono" + (i === state.ti ? "" : " t-ink2"), "font-weight": i === state.ti ? 600 : 400 }, g, fmtTok(x.T));
-    if (i === state.ti || i === data.length - 1) el("text", { x: cx, y: yv(x.tot) - 7, "font-size": 10.5, "text-anchor": "middle", class: "t-mono t-ink2" }, g, fmtB(x.tot));
+    if (i === state.ti) el("rect", { x: cx - bw / 2 - 3, y: yv(x.tot) - 3, width: bw + 6, height: yv(0) - yv(x.tot) + 3, fill: "none", stroke: "var(--ink)", "stroke-width": 1.8, rx: 4 }, g);
+    el("text", { x: cx, y: Hd - PB + 17, "font-size": 12.5, "text-anchor": "middle", class: "t-mono" + (i === state.ti ? "" : " t-ink2"), "font-weight": i === state.ti ? 700 : 400 }, g, fmtTok(x.T));
+    if (i === state.ti || i === data.length - 1) el("text", { x: cx, y: yv(x.tot) - 7, "font-size": 11.5, "text-anchor": "middle", class: "t-mono t-ink2" }, g, fmtB(x.tot));
     el("rect", { x: cx - bwAll / 2, y: PT, width: bwAll, height: Hd - PT - PB, class: "hit" }, g);
     bindTip(g, () => `<b>T = ${fmtTok(x.T)}</b> · 합 ${fmtB(x.tot)}<br>` + KIND_ORDER.filter(kd => x.byKind[kd]).map(kd => `${esc(A.kinds[kd].label)} ${fmtB(x.byKind[kd])}`).join("<br>"));
     g.style.cursor = "pointer";
     g.addEventListener("click", () => { state.ti = i; document.getElementById("tsl").value = i; update(); });
   });
-  el("text", { x: PL, y: Hd - 6, "font-size": 11, class: "t-muted" }, svg, "컨텍스트 길이 T");
+  el("text", { x: PL, y: Hd - 4, "font-size": 12, class: "t-muted" }, svg, "컨텍스트 길이 T");
   svg.setAttribute("aria-label", "T별 층 1개 HBM 이동: " + data.map(x => `${fmtTok(x.T)} ${fmtB(x.tot)}`).join(", "));
-  document.getElementById("sweep-b").textContent = `요청 ${B_OPTS[state.bi]}개 · KV ${state.fmt.toUpperCase()}`;
+  document.getElementById("sweep-b").textContent = `층 1개 · 요청 ${B_OPTS[state.bi]}개 · KV ${state.fmt.toUpperCase()}`;
 }
 
 /* ── 상호작용 ── */
