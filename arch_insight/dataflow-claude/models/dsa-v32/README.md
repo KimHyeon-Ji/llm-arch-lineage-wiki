@@ -19,17 +19,18 @@ lightning indexer(색인) + top-k 2,048줄 선택 + 흡수형 MLA. 층 1개 · d
 
 ## 단계와 커널 (현재 GPU 배치)
 
-| 커널 | 단계 | HBM에서 읽는 주 데이터 | 온칩에 머무는 것 |
+| 커널 | 단계 | HBM에서 읽는 주 데이터 | 칩 안 메모리에 두는 것 |
 |---|---|---|---|
 | K1 입력 투영 | p1 | W_qa · W_kva | — |
-| K2 KV 정규화 · 쓰기 | p2 · p3 | kv_a | KV 새 줄 → 1줄 쓰기 |
+| K2 KV 정규화 · 쓰기 | p2 · p3 | kv_a | KV 새 줄(레지스터) → 1줄 쓰기 |
 | K3 q 업투영 | p4 | W_qb | — |
 | K4 q 흡수 | p5 | W_UK | — |
-| K5 색인 투영 | i1 ~ i4 | W_Iq · W_Ik · W_Iw | 색인 k 새 줄 → 1줄 쓰기 |
-| K6 색인 점수 | i5 · i6 | **색인 K cache T줄 전부** | head별 점수 [64 × T] |
+| K5 색인 투영 | i1 ~ i4 | W_Iq · W_Ik · W_Iw | 색인 k 새 줄(레지스터) → 1줄 쓰기 |
+| K6 색인 점수 | i5 · i6 | **색인 K cache T줄 전부** | 색인 키 타일(SMEM) · head별 점수 [64 × T](레지스터) |
 | K7 top-k | s1 | 색인 점수 [T] | — |
-| K8 Sparse MLA | a1 ~ a4 | **KV 2,048줄 gather** | 선택 KV · 점수 · 확률 |
-| K9 출력 투영 | o1 · o2 | W_UV · W_o | o |
+| K8 Sparse MLA | a1 ~ a4 | **KV 2,048줄 gather** | 선택 KV(SMEM) · 점수 · 확률(레지스터) |
+| K9 W_UV 풀기 | o1 | W_UV | — (o 32 KB는 HBM 경유) |
+| K10 출력 투영 | o2 | W_o | — |
 
 ## 참조 구현과 HF의 차이
 

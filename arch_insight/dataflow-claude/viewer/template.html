@@ -117,6 +117,17 @@ input[type=range] { width: 100%; accent-color: var(--ink2); }
 .vlegend .lt { font-weight: 700; color: var(--ink); }
 .vlegend span { display: inline-flex; align-items: center; gap: 6px; }
 .vlegend svg { flex: none; }
+.memstrip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; margin: 0 0 4px; }
+.memstrip .ms-t { align-self: center; font-size: 12.5px; font-weight: 700; margin-right: 4px; }
+.mem { border: 1px solid var(--line); border-radius: 7px; padding: 5px 9px; background: var(--surface); display: flex; flex-direction: column; min-width: 0; }
+.mem b { font-size: 12.5px; font-weight: 700; display: flex; gap: 6px; align-items: center; }
+.mem b code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; border: 1px solid var(--ink2); border-radius: 3px; padding: 0 4px; color: var(--ink2); }
+.mem span { font-size: 11.5px; color: var(--muted); }
+.mem.hbm { border-color: var(--ink2); }
+.mem.chip { border: 1.5px dashed var(--ink2); background: var(--surface2); }
+.mem.unit { background: var(--surface2); }
+.memarrow { align-self: center; color: var(--muted); font-size: 15px; }
+.memcap { font-size: 12px; color: var(--muted); margin: 2px 0 10px; }
 .flowwrap { overflow-x: auto; }
 .flowwrap svg { display: block; width: 100%; min-width: 880px; height: auto; }
 .viewB { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
@@ -281,11 +292,13 @@ td.r, th.r { text-align: right; }
         <span><svg width="22" height="16" aria-hidden="true"><line x1="11" y1="1" x2="11" y2="15" style="stroke:var(--k-kv)" stroke-width="4" stroke-linecap="round"/></svg>HBM에 계속 있는 데이터</span>
         <span><svg width="22" height="16" aria-hidden="true"><line x1="11" y1="1" x2="11" y2="15" style="stroke:var(--k-act)" stroke-width="1.6"/><circle cx="11" cy="5" r="3.4" style="fill:var(--surface);stroke:var(--k-act)" stroke-width="1.6"/><circle cx="11" cy="12" r="2.8" style="fill:var(--k-act)"/></svg>○ 커널이 씀 · ● 커널이 읽음</span>
         <span><svg width="34" height="16" aria-hidden="true"><rect x="1" y="4" width="22" height="8" style="fill:var(--k-idxk)"/><path d="M23 1 L32 8 L23 15 Z" style="fill:var(--ink2)"/></svg>HBM → 칩 (굵을수록 많이)</span>
-        <span><svg width="40" height="16" aria-hidden="true"><rect x="1" y="2" width="38" height="12" rx="6" style="fill:var(--surface);stroke:var(--k-inter)" stroke-width="1.3" stroke-dasharray="4 2"/></svg>칩 안에서 쓰고 버림</span>
+        <span><svg width="40" height="16" aria-hidden="true"><rect x="1" y="2" width="38" height="12" rx="6" style="fill:var(--surface);stroke:var(--k-inter)" stroke-width="1.3" stroke-dasharray="4 2"/></svg>칩 안 메모리(SMEM · 레지스터)에 잠깐 둠</span>
         <span><span class="ubadge">GEMM</span>계산 단계 (누르면 오른쪽에 확대)</span>
         <span><svg width="30" height="16" aria-hidden="true"><rect x="1" y="3" width="28" height="4" rx="2" style="fill:var(--ink2)"/><rect x="1.5" y="9.5" width="16" height="4" rx="2" style="fill:var(--surface);stroke:var(--ink2)"/></svg>시간 막대 (위 채움 = 메모리 · 아래 외곽선 = 연산)</span>
       </div>
-      <div class="flowwrap"><svg id="flow" role="img" aria-label="DSA decode 커널 9개의 HBM 읽기·쓰기, 칩 안 데이터, 계산 단계와 이론 시간"></svg></div>
+      <div class="memstrip" id="memstrip" aria-label="H200 데이터 경로"></div>
+      <p class="memcap">점선 = 칩 안 메모리. 그림의 점선 알약은 SMEM이나 레지스터에 잠깐 두는 데이터다. L2 캐시는 HBM 읽기 · 쓰기가 자동으로 거쳐 가는 캐시라 HBM 쪽 이동량에 포함했다.</p>
+      <div class="flowwrap"><svg id="flow" role="img" aria-label="DSA decode 커널별 HBM 읽기·쓰기, 칩 안 데이터, 계산 단계와 이론 시간"></svg></div>
       <figcaption class="cap">마우스를 올리면 shape · 크기가 나온다. 시간은 이론 하한(바이트 ÷ 대역폭, FLOP ÷ 피크 중 큰 값).</figcaption>
     </figure>
 
@@ -334,7 +347,7 @@ td.r, th.r { text-align: right; }
       <h3>범위 · 가정</h3>
       <ul>
         <li>DeepSeek-V3.2 차원 · 층 1개 · decode 1스텝 · attention 블록만. 잔차 · MoE · FFN · 집합통신 제외</li>
-        <li>커널 9개는 SGLang · vLLM의 V3.2 경로를 대표로 단순화한 묶음. 실제 융합 경계는 프레임워크 · 버전마다 다름</li>
+        <li>커널 10개는 SGLang · vLLM의 V3.2 경로를 대표로 단순화한 묶음. 실제 융합 경계는 프레임워크 · 버전마다 다름</li>
         <li>이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). 커널 실행 지연 · 동기화 · gather 비효율 미포함</li>
         <li>가중치는 FP8(블록 scale 생략), W_UK · W_UV · W_Iw는 BF16 가정</li>
         <li>격자에서 선택된 위치(진한 칸)는 설명용 예시 패턴. 실측 분포 아님</li>
@@ -497,7 +510,7 @@ function renderOverview() {
   document.getElementById("s-tot").textContent = fmtB(tot.tot);
   document.getElementById("s-tot-h").textContent = `HBM 읽기 ${fmtB(tot.rd)} · 쓰기 ${fmtB(tot.wr)}`;
   document.getElementById("s-time").textContent = fmtT(tot.t);
-  document.getElementById("s-time-h").textContent = d.B > 1 ? `커널 9개 차례로 · 토큰당 ${fmtT(tot.t / d.B)}` : "커널 9개를 차례로 실행할 때";
+  document.getElementById("s-time-h").textContent = d.B > 1 ? `커널 ${KERN.length}개 차례로 · 토큰당 ${fmtT(tot.t / d.B)}` : `커널 ${KERN.length}개를 차례로 실행할 때`;
   document.getElementById("s-req").textContent = pct(req, tot.tot);
   document.getElementById("s-req-h").textContent = `나머지 ${pct(w, tot.tot)}는 공유 가중치 ${fmtB(w)}`;
   document.getElementById("s-cross").textContent = `${cross}개`;
@@ -572,6 +585,31 @@ function hbmGroups(k, d) {
   return { reads, writes, rd: reads.reduce((s, x) => s + x.b, 0), wr: writes.reduce((s, x) => s + x.b, 0) };
 }
 
+/* ── 칩 안 메모리 ── */
+const onChipOf = k => (k.on_chip || []).map(e => typeof e === "string" ? { t: e, mem: "reg" } : e);
+const memTotal = m => m.total || m.per_sm * M.hw.n_sm;
+const fmtCap = b => b >= 1048576 ? `${Math.round(b / 1048576)} MB` : `${Math.round(b / 1024)} KB`;  // 공급사 표기(2진)
+function memTip(e, d) {
+  const m = M.hw.onchip[e.mem], tid = e.t, lab = e.label || TENS[tid].label;
+  const cap = `${m.label} 칩 전체 약 ${fmtCap(memTotal(m))}` + (m.per_sm ? ` (SM당 ${fmtCap(m.per_sm)} × ${M.hw.n_sm})` : "");
+  if (e.stage) return `<b>${esc(lab)}</b> · ${esc(m.label)} (${m.short})<br>${esc(e.how || "")}<br><span style="opacity:.8">${esc(cap)}</span>`;
+  const b = bytesOf(tid, d);
+  const fit = b > memTotal(m) * 0.8 ? "칩 전체 용량에 맞먹음 → 한 번에 못 담고 타일 단위로 계산하자마자 버림"
+    : m.per_sm && b > m.per_sm ? "SM 하나에는 안 들어감 → 여러 SM이 나눠 담음" : "SM 하나에 들어가는 크기";
+  return `<b>${esc(lab)}</b> <span class="mono">${esc(shapeStr(tid, d))}</span> · ${esc(m.label)} (${m.short})<br>${esc(e.how || "")}<br>크기 ${fmtB(b)} (HBM에 썼다면 생길 크기) — ${fit}<br><span style="opacity:.8">${esc(cap)}</span>`;
+}
+function renderMem() {
+  const hw = M.hw, oc = hw.onchip;
+  const box = (cls, name, code, sub) => `<div class="mem ${cls}"><b>${esc(name)}${code ? ` <code>${code}</code>` : ""}</b><span>${sub}</span></div>`;
+  document.getElementById("memstrip").innerHTML =
+    `<span class="ms-t">${esc(hw.label)} 데이터 경로</span>` +
+    box("hbm", "HBM", "", `${fmtB(hw.hbm_cap)} · ${hw.hbm_bw / 1e12} TB/s`) + `<span class="memarrow">→</span>` +
+    box("", oc.l2.label, oc.l2.short, `${fmtCap(oc.l2.total)} · 칩 전체 공유`) + `<span class="memarrow">→</span>` +
+    box("chip", oc.smem.label, oc.smem.short, `SM당 ${fmtCap(oc.smem.per_sm)} · 합 약 ${fmtCap(memTotal(oc.smem))}`) + `<span class="memarrow">→</span>` +
+    box("chip", oc.reg.label, oc.reg.short, `SM당 ${fmtCap(oc.reg.per_sm)} · 합 약 ${fmtCap(memTotal(oc.reg))}`) + `<span class="memarrow">→</span>` +
+    box("unit", "연산기", "", "Tensor core · CUDA core");
+}
+
 /* ── View A ── */
 function renderFlow() {
   const d = dims(), tot = totals(d), ks = tot.ks;
@@ -586,7 +624,7 @@ function renderFlow() {
     if (p !== prevP) { phaseRows.push({ p, y }); y += PHH; prevP = p; }
     const g = hbmGroups(k, d);
     const listH = 26 + 18 + g.reads.length * 17 + (g.writes.length ? 10 + 18 + g.writes.length * 17 : 0) + 6;
-    const nChipRows = Math.ceil(k.steps.length / 2), nPills = Math.max(1, (k.on_chip || []).length);
+    const nChipRows = Math.ceil(k.steps.length / 2), nPills = Math.max(1, onChipOf(k).length);
     const h = Math.max(128, 92 + Math.max(nChipRows * 32, nPills * 28) + 12, listH);
     rows.push({ y, h, cy: y + h / 2 + 8, g });
     y += h;
@@ -597,7 +635,7 @@ function renderFlow() {
   // 레인
   const lanes = [
     { x: 4, w: XB0 + 34, t: "HBM (메모리)", s: "세로줄 = HBM에 놓인 텐서 · 목록 = 이 커널이 읽고 쓰는 것" },
-    { x: XK0 - 4, w: W - XK0, t: "커널 (칩 안에서 실행)", s: "칩 안에 두는 것 · 계산 단계 · 이론 시간" },
+    { x: XK0 - 4, w: W - XK0, t: "커널 (칩 안에서 실행)", s: "칩 안 메모리 · 계산 단계 · 이론 시간" },
   ];
   for (const l of lanes) {
     el("rect", { x: l.x, y: 4, width: l.w, height: H - 8, rx: 8, class: "lane-bg", opacity: 0.6 }, svg);
@@ -707,18 +745,23 @@ function renderFlow() {
     el("text", { x: tx1, y: r.y + 66, "font-size": 11, "text-anchor": "end", class: "t-ink2", "font-weight": 600 }, svg, n.tm >= n.tc ? "메모리가 결정" : "연산이 결정");
     el("line", { x1: XK0 + 12, x2: XK1 - 12, y1: r.y + 72, y2: r.y + 72, class: "hrule" }, svg);
     // 칸 이름표
-    el("text", { x: XK0 + 12, y: r.y + 88, "font-size": 11.5, "font-weight": 700, class: "t-ink2" }, svg, "칩 안에 두는 것");
+    el("text", { x: XK0 + 12, y: r.y + 88, "font-size": 11.5, "font-weight": 700, class: "t-ink2" }, svg, "칩 안 메모리 (SMEM · 레지스터)");
     el("text", { x: XS + 2, y: r.y + 88, "font-size": 11.5, "font-weight": 700, class: "t-ink2" }, svg, "계산 단계");
     el("line", { x1: XS - 10, x2: XS - 10, y1: r.y + 78, y2: r.y + r.h - 14, class: "divider" }, svg);
-    const oc = k.on_chip || [];
+    const oc = onChipOf(k);
     if (!oc.length) el("text", { x: XK0 + 12, y: r.y + 110, "font-size": 12, class: "t-muted" }, svg, "없음 — 읽은 값을 바로 계산");
-    oc.forEach((tid, j) => {
-      const py = r.y + 96 + j * 28;
+    oc.forEach((e, j) => {
+      const py = r.y + 96 + j * 28, mem = M.hw.onchip[e.mem], tid = e.t;
       const g = el("g", {}, svg);
       el("rect", { x: XK0 + 12, y: py, width: XS - XK0 - 34, height: 22, rx: 11, fill: "var(--surface)", stroke: kc(TENS[tid].kind), "stroke-width": 1.4, "stroke-dasharray": "4 2" }, g);
-      el("text", { x: XK0 + 23, y: py + 15.5, "font-size": 12 }, g, TENS[tid].label);
-      el("text", { x: XS - 32, y: py + 15.5, "font-size": 11.5, "text-anchor": "end", class: "t-mono t-ink2" }, g, fmtB(bytesOf(tid, d)));
-      bindTip(g, () => `<b>${esc(TENS[tid].label)}</b> <span class="mono">${esc(shapeStr(tid, d))}</span><br>칩 안에서 쓰고 버림 — HBM에 쓰지 않는다.<br>${fmtB(bytesOf(tid, d))}는 HBM에 썼다면 생길 크기. 실제로는 조각(타일) 단위로 계산하자마자 축약 · 사용한다.`);
+      const bwm = mem.short.length * 6.6 + 10;
+      el("rect", { x: XK0 + 18, y: py + 4, width: bwm, height: 14, rx: 3, fill: "var(--ink2)" }, g);
+      el("text", { x: XK0 + 18 + bwm / 2, y: py + 14.5, "font-size": 10, "font-weight": 700, "text-anchor": "middle", class: "t-inv t-mono" }, g, mem.short);
+      const lab = e.label || TENS[tid].label;
+      const sz = e.stage ? "타일 단위" : fmtB(bytesOf(tid, d));
+      el("text", { x: XK0 + 24 + bwm, y: py + 15.5, "font-size": 12 }, g, clip(lab, 12, XS - XK0 - 34 - bwm - 16 - textW(sz, 11.5) - 12));
+      el("text", { x: XS - 32, y: py + 15.5, "font-size": 11.5, "text-anchor": "end", class: (e.stage ? "" : "t-mono ") + "t-ink2" }, g, sz);
+      bindTip(g, () => memTip(e, d));
     });
     k.steps.forEach((sid, j) => {
       const s = STEP[sid];
@@ -827,13 +870,14 @@ function opRow(g, y, s, d) {
   el("text", { x: 26 + u.length * 7.2 + 20, y: y + 13.5, "font-size": 12, class: "t-ink2" }, g, opText(s, d));
   return 36;
 }
+function memOf(tid, k) { const e = onChipOf(k).find(x => x.t === tid && !x.stage); return e ? M.hw.onchip[e.mem] : null; }
 function whereOf(tid, k) {
   const r = k.hbm_read.find(e => e.t === tid);
   if (r) return r.pat === "gather" ? "HBM에서 골라 읽기" : "HBM에서 읽기";
   if ((k.hbm_write || []).some(e => e.t === tid)) return "HBM에 쓰기";
   if ((k.hbm_write || []).some(e => e.via === tid)) return "칩 → HBM";
-  if (k.hbm_read.some(e => e.via === tid)) return "칩 안 (모은 줄)";
-  return "칩 안";
+  const m = memOf(tid, k);
+  return `칩 안 · ${m ? m.label : "레지스터"}`;
 }
 function moved(tid, k, d) {
   const e = k.hbm_read.find(x => x.t === tid) || (k.hbm_write || []).find(x => x.t === tid);
@@ -852,8 +896,8 @@ function renderStep() {
     const lbl = tid === "kv_cache" && s.viz === "gather" ? `KV cache 중 ${fmtN(d.k)}줄`
       : (tid === "kv_cache" || tid === "idx_cache") && dir === "out" ? `${TENS[tid].label}에 1줄` : TENS[tid].label;
     const loc = dir === "in"
-      ? (hbm ? (w.includes("골라") ? "HBM에서 골라 읽음" : "HBM에서 읽음") : "칩 안 (앞 단계 결과)")
-      : (hbm ? "HBM에 씀" : "칩 안에 둠");
+      ? (hbm ? (w.includes("골라") ? "HBM에서 골라 읽음" : "HBM에서 읽음") : `${w} (앞 단계 결과)`)
+      : (hbm ? "HBM에 씀" : `${w}에 둠`);
     return `<div class="f-it"><i style="background:${kc(TENS[tid].kind)}"></i><span>${esc(lbl)}</span><span class="num mono">${fmtB(moved(tid, k, d))}</span><span class="pill${hbm ? " hbm" : ""}">${loc}</span></div>`;
   };
   document.getElementById("b-moves").innerHTML =
@@ -963,6 +1007,7 @@ document.getElementById("hwnote").textContent = `${M.name} · HBM ${M.hw.hbm_bw 
 document.getElementById("verify").innerHTML = `<b>●</b> HF 구현과 출력 일치 · shape · FLOP 검사 ${DATA.checks.n - DATA.checks.fail}/${DATA.checks.n}`;
 document.getElementById("v2").textContent = `${DATA.checks.n - DATA.checks.fail}/${DATA.checks.n} 통과`;
 document.getElementById("sources").innerHTML = A.sources.map(s => `<li>${esc(s.label)} — <span class="muted">${esc(s.ref)}</span></li>`).join("");
+renderMem();
 update();
 })();
 </script>
