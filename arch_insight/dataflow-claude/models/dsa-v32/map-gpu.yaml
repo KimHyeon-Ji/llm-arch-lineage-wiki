@@ -33,6 +33,10 @@ derived:
   S_acc: {short: split 부분합, desc: "split된 요청들의 split 수 합 (스케줄러 시뮬레이션)"}
   U_dir: {short: split 없는 요청, desc: "split 없이 출력을 바로 쓰는 요청 수"}
 
+# 결론 칸에 붙는 문장 (when 식이 0보다 크면 text, 아니면 else)
+insights:
+  - {when: S_acc, text: "요청이 적어 Sparse MLA를 SM 여러 개에 나눠 계산하므로, 부분 출력 {B:S_acc*n_h*(c_kv+1)*4}를 HBM에 썼다가 다시 읽는다(split {N:S_acc}개).", else: "split 없이 Sparse MLA 출력을 바로 쓴다."}
+
 # 배치 전용 텐서 · 단계 (알고리즘에는 없고 이 구현에서 생기는 것)
 extra_tensors:
   o_acc:     {label: split 부분 출력, shape: [S_acc, n_h, c_kv], bytes: S_acc*n_h*(c_kv+1)*4, kind: inter, desc: "split마다 FP32 부분 출력 [128 × 512] + LSE 128개"}

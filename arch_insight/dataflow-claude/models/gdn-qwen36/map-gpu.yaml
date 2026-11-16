@@ -1,0 +1,86 @@
+# 배치 — 현재 GPU 실행 (as-is) · Gated DeltaNet decode
+#
+# 항목 규칙은 dsa-v32/map-gpu.yaml과 같다. pat = overwrite 는 상주 데이터를 전부 다시 쓰는 것.
+# 커널 묶음은 SGLang · vLLM의 Qwen3-Next / Qwen3.5 linear attention 경로를 대표로 단순화했다.
+
+name: GPU 현재 실행 (H200 기준)
+hw:
+  label: H200
+  hbm_bw: 4.8e12
+  hbm_cap: 141000000000
+  peak:
+    fp8:  1979e12
+    bf16: 989e12
+    vec:  67e12        # FP32 CUDA core — 원소별 · 행렬 × 벡터
+  n_sm: 132
+  onchip:
+    l2:   {label: L2 캐시,     short: L2,   total: 52428800, desc: "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}
+    smem: {label: 공유 메모리, short: SMEM, per_sm: 233472,  desc: "SM마다 있는 SRAM. 커널이 직접 타일을 올려 두고 쓴다"}
+    reg:  {label: 레지스터,    short: REG,  per_sm: 262144,  desc: "SM마다 256 KB. 계산 중인 값이 여기에 있다"}
+  note: "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"
+
+insights:
+  - {text: "state는 head마다 레지스터에 올려 감쇠 · 기억 읽기 · delta 기록 · 출력 읽기를 한 커널에서 끝내고 전부 다시 쓴다 — 읽기와 쓰기가 같은 양이고, 연산은 state 1 B당 1 FLOP도 안 된다."}
+
+kernels:
+  - id: K1
+    label: 입력 투영 GEMM
+    plain: "x로 q·k·v · gate · β · 감쇠 만들기"
+    impl: "in_proj_qkvz + in_proj_ba GEMM (SGLang · vLLM은 투영을 묶어 x를 한 번만 읽는다)"
+    steps: [l1]
+    notes:
+      - "가중치 {B:2*d*(C+n_v*d_v+2*n_v)} 읽기 — 요청이 적으면 이 층 이동의 대부분"
+      - "x 하나로 다섯 가지 투영 → 한 GEMM으로 묶임. 동시 요청 수(B)로 가중치 읽기를 나눠 낸다"
+    hbm_read:  [{t: x, pat: small}, {t: W_qkv, pat: stream}, {t: W_z, pat: stream}, {t: W_b, pat: stream}, {t: W_a, pat: stream}]
+    hbm_write: [{t: qkv, pat: small}, {t: z, pat: small}, {t: b, pat: small}, {t: a, pat: small}]
+
+  - id: K2
+    label: 짧은 합성곱
+    plain: "최근 4토큰을 채널마다 섞고 conv state 갱신"
+    impl: "causal_conv1d_update — conv state 3칸 + 새 값으로 4탭 depthwise 합성곱 · SiLU, state를 한 칸 밀어 다시 씀"
+    steps: [l2, l3]
+    notes:
+      - "conv state {B:2*B*C*(d_conv-1)}를 읽고 한 칸 밀어 전부 다시 씀 — 작지만 매 스텝 왕복"
+      - "채널 10,240개가 서로 독립 → 단순 원소별 연산이라 메모리 근처 처리에 맞는 일"
+    hbm_read:  [{t: qkv, pat: small}, {t: conv_state, pat: stream}, {t: w_conv, pat: stream}]
+    hbm_write: [{t: qkv_c, pat: small}, {t: conv_state, pat: overwrite}]
+    on_chip:
+      - {t: conv_win, mem: reg, how: "state 3칸 + 새 값 = 창 4칸을 레지스터에 모아 채널마다 가중합"}
+
+  - id: K3
+    label: state 갱신 커널
+    plain: "state를 읽어 감쇠 · 읽기 · 기록 · 출력 후 다시 쓰기"
+    impl: "fla fused_recurrent_gated_delta_rule (SGLang fused_sigmoid_gating_delta_rule_update) — head마다 state 블록을 레지스터에 올려 l2norm · gate · 감쇠 · 기억 읽기 · rank-1 갱신 · 출력까지 한 번에 하고 state를 다시 씀"
+    steps: [l4, l5, l6, l7, l8]
+    notes:
+      - "요청마다 state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 씀 — T와 무관한 고정 비용"
+      - "연산은 head마다 행렬 × 벡터 2번 + rank-1 갱신 → state 1 B당 1 FLOP 미만. Tensor core가 아니라 대역폭이 시간을 정함"
+      - "state를 HBM 밖으로 꺼내지 않고 메모리 안에서 갱신하면(PIM) 이 왕복이 사라짐 — Pimba 등 (보고서 2.4)"
+      - "동시 요청 {N:B}개 state 합 {B:state_b*B*n_v*d_k*d_v}를 칩 안 SRAM에 두려면 이 크기가 기준 — 요청이 늘면 금방 넘침"
+    hbm_read:  [{t: qkv_c, pat: small}, {t: a, pat: small}, {t: b, pat: small}, {t: A_log, pat: small}, {t: dt_bias, pat: small}, {t: ssm_state, pat: stream}]
+    hbm_write: [{t: o, pat: small}, {t: ssm_state, via: S_new, pat: overwrite}]
+    on_chip:
+      - {t: ssm_state, mem: reg, stage: true, label: state 블록, how: "head마다 [128 × 블록] 단위로 state를 HBM에서 레지스터로 올림"}
+      - {t: S_dec, mem: reg, how: "감쇠한 state — 레지스터에서 바로 다음 계산에 사용"}
+      - {t: kv_mem, mem: reg, how: "지금 k로 읽은 기억 값 (head마다 128개)"}
+      - {t: S_new, mem: reg, how: "갱신한 state — 출력 읽기에 쓰고 HBM에 다시 씀"}
+
+  - id: K4
+    label: gate 정규화
+    plain: "head마다 RMSNorm 후 SiLU(z) 곱하기"
+    impl: "FusedRMSNormGated — head마다 RMSNorm 후 SiLU(z)를 곱함"
+    steps: [l9]
+    notes:
+      - "작은 원소별 연산 — K3 끝이나 K5 앞에 붙이면 o · z의 HBM 왕복이 사라짐"
+    hbm_read:  [{t: o, pat: small}, {t: z, pat: small}, {t: w_norm, pat: small}]
+    hbm_write: [{t: o_n, pat: small}]
+
+  - id: K5
+    label: 출력 투영 GEMM
+    plain: "head 출력 6,144폭을 hidden 5,120으로 투영"
+    impl: "out_proj GEMM"
+    steps: [l10]
+    notes:
+      - "W_out {B:2*n_v*d_v*d} — 요청별 데이터와 무관하므로 동시 요청 수(B)로 분할 상환"
+    hbm_read:  [{t: o_n, pat: small}, {t: W_out, pat: stream}]
+    hbm_write: [{t: y, pat: small}]

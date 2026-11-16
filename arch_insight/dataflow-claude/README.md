@@ -5,8 +5,8 @@
 
 | 모델 | 상태 | 뷰어 |
 |---|---|---|
-| [DSA · DeepSeek-V3.2](models/dsa-v32/) | 파일럿 완료 — 참조 구현 검증 · 수치 · 뷰어 | [viewer/dsa-v32.html](viewer/dsa-v32.html) · [게시본](https://claude.ai/artifact/3YVxmZwKAEJXpf8sYtZ42k) |
-| Gated DeltaNet (Qwen3.8 · Qwen3-Next) | 예정 | |
+| [DSA · DeepSeek-V3.2](models/dsa-v32/) | 완료 — 참조 구현 검증 · 수치 · 뷰어 (split-KV combine 포함) | [viewer/dsa-v32.html](viewer/dsa-v32.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32.html) · [claude.ai](https://claude.ai/artifact/3YVxmZwKAEJXpf8sYtZ42k) |
+| [Gated DeltaNet · Qwen3.6-27B](models/gdn-qwen36/) | 완료 — 참조 구현 검증 · 수치 · 뷰어 (Hybrid의 linear 층) | [viewer/gdn-qwen36.html](viewer/gdn-qwen36.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/gdn-qwen36.html) · [claude.ai](https://claude.ai/artifact/W2dGw8hpqSRW7Aj5JKPtz5) |
 | QSA 블록 선택 (Qwen3.8) | 예정 | |
 | 층 조합 (Qwen3.8 · QSA 12 + DeltaNet 36) | 예정 | |
 | 비교 기준: 전 층 Full (MLA · GQA) | 예정 | |
@@ -44,7 +44,8 @@
 dataflow-claude/
   README.md              이 문서 — 원칙 · 규약 · 진행 상황
   tools/dflow.py         공용: 단계 · 텐서 기록기(Rec), aten 연산 · GEMM FLOP 로그, 식 계산
-  viewer/template.html   뷰어 템플릿 (모델 데이터가 /*__DATA__*/ 자리에 들어감)
+  tools/buildlib.py      공용 빌드: yaml 읽기 · 차원 · 커널 수치 · numbers 표 · 뷰어 출력 (모델 build.py가 사용)
+  viewer/template.html   뷰어 템플릿 — 모델 데이터가 /*__DATA__*/ 자리에 들어감. 제목 · 문구 · 색 · 조건 버튼은 algo.yaml의 page · kinds · formats에서 읽음
   viewer/<model>.html    build.py가 만든 공유용 뷰어 — 완전한 HTML 문서, 브라우저 · GitHub Pages에서 바로 열림
   viewer/artifact/       같은 뷰어의 claude.ai artifact 게시용 본문 (직접 고치지 않음)
   models/<model>/

@@ -27,9 +27,11 @@ dims:
 formats:
   kv_row:
     desc: KV cache 1줄 바이트
+    title: KV cache 1줄 형식
+    ui: true
     options:
-      fp8:  {value: 656,  desc: "배포 형식 — c_kv 512 FP8 + scale 4개(FP32) + k_rope 64 BF16"}
-      bf16: {value: 1152, desc: "구조 비교 기준 — 576값 × BF16"}
+      fp8:  {value: 656,  label: "FP8 656 B (배포)", desc: "배포 형식 — c_kv 512 FP8 + scale 4개(FP32) + k_rope 64 BF16"}
+      bf16: {value: 1152, label: "BF16 1,152 B (비교 기준)", desc: "구조 비교 기준 — 576값 × BF16"}
     default: fp8
   idx_row:
     desc: 색인 K 1줄 바이트
@@ -38,12 +40,12 @@ formats:
     default: fp8
 
 kinds:
-  weight: {label: 가중치,       share: 공유,   desc: 모든 요청이 같이 쓴다 — B가 늘어도 그대로}
-  kv:     {label: KV cache,     share: 요청별, desc: 요청마다 T줄 — 보관량이 가장 큼}
-  idxk:   {label: 색인 K cache, share: 요청별, desc: 요청마다 T줄 — 매 스텝 전부 읽음}
-  inter:  {label: 중간 결과,    share: 요청별, desc: 점수 · 부분합처럼 커널 사이에서 잠깐 쓰는 데이터}
-  sel:    {label: 선택 위치,    share: 요청별, desc: top-k 결과}
-  act:    {label: 토큰 벡터,    share: 요청별, desc: 토큰 1개짜리 중간 결과 벡터(x · q 등). 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음}
+  weight: {label: 가중치,       share: 공유,   color: gray,   persistent: true, desc: 모든 요청이 같이 쓴다 — B가 늘어도 그대로}
+  kv:     {label: KV cache,     share: 요청별, color: blue,   persistent: true, desc: 요청마다 T줄 — 보관량이 가장 큼}
+  idxk:   {label: 색인 K cache, share: 요청별, color: orange, persistent: true, desc: 요청마다 T줄 — 매 스텝 전부 읽음}
+  inter:  {label: 중간 결과,    share: 요청별, color: yellow, desc: 점수 · 부분합처럼 커널 사이에서 잠깐 쓰는 데이터}
+  sel:    {label: 선택 위치,    share: 요청별, color: pink, desc: top-k 결과}
+  act:    {label: 토큰 벡터,    share: 요청별, color: violet, desc: 토큰 1개짜리 중간 결과 벡터(x · q 등). 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음}
 
 tensors:
   # ── 가중치 (FP8, block scale 생략) ──
@@ -182,6 +184,7 @@ steps:
     in: [logits, wI]
     out: [s]
     flops: 2*B*n_I*T
+    gemm_traced: true
     desc: head별 점수에 ReLU를 씌우고 w로 가중합해 토큰마다 점수 1개로 줄인다.
   - id: s1
     group: 선택
@@ -248,13 +251,43 @@ steps:
 
 # 화면의 "흐름 한눈에" 5단계. tag: 기존 MLA · DSA 추가 · DSA로 변경
 phases:
-  - {id: P1, focus: p1, label: "쿼리 · KV 만들기", tag: "기존 MLA",   steps: [p1, p2, p3, p4, p5], plain: "새 토큰으로 q와 KV 1줄을 만들고 KV cache 끝에 붙인다"}
-  - {id: P2, focus: i5, label: "색인 점수 매기기", tag: "DSA 추가",   steps: [i1, i2, i3, i4, i5, i6], plain: "지난 모든 토큰의 색인 키와 비교해 토큰마다 점수를 낸다"}
-  - {id: P3, focus: s1, label: "2,048개 고르기", tag: "DSA 추가",   steps: [s1], plain: "점수 상위 2,048개 토큰의 위치만 남긴다"}
-  - {id: P4, focus: a1, label: "고른 KV로 attention", tag: "DSA로 변경", steps: [a1, a2, a3, a4], plain: "고른 2,048줄만 모아 읽고 attention을 계산한다"}
-  - {id: P5, focus: o2, label: "출력 투영", tag: "기존 MLA",   steps: [o1, o2], plain: "head 출력을 hidden 폭으로 되돌린다"}
+  - {id: P1, focus: p1, label: "쿼리 · KV 만들기", tag: "기존 MLA", tag_style: plain,   steps: [p1, p2, p3, p4, p5], plain: "새 토큰으로 q와 KV 1줄을 만들고 KV cache 끝에 붙인다"}
+  - {id: P2, focus: i5, label: "색인 점수 매기기", tag: "DSA 추가", tag_style: strong,   steps: [i1, i2, i3, i4, i5, i6], plain: "지난 모든 토큰의 색인 키와 비교해 토큰마다 점수를 낸다"}
+  - {id: P3, focus: s1, label: "2,048개 고르기", tag: "DSA 추가", tag_style: strong,   steps: [s1], plain: "점수 상위 2,048개 토큰의 위치만 남긴다"}
+  - {id: P4, focus: a1, label: "고른 KV로 attention", tag: "DSA로 변경", tag_style: outline, steps: [a1, a2, a3, a4], plain: "고른 2,048줄만 모아 읽고 attention을 계산한다"}
+  - {id: P5, focus: o2, label: "출력 투영", tag: "기존 MLA", tag_style: plain,   steps: [o1, o2], plain: "head 출력을 hidden 폭으로 되돌린다"}
+
+# 뷰어 페이지 문구 (viewer/template.html이 읽는다). {B:식} = 바이트, {N:식} = 숫자, {per}/{sum} = 요청이 여러 개일 때 문구, {sw:종류} = 색 표시
+page:
+  file: dsa-v32
+  start: i5
+  links:
+    - {label: "Gated DeltaNet (Hybrid linear 층)", url: "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/gdn-qwen36.html"}
+  doc_title: DSA 데이터 플로우
+  title: "DSA 데이터 플로우 — 고르고, 모으고, 계산하는 동안 데이터는 어디로 가나"
+  crumbs: [Sparse attention, DeepSeek-V3.2 · DSA, 층 1개 · decode 1스텝]
+  sub: "새 토큰 1개를 생성할 때 DSA attention 층 하나에서 데이터가 HBM과 칩 사이를 어떻게 오가고 어디서 계산되는지 커널 단위로 보여 준다. MoE · FFN은 빼고 attention 블록만."
+  t_hint: 길수록 색인 키 읽기가 비례해서 늘어난다
+  flow_note: "DSA는 ②③을 더하고 ④를 바꾼다 · 카드 위 색 막대 = 그 단계가 주로 읽는 데이터 · 누르면 아래 그림의 해당 단계로"
+  hl2: "DSA는 {sw:kv}KV를 {per}<b>{N:k}줄만</b> 읽는다({B:B*k*kv_row}{sum}). 대신 그 줄을 고르려고 {sw:idxk}<b>색인 키 {N:T}줄</b>을 {per}매 스텝 전부 읽는다({B:B*T*idx_row}{sum})."
+  store: {expr: "B*T*(kv_row+idx_row)*n_layer", label: "61층 KV + 색인 키 보관"}
+  sweep_cap: "막대 = 층 1개의 HBM 읽기 + 쓰기. 가중치(회색)는 T와 무관하고 색인 키(주황)는 T에 비례한다. KV(파랑)는 2,048줄만 읽어 거의 일정하다. 점선 오른쪽은 지원 길이 밖 외삽. 막대를 누르면 T가 바뀐다."
+  scope:
+    - "DeepSeek-V3.2 차원 · 층 1개 · decode 1스텝 · attention 블록만. 잔차 · MoE · FFN · 집합통신 제외"
+    - "head 128개가 모두 GPU 1개에 있다고 가정(DP attention). TP로 head를 나누면 GPU당 가중치 · 연산이 줄어 K8 성격과 같아지는 B가 달라진다"
+    - "커널 묶음은 SGLang · vLLM의 V3.2 경로를 대표로 단순화. 실제 융합 경계는 프레임워크 · 버전마다 다름"
+    - "K8 split 수는 FlashMLA 공개 코드의 스케줄러 규칙(SM 절반 = 66 파트 · 64줄 블록 · 고정 비용 3)을 H200에 적용한 시뮬레이션"
+    - "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). 커널 실행 지연 · 동기화 · gather 비효율 미포함. top-k처럼 병렬성이 낮은 단계는 실제로 훨씬 길 수 있음"
+    - "가중치는 FP8(블록 scale 생략), W_UK · W_UV는 BF16, W_Iw는 FP32(HF 기준) 가정"
+    - "보관량 경고는 61층 KV + 색인 키만 셈. 가중치 · 활성 메모리는 빼서 실제 여유는 더 작다"
+    - "격자에서 선택된 위치(진한 칸)는 설명용 예시 패턴. 실측 분포 아님"
+  verify:
+    - "참조 구현 ref_decode.py(흡수형 MLA + 2,048줄 gather) = HF DeepseekV32Attention(풀어 쓴 MLA + 마스크) 출력 일치, 상대 오차 1e-6 수준"
+    - "실제 차원(T = 131,072) meta 실행으로 텐서 shape · GEMM FLOP 식 검사 {checks}"
+    - "보고서 수치 재현: 색인 키 17.3 MB · 2.15 GFLOP · 124 FLOP/B · 선택 KV 2.36 MB(BF16)"
 
 sources:
   - {label: "HF transformers 5.14 · modular_deepseek_v32.py", ref: "DeepseekV32Indexer.forward (L206–271), DeepseekV32Attention.forward (L284–356)"}
   - {label: "DeepSeek-V3.2-Exp 공식 inference/model.py", ref: "Indexer — rotate_activation(Hadamard) · act_quant(FP8, block 128) · fp8_index · k_cache/k_scale_cache"}
   - {label: "기준 보고서", ref: "arch_insight/sparse-hybrid-hw-report-v2-refined.md §1.4 · §1.5 · 부록 B"}
+  - {label: "FlashMLA (deepseek-ai)", ref: "csrc/api/sparse_decode.cpp · get_decoding_sched_meta.cu · combine.cu (split-KV 스케줄러 · 부분 출력 버퍼)"}
