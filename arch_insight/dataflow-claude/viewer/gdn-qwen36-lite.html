@@ -1,0 +1,622 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gated DeltaNet 데이터 이동</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: 약식 — 보고서 그림 문법(연한 레인 패널 · 흰 카드 · 굵은 수치). 위 "흐름 한눈에" = 단계별 HBM 막대 + 칩 레인,
+   아래 "커널별 이동" = HBM 레인 | 굵은 화살표(굵기 = 바이트) | 칩 레인 3열. 커널 칸을 누르면 텐서 모양이 아래로 펼쳐진다.
+   색 = 데이터 종류 (yaml kinds.color). 설명 문장 · 결론은 자세한 버전에 둔다. */
+:root {
+  --bg: #f6f7fb; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6;
+  --ink: #2b2f3a; --ink2: #4a5573; --muted: #6b7080; --line: #dfe2ec; --line2: #e6e8f1; --axis: #9aa0b0;
+  --c-gray: #9c9a92; --c-gray-l: #dddcd6; --c-blue: #2a78d6; --c-blue-l: #b7d3f6; --c-orange: #eb6834; --c-orange-l: #f8c6b1;
+  --c-green: #1baf7a; --c-green-l: #a9e0cb; --c-yellow: #eda100; --c-yellow-l: #f7d98f; --c-pink: #e87ba4; --c-pink-l: #f6c9da; --c-violet: #6250d6; --c-violet-l: #d6d1f5;
+  --font-text: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --cols: 280px 200px minmax(0, 1fr);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33;
+    --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
+    --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
+    --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33;
+  --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
+  --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
+  --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-text); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px; font-variant-numeric: tabular-nums;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -0.015em; text-wrap: balance; }
+.mono { font-family: var(--font-mono); }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+
+header.top { display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.crumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.crumb { font-size: 12px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 999px; padding: 2px 10px; }
+.h1row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.litechip { font-size: 12.5px; font-weight: 800; color: var(--surface); background: var(--ink2); border-radius: 6px; padding: 2px 9px; }
+.sub { color: var(--muted); margin: 0; font-size: 15px; }
+.links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.links a { font-size: 13px; color: var(--ink2); font-weight: 700; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
+.links a.main { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
+.links a:hover { border-color: var(--ink); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
+.blk { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px; }
+.blk .name { display: inline-flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 800; }
+.blk .name::before { content: ""; width: 5px; height: 18px; border-radius: 2px; background: var(--ink2); flex: none; align-self: center; }
+.blk .what { font-size: 13px; color: var(--muted); }
+
+/* 조건 + 범례 */
+.ctlbar { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; padding: 12px 16px; }
+.ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ctl .cl { font-size: 13px; font-weight: 800; }
+.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 500; padding: 4px 9px; border: 0; background: var(--surface); color: var(--ink2); cursor: pointer; font-variant-numeric: tabular-nums; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button.ext { color: var(--muted); font-style: italic; }
+.seg button[aria-pressed=true] { background: var(--ink2); color: var(--surface); font-weight: 800; font-style: normal; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); width: 100%; padding-top: 10px; border-top: 1px solid var(--line2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
+.legend .ar { font-weight: 800; color: var(--ink); }
+.legend .dash { width: 18px; height: 11px; border: 1.5px dashed var(--ink2); border-radius: 6px; background: transparent; }
+
+.scroll { overflow-x: auto; }
+#sum svg { display: block; width: 100%; min-width: 900px; height: auto; }
+svg text { fill: var(--ink); font-family: var(--font-text); }
+svg .t-muted { fill: var(--muted); }
+svg .t-inv { fill: var(--surface); }
+svg .t-mono { font-family: var(--font-mono); }
+svg .lane { fill: var(--lane); }
+svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .boxhit { cursor: pointer; }
+svg .boxhit:hover .box { stroke: var(--ink2); }
+
+/* 커널별 이동 */
+.kgrid { display: grid; grid-template-columns: var(--cols); min-width: 900px; position: relative; }
+.lane-bg { background: var(--lane); border-radius: 14px; }
+.lh { padding: 14px 18px 8px; display: flex; flex-direction: column; gap: 1px; }
+.lh b { font-size: 18px; font-weight: 800; }
+.lh span { font-size: 12.5px; color: var(--muted); }
+.lh.mid { justify-content: flex-end; align-items: center; text-align: center; padding: 14px 6px 8px; }
+.lh.mid span { font-size: 12px; }
+.phrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 16px 18px 4px; scroll-margin-top: 12px; }
+.phrow .phn { font-size: 15px; font-weight: 800; }
+.phrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+.tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
+.tag.strong { background: var(--ink2); border-color: var(--ink2); color: var(--surface); }
+.tag.outline { border-color: var(--ink2); color: var(--ink2); }
+.hcell { grid-column: 1; padding: 8px 16px 8px 18px; align-self: center; min-width: 0; }
+.hcell.r { padding-top: 12px; }
+.hcell.w { padding-bottom: 14px; }
+.hl-t { font-size: 12.5px; font-weight: 800; margin-bottom: 3px; color: var(--ink); }
+.hl-i { display: grid; grid-template-columns: 11px minmax(0, 1fr) auto; gap: 7px; align-items: center; font-size: 12.5px; line-height: 1.55; }
+.hl-i i { width: 10px; height: 10px; border-radius: 2px; }
+.hl-i .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-i .b { color: var(--muted); font-size: 12px; }
+.hl-i.sm { color: var(--muted); }
+.hl-i.sm i { opacity: 0.7; }
+.hl-i.zero { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--axis); }
+.acell { grid-column: 2; display: flex; align-items: center; justify-content: center; margin-right: -14px; min-width: 0; position: relative; z-index: 1; }
+.acell svg { display: block; overflow: visible; }
+.acell .al { font-size: 12px; fill: var(--muted); font-weight: 700; }
+.acell .ab { font-size: 16px; font-weight: 800; }
+.kcard { grid-column: 3; margin: 8px 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 6px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; cursor: pointer; min-width: 0; }
+.kcard:hover { border-color: var(--axis); }
+.kcard[aria-expanded=true] { border-color: var(--ink2); box-shadow: 0 0 0 1px var(--ink2); }
+.khead { display: flex; align-items: center; gap: 10px; }
+.kid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 5px; padding: 2px 7px; flex: none; }
+.kname { font-size: 17px; font-weight: 800; }
+.kchev { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--ink2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; white-space: nowrap; flex: none; }
+.kcard[aria-expanded=true] .kchev { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
+.kplain { font-size: 13px; color: var(--muted); }
+.kchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.kchips .kcl { font-weight: 700; color: var(--muted); margin-right: 2px; }
+.ocp { display: inline-flex; align-items: center; gap: 6px; border: 1.5px dashed var(--k); border-radius: 999px; padding: 1px 10px 1px 4px; background: var(--surface); }
+.ocp em { font-style: normal; color: var(--muted); }
+code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 3px; padding: 1px 5px; }
+
+/* 펼친 텐서 모양 */
+.kx { grid-column: 1 / -1; margin: 0 14px 10px; background: var(--surface); border: 1px solid var(--ink2); border-radius: 12px; padding: 14px 16px 16px; position: relative; z-index: 2; }
+.kx-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin-bottom: 12px; }
+.kx-head b { font-size: 15px; font-weight: 800; }
+.kx-dims { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); }
+.kx-dims b { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--ink); margin-right: 3px; }
+.kx-cols { display: grid; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr) 26px minmax(0, 1fr); gap: 0 8px; align-items: start; }
+.kx-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.kx-col.mid { background: var(--surface2); border: 1.5px dashed var(--ink2); border-radius: 10px; padding: 10px; }
+.kx-t { font-size: 13px; font-weight: 800; color: var(--ink2); }
+.kx-ar { align-self: start; margin-top: 52px; height: 18px; background: var(--ink2); clip-path: polygon(0 35%, 60% 35%, 60% 0, 100% 50%, 60% 100%, 60% 65%, 0 65%); }
+.ksteps { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.kst { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 700; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; padding: 3px 9px 3px 5px; }
+.kst code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 4px; padding: 1px 5px; }
+.kst-ar { font-size: 12px; color: var(--ink2); padding-left: 14px; line-height: 1.1; }
+.tile { border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px 10px; background: var(--surface); display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tile.chip { border: 1.5px dashed var(--k); }
+.tile.off { opacity: 0.6; }
+.t-top { display: flex; align-items: center; gap: 7px; font-size: 13px; min-width: 0; }
+.t-top i { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.t-top b { font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-top .t-b { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--ink2); white-space: nowrap; }
+.t-shape { font-size: 15px; font-weight: 700; color: var(--ink); letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.t-num { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+.tgw { margin-top: 5px; }
+.tgw svg { display: block; max-width: 100%; height: auto; }
+.t-ax { font-size: 11px; color: var(--muted); }
+.t-note { font-size: 12px; color: var(--ink2); font-weight: 700; margin-top: 2px; overflow-wrap: anywhere; }
+.t-note .mono { font-weight: 700; }
+.t-zero { font-size: 12px; color: var(--muted); }
+.foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
+.foot a { color: var(--ink2); font-weight: 700; }
+
+@media (max-width: 640px) { h1 { font-size: 22px; } }
+@media (prefers-reduced-motion: no-preference) { .kcard, .seg button { transition: border-color 120ms, box-shadow 120ms, background 120ms; } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div class="crumbs" id="crumbs"></div>
+    <div class="h1row"><h1 id="h1"></h1><span class="litechip">약식</span></div>
+    <p class="sub" id="subtext"></p>
+    <nav class="links" id="links" aria-label="다른 버전"></nav>
+  </header>
+
+  <section class="panel ctlbar" aria-label="조건">
+    <div class="ctl"><span class="cl">컨텍스트 길이 T</span><div class="seg" role="group" id="tseg" aria-label="컨텍스트 길이 T"></div></div>
+    <div class="ctl"><span class="cl">동시 요청 수 B</span><div class="seg" role="group" id="bseg" aria-label="동시 요청 수 B"></div></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel" aria-label="흐름 한눈에">
+    <div class="blk"><span class="name">흐름 한눈에</span><span class="what" id="sumwhat"></span></div>
+    <div class="scroll"><div id="sum"></div></div>
+  </section>
+
+  <section class="panel" aria-label="커널별 이동">
+    <div class="blk"><span class="name">커널별 이동</span><span class="what">화살표 굵기 = 옮기는 바이트 (√ 눈금 · 100배 차이 = 10배 굵기) · 커널 칸을 누르면 텐서 모양이 펼쳐진다</span></div>
+    <div class="scroll"><div class="kgrid" id="kgrid"></div></div>
+  </section>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = {"algo": {"model": "Qwen3.6-27B (Gated DeltaNet · linear attention 층)", "scope": "층 1개 · decode 1스텝 · linear attention 블록 (FFN · full attention 층 제외)", "dims": {"B": {"value": 1, "short": "요청", "desc": "동시 요청 수", "var": true}, "T": {"value": 131072, "short": "토큰", "desc": "컨텍스트 길이 — linear 층에는 영향 없음 (비교용)", "var": true}, "d": {"value": 5120, "short": "hidden 폭", "desc": "hidden 폭"}, "n_k": {"value": 16, "short": "key head", "desc": "q · k head 수"}, "n_v": {"value": 48, "short": "value head", "desc": "v head 수 = state head 수"}, "d_k": {"value": 128, "short": "key 폭", "desc": "head당 q · k 폭"}, "d_v": {"value": 128, "short": "value 폭", "desc": "head당 v 폭"}, "d_conv": {"value": 4, "short": "conv 탭", "desc": "짧은 합성곱 길이"}, "C": {"value": 10240, "short": "conv 채널", "desc": "q · k · v 채널 = 2 × 16 × 128 + 48 × 128"}, "n_layer": {"value": 64, "short": "층 수", "desc": "전체 층 수"}, "n_lin": {"value": 48, "short": "linear 층 수", "desc": "linear attention 층 수 (4층마다 full 1층)"}, "T_max": {"value": 262144, "short": "지원 길이", "desc": "max_position_embeddings"}, "n_kv_f": {"value": 4, "short": "full KV head", "desc": "같은 모델 full attention 층의 KV head 수 (비교용)"}, "d_hf": {"value": 256, "short": "full head 폭", "desc": "full attention 층 head 폭 (비교용)"}}, "formats": {"state_b": {"desc": "state 원소 1개 바이트", "title": "state 정밀도", "ui": true, "options": {"fp32": {"value": 4, "label": "FP32 (배포 · mamba_ssm_dtype)"}, "bf16": {"value": 2, "label": "BF16 (가정 · 이동량 절반)"}}, "default": "fp32"}}, "kinds": {"weight": {"label": "가중치", "share": "공유", "color": "gray", "persistent": true, "desc": "모든 요청이 같이 쓴다 — B가 늘어도 그대로"}, "state": {"label": "recurrent state", "share": "요청별", "color": "green", "persistent": true, "desc": "요청마다 head 48개 × 128 × 128 고정 크기 — 매 스텝 전부 읽고 다시 씀"}, "conv": {"label": "conv state", "share": "요청별", "color": "pink", "persistent": true, "desc": "요청마다 최근 3토큰의 q · k · v 채널 — 매 스텝 한 칸 밀어 다시 씀"}, "act": {"label": "토큰 벡터", "share": "요청별", "color": "violet", "desc": "토큰 1개짜리 중간 결과 벡터. 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음"}, "inter": {"label": "중간 결과", "share": "요청별", "color": "yellow", "desc": "커널 안에서 잠깐 쓰는 값 (감쇠한 state · 기억 읽기 값 등)"}}, "tensors": {"W_qkv": {"label": "W_qkv", "shape": ["d", "C"], "bytes": "2*d*C", "kind": "weight", "desc": "x → q · k · v"}, "W_z": {"label": "W_z", "shape": ["d", "n_v*d_v"], "bytes": "2*d*n_v*d_v", "kind": "weight", "desc": "x → 출력 gate z"}, "W_b": {"label": "W_b", "shape": ["d", "n_v"], "bytes": "2*d*n_v", "kind": "weight", "desc": "x → 쓰기 강도 β"}, "W_a": {"label": "W_a", "shape": ["d", "n_v"], "bytes": "2*d*n_v", "kind": "weight", "desc": "x → 감쇠 a"}, "w_conv": {"label": "conv 가중치", "shape": ["C", "d_conv"], "bytes": "2*C*d_conv", "kind": "weight", "desc": "채널마다 4탭"}, "A_log": {"label": "A_log", "shape": ["n_v"], "bytes": "4*n_v", "kind": "weight", "desc": "head별 감쇠 크기"}, "dt_bias": {"label": "dt_bias", "shape": ["n_v"], "bytes": "4*n_v", "kind": "weight", "desc": "head별 감쇠 bias"}, "w_norm": {"label": "norm 가중치", "shape": ["d_v"], "bytes": "2*d_v", "kind": "weight"}, "W_out": {"label": "W_out", "shape": ["n_v*d_v", "d"], "bytes": "2*n_v*d_v*d", "kind": "weight", "desc": "출력 투영"}, "conv_state": {"label": "conv state", "shape": ["B", "C", "d_conv-1"], "bytes": "2*B*C*(d_conv-1)", "kind": "conv", "trace": "cache.conv", "desc": "최근 3토큰의 q · k · v 채널 (BF16)"}, "ssm_state": {"label": "state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "state", "trace": "cache.ssm", "desc": "head마다 [128 × 128] 행렬 — KV cache를 대신하는 고정 크기 기억"}, "x": {"label": "x", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act", "desc": "input RMSNorm 이후 hidden"}, "qkv": {"label": "qkv", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act", "desc": "합성곱 전 q · k · v"}, "z": {"label": "z", "shape": ["B", "n_v*d_v"], "bytes": "2*B*n_v*d_v", "kind": "act", "desc": "출력 gate"}, "b": {"label": "b", "shape": ["B", "n_v"], "bytes": "2*B*n_v", "kind": "act"}, "a": {"label": "a", "shape": ["B", "n_v"], "bytes": "2*B*n_v", "kind": "act"}, "conv_win": {"label": "conv 창", "shape": ["B", "C", "d_conv"], "bytes": "2*B*C*d_conv", "kind": "inter", "desc": "state 3칸 + 새 값"}, "qkv_c": {"label": "qkv (합성곱 후)", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act"}, "q": {"label": "q", "shape": ["B", "n_v", "d_k"], "bytes": "4*B*n_v*d_k", "kind": "inter", "desc": "L2 정규화 · scale 후 value head 수로 확장"}, "k": {"label": "k", "shape": ["B", "n_v", "d_k"], "bytes": "4*B*n_v*d_k", "kind": "inter"}, "v": {"label": "v", "shape": ["B", "n_v", "d_v"], "bytes": "4*B*n_v*d_v", "kind": "inter"}, "beta": {"label": "β", "shape": ["B", "n_v"], "bytes": "4*B*n_v", "kind": "inter", "desc": "쓰기 강도 (sigmoid)"}, "g": {"label": "g", "shape": ["B", "n_v"], "bytes": "4*B*n_v", "kind": "inter", "desc": "감쇠 (log 공간", "음수)": null}, "S_dec": {"label": "감쇠한 state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "inter"}, "kv_mem": {"label": "기억 읽기 값", "shape": ["B", "n_v", "d_v"], "bytes": "4*B*n_v*d_v", "kind": "inter", "desc": "지금 k로 state에서 읽은 값"}, "S_new": {"label": "새 state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "state"}, "o": {"label": "o", "shape": ["B", "n_v", "d_v"], "bytes": "2*B*n_v*d_v", "kind": "act", "desc": "state에서 읽은 출력"}, "o_n": {"label": "o (정규화)", "shape": ["B", "n_v", "d_v"], "bytes": "2*B*n_v*d_v", "kind": "act"}, "y": {"label": "y", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act", "desc": "linear attention 출력 (잔차 더하기 전)"}}, "steps": [{"id": "l1", "group": "입력 투영", "label": "입력 투영", "unit": "gemm", "prec": "bf16", "in": ["x", "W_qkv", "W_z", "W_b", "W_a"], "out": ["qkv", "z", "b", "a"], "flops": "2*B*d*(C+n_v*d_v+2*n_v)", "desc": "같은 x로 q · k · v(10,240), 출력 gate z(6,144), 쓰기 강도 β와 감쇠 a(head 48개씩)를 만든다."}, {"id": "l2", "group": "짧은 합성곱", "label": "짧은 합성곱", "unit": "vec", "in": ["qkv", "conv_state", "w_conv"], "out": ["qkv_c"], "flops": "2*B*C*d_conv", "desc": "채널마다 최근 3토큰 + 지금 값, 4칸을 가중합하고 SiLU를 씌운다. 채널끼리는 섞지 않는다."}, {"id": "l3", "group": "짧은 합성곱", "label": "conv state 갱신", "unit": "mem", "viz": "append", "in": ["qkv"], "out": ["conv_state"], "elems": "B*C*(d_conv-1)", "desc": "가장 오래된 칸을 버리고 지금 값을 붙여 conv state 3칸을 다시 쓴다."}, {"id": "l4", "group": "state 갱신", "label": "q·k 정규화 · gate", "unit": "vec", "in": ["qkv_c", "a", "b", "A_log", "dt_bias"], "out": ["q", "k", "v", "beta", "g"], "flops": "6*B*n_k*d_k+8*B*n_v", "desc": "q · k를 L2 정규화하고 value head 48개로 넓힌다(key head 1개를 3개가 공유). β = sigmoid(b), g = −exp(A_log) · softplus(a + dt_bias)."}, {"id": "l5", "group": "state 갱신", "label": "state 감쇠", "unit": "vec", "in": ["ssm_state", "g"], "out": ["S_dec"], "flops": "B*n_v*d_k*d_v", "desc": "state 전체에 exp(g)를 곱해 오래된 기억을 줄인다. head마다 128 × 128 원소 전부를 건드린다."}, {"id": "l6", "group": "state 갱신", "label": "기억 읽기", "unit": "gemv", "in": ["S_dec", "k"], "out": ["kv_mem"], "flops": "2*B*n_v*d_k*d_v", "check_flops": "2*B*n_v*d_k*d_v", "desc": "지금 k로 state를 읽어 \"이미 기억한 값\"을 꺼낸다 (head마다 128 × 128 행렬 × 벡터)."}, {"id": "l7", "group": "state 갱신", "label": "delta 기록", "unit": "vec", "in": ["S_dec", "k", "v", "kv_mem", "beta"], "out": ["S_new"], "flops": "2*B*n_v*d_k*d_v+3*B*n_v*d_v", "desc": "새 v와 기억한 값의 차이(delta)만 β만큼 k 방향으로 더한다 — rank-1 갱신. state 전체를 다시 쓴다."}, {"id": "l8", "group": "출력 읽기", "label": "출력 읽기", "unit": "gemv", "in": ["S_new", "q"], "out": ["o"], "flops": "2*B*n_v*d_k*d_v", "check_flops": "2*B*n_v*d_k*d_v", "desc": "갱신한 state에 q를 곱해 출력을 읽는다. full attention의 \"KV 전부와 내적\"을 이 행렬 × 벡터 한 번이 대신한다."}, {"id": "l9", "group": "출력 읽기", "label": "gate 정규화", "unit": "vec", "in": ["o", "z", "w_norm"], "out": ["o_n"], "flops": "8*B*n_v*d_v", "desc": "head마다 RMSNorm 후 SiLU(z)를 곱한다."}, {"id": "l10", "group": "출력 투영", "label": "출력 투영", "unit": "gemm", "prec": "bf16", "in": ["o_n", "W_out"], "out": ["y"], "flops": "2*B*n_v*d_v*d", "desc": "head 출력 6,144폭을 hidden 5,120으로 투영한다."}], "phases": [{"id": "P1", "focus": "l1", "label": "입력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l1"], "plain": "x로 q · k · v와 gate · 쓰기 강도 · 감쇠를 한 번에 만든다"}, {"id": "P2", "focus": "l2", "label": "짧은 합성곱", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l2", "l3"], "plain": "최근 4토큰을 채널마다 섞는다 — conv state 3칸을 밀어 갱신"}, {"id": "P3", "focus": "l7", "label": "state 갱신", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l4", "l5", "l6", "l7"], "plain": "state를 감쇠하고, 기억과 새 v의 차이만 기록한다 (delta rule)"}, {"id": "P4", "focus": "l8", "label": "출력 읽기", "tag": "KV 대신 state", "tag_style": "outline", "steps": ["l8", "l9"], "plain": "갱신한 state에 q를 곱해 출력을 읽고 gate로 정규화"}, {"id": "P5", "focus": "l10", "label": "출력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l10"], "plain": "head 출력을 hidden 폭으로 되돌린다"}], "page": {"file": "gdn-qwen36", "start": "l7", "doc_title": "Gated DeltaNet 데이터 플로우", "lite": {"doc_title": "Gated DeltaNet 데이터 이동", "sub": "Qwen3.6-27B · linear attention 층 1개 · 새 토큰 1개 생성(decode) · H200", "sibling": {"label": "DSA 약식", "file": "dsa-v32"}}, "title": "Gated DeltaNet 데이터 플로우 — KV cache 대신 고정 크기 state를 읽고 다시 쓴다", "crumbs": ["Hybrid attention · linear 층", "Qwen3.6-27B · Gated DeltaNet", "층 1개 · decode 1스텝"], "sub": "Hybrid 모델의 linear attention 층 하나가 새 토큰 1개를 처리할 때 데이터가 HBM과 칩 사이를 어떻게 오가는지 커널 단위로 보여 준다. KV cache가 없고, 요청마다 고정 크기 state(head 48개 × 128 × 128)를 매 스텝 전부 읽고 다시 쓴다.", "t_hint": "linear 층은 T와 무관하다 — 길어져도 이동량이 그대로다", "flow_note": "KV를 읽는 대신 ② 짧은 합성곱 ③ state 갱신 ④ state에서 출력 읽기 · 카드 위 색 막대 = 그 단계가 주로 읽는 데이터 · 누르면 아래 그림의 해당 단계로", "hl2": "같은 자리가 full attention 층이었다면 KV {B:B*T*n_kv_f*d_hf*2*2}를 {per}매 스텝 읽어야 한다(T = {N:T}{sum}). linear 층은 대신 {sw:state}<b>state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 쓴다</b> — T와 무관하다.", "store": {"expr": "B*n_lin*(state_b*n_v*d_k*d_v+2*C*(d_conv-1))", "label": "48개 linear 층 state 보관"}, "sweep_cap": "막대 = 층 1개의 HBM 읽기 + 쓰기. linear 층에는 T에 비례하는 데이터가 없어 막대가 모두 같다 — Hybrid가 긴 문맥에서 이득을 보는 이유다. 점선 오른쪽은 지원 길이 밖.", "links": [{"label": "DSA (DeepSeek-V3.2)", "url": "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32.html"}], "scope": ["Qwen3.6-27B 차원(value head 48 · key head 16 · 128 × 128, hidden 5,120)의 Gated DeltaNet 층 1개 · decode 1스텝. 잔차 · FFN · full attention 층 제외", "기준 보고서의 Qwen3.8-Flash-Next와 state 크기(48 × 128 × 128 FP32 ≈ 층당 3.2 MB)가 같다. Qwen3.8 config는 로컬에 없어 hidden 폭 등은 Qwen3.6-27B 값", "커널 묶음은 SGLang · vLLM의 Qwen3-Next / Qwen3.5 경로(in_proj GEMM → causal_conv1d_update → fused recurrent gated delta rule → gated RMSNorm → out_proj)를 대표로 단순화", "가중치 BF16(배포 config dtype). state는 FP32(mamba_ssm_dtype) — BF16 버튼은 가정", "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). state 감쇠 · 갱신 같은 원소별 · 행렬 × 벡터 연산은 CUDA core FP32 피크 67 TFLOPS 적용", "보관량 경고는 48개 linear 층의 state + conv state만 셈. 가중치 · full 층 KV는 빼서 실제 여유는 더 작다"], "verify": ["참조 구현 ref_decode.py(1스텝 recurrent · conv state 3칸) = HF Qwen3_5GatedDeltaNet(전체 시퀀스 chunk 방식) 출력 일치, 상대 오차 4e-6 수준", "실제 차원 meta 실행으로 텐서 shape · GEMM FLOP 식 검사 {checks}", "보고서 수치 재현: state + conv state 층당 3.21 MB (보고서 약 3.2 MB/층)"]}, "sources": [{"label": "HF transformers 5.14 · modeling_qwen3_5.py", "ref": "Qwen3_5GatedDeltaNet.forward (L441–563), torch_recurrent_gated_delta_rule (L329–370), torch_causal_conv1d_update (L224–239)"}, {"label": "Qwen3.6-27B config.json", "ref": "linear_num_value_heads 48 · linear_num_key_heads 16 · head 128 · conv 4 · mamba_ssm_dtype float32"}, {"label": "fla (flash-linear-attention) · causal-conv1d", "ref": "fused_recurrent_gated_delta_rule · causal_conv1d_update — 배포 decode 커널"}, {"label": "기준 보고서", "ref": "arch_insight/sparse-hybrid-hw-report-v2-refined.md §1.6 · §2.4 · 부록 B"}]}, "map": {"name": "GPU 현재 실행 (H200 기준)", "hw": {"label": "H200", "hbm_bw": 4800000000000.0, "hbm_cap": 141000000000, "peak": {"fp8": 1979000000000000.0, "bf16": 989000000000000.0, "vec": 67000000000000.0}, "n_sm": 132, "onchip": {"l2": {"label": "L2 캐시", "short": "L2", "total": 52428800, "desc": "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}, "smem": {"label": "공유 메모리", "short": "SMEM", "per_sm": 233472, "desc": "SM마다 있는 SRAM. 커널이 직접 타일을 올려 두고 쓴다"}, "reg": {"label": "레지스터", "short": "REG", "per_sm": 262144, "desc": "SM마다 256 KB. 계산 중인 값이 여기에 있다"}}, "note": "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"}, "insights": [{"text": "state는 head마다 레지스터에 올려 감쇠 · 기억 읽기 · delta 기록 · 출력 읽기를 한 커널에서 끝내고 전부 다시 쓴다 — 읽기와 쓰기가 같은 양이고, 연산은 state 1 B당 1 FLOP도 안 된다."}], "kernels": [{"id": "K1", "label": "입력 투영 GEMM", "plain": "x로 q·k·v · gate · β · 감쇠 만들기", "impl": "in_proj_qkvz + in_proj_ba GEMM (SGLang · vLLM은 투영을 묶어 x를 한 번만 읽는다)", "steps": ["l1"], "notes": ["가중치 {B:2*d*(C+n_v*d_v+2*n_v)} 읽기 — 요청이 적으면 이 층 이동의 대부분", "x 하나로 다섯 가지 투영 → 한 GEMM으로 묶임. 동시 요청 수(B)로 가중치 읽기를 나눠 낸다"], "hbm_read": [{"t": "x", "pat": "small"}, {"t": "W_qkv", "pat": "stream"}, {"t": "W_z", "pat": "stream"}, {"t": "W_b", "pat": "stream"}, {"t": "W_a", "pat": "stream"}], "hbm_write": [{"t": "qkv", "pat": "small"}, {"t": "z", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "a", "pat": "small"}]}, {"id": "K2", "label": "짧은 합성곱", "plain": "최근 4토큰을 채널마다 섞고 conv state 갱신", "impl": "causal_conv1d_update — conv state 3칸 + 새 값으로 4탭 depthwise 합성곱 · SiLU, state를 한 칸 밀어 다시 씀", "steps": ["l2", "l3"], "notes": ["conv state {B:2*B*C*(d_conv-1)}를 읽고 한 칸 밀어 전부 다시 씀 — 작지만 매 스텝 왕복", "채널 10,240개가 서로 독립 → 단순 원소별 연산이라 메모리 근처 처리에 맞는 일"], "hbm_read": [{"t": "qkv", "pat": "small"}, {"t": "conv_state", "pat": "stream"}, {"t": "w_conv", "pat": "stream"}], "hbm_write": [{"t": "qkv_c", "pat": "small"}, {"t": "conv_state", "pat": "overwrite"}], "on_chip": [{"t": "conv_win", "mem": "reg", "how": "state 3칸 + 새 값 = 창 4칸을 레지스터에 모아 채널마다 가중합"}]}, {"id": "K3", "label": "state 갱신 커널", "plain": "state를 읽어 감쇠 · 읽기 · 기록 · 출력 후 다시 쓰기", "impl": "fla fused_recurrent_gated_delta_rule (SGLang fused_sigmoid_gating_delta_rule_update) — head마다 state 블록을 레지스터에 올려 l2norm · gate · 감쇠 · 기억 읽기 · rank-1 갱신 · 출력까지 한 번에 하고 state를 다시 씀", "steps": ["l4", "l5", "l6", "l7", "l8"], "notes": ["요청마다 state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 씀 — T와 무관한 고정 비용", "연산은 head마다 행렬 × 벡터 2번 + rank-1 갱신 → state 1 B당 1 FLOP 미만. Tensor core가 아니라 대역폭이 시간을 정함", "state를 HBM 밖으로 꺼내지 않고 메모리 안에서 갱신하면(PIM) 이 왕복이 사라짐 — Pimba 등 (보고서 2.4)", "동시 요청 {N:B}개 state 합 {B:state_b*B*n_v*d_k*d_v}를 칩 안 SRAM에 두려면 이 크기가 기준 — 요청이 늘면 금방 넘침"], "hbm_read": [{"t": "qkv_c", "pat": "small"}, {"t": "a", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "A_log", "pat": "small"}, {"t": "dt_bias", "pat": "small"}, {"t": "ssm_state", "pat": "stream"}], "hbm_write": [{"t": "o", "pat": "small"}, {"t": "ssm_state", "via": "S_new", "pat": "overwrite"}], "on_chip": [{"t": "ssm_state", "mem": "reg", "stage": true, "label": "state 블록", "how": "head마다 [128 × 블록] 단위로 state를 HBM에서 레지스터로 올림"}, {"t": "S_dec", "mem": "reg", "how": "감쇠한 state — 레지스터에서 바로 다음 계산에 사용"}, {"t": "kv_mem", "mem": "reg", "how": "지금 k로 읽은 기억 값 (head마다 128개)"}, {"t": "S_new", "mem": "reg", "how": "갱신한 state — 출력 읽기에 쓰고 HBM에 다시 씀"}]}, {"id": "K4", "label": "gate 정규화", "plain": "head마다 RMSNorm 후 SiLU(z) 곱하기", "impl": "FusedRMSNormGated — head마다 RMSNorm 후 SiLU(z)를 곱함", "steps": ["l9"], "notes": ["작은 원소별 연산 — K3 끝이나 K5 앞에 붙이면 o · z의 HBM 왕복이 사라짐"], "hbm_read": [{"t": "o", "pat": "small"}, {"t": "z", "pat": "small"}, {"t": "w_norm", "pat": "small"}], "hbm_write": [{"t": "o_n", "pat": "small"}]}, {"id": "K5", "label": "출력 투영 GEMM", "plain": "head 출력 6,144폭을 hidden 5,120으로 투영", "impl": "out_proj GEMM", "steps": ["l10"], "notes": ["W_out {B:2*n_v*d_v*d} — 요청별 데이터와 무관하므로 동시 요청 수(B)로 분할 상환"], "hbm_read": [{"t": "o_n", "pat": "small"}, {"t": "W_out", "pat": "stream"}], "hbm_write": [{"t": "y", "pat": "small"}]}]}, "checks": {"n": 39, "fail": 0}, "pages": "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/"};
+(function () {
+"use strict";
+const A = DATA.algo, M = DATA.map, P = A.page, LITE = P.lite || {};
+const TENS = Object.assign({}, A.tensors, M.extra_tensors || {});
+const STEPS = (() => {
+  const s = A.steps.slice();
+  for (const e of (M.extra_steps || [])) s.splice(s.findIndex(x => x.id === e.after) + 1, 0, e);
+  return s;
+})();
+const STEP = Object.fromEntries(STEPS.map(s => [s.id, s]));
+const PH = A.phases, KERN = M.kernels;
+const PHS = {}; PH.forEach((p, i) => p.steps.forEach(s => { PHS[s] = i; }));
+(M.extra_steps || []).forEach(e => { PHS[e.id] = PH.findIndex(p => p.id === e.phase); });
+const kPhase = k => PHS[k.steps[0]];
+const CIRC = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
+const KIND_ORDER = Object.keys(A.kinds);
+const UIF = Object.keys(A.formats).find(k => A.formats[k].ui);
+const T_OPTS = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
+const B_OPTS = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+const UNIT = { gemm: "GEMM", gemv: "GEMV", vec: "VEC", sel: "TOP-K", gather: "GATHER", mem: "WRITE" };
+const state = { ti: 5, bi: 0, fmt: UIF ? A.formats[UIF].default : null, open: new Set() };
+
+/* ── 식 계산 (eval 없이) ── */
+const parsed = {};
+function parse(src) {
+  const toks = String(src).match(/\d+(?:\.\d+)?(?:e[+-]?\d+)?|[A-Za-z_]\w*|[-+*/()]/g) || [];
+  let i = 0;
+  const peek = () => toks[i], next = () => toks[i++];
+  function prim() {
+    const t = next();
+    if (t === "(") { const v = add(); next(); return v; }
+    if (t === "-") { const v = prim(); return d => -v(d); }
+    if (/^\d/.test(t)) { const n = parseFloat(t); return () => n; }
+    return d => { if (!(t in d)) throw new Error("unknown dim " + t); return d[t]; };
+  }
+  function mul() { let l = prim(); while (peek() === "*" || peek() === "/") { const op = next(), r = prim(), a = l; l = op === "*" ? d => a(d) * r(d) : d => a(d) / r(d); } return l; }
+  function add() { let l = mul(); while (peek() === "+" || peek() === "-") { const op = next(), r = mul(), a = l; l = op === "+" ? d => a(d) + r(d) : d => a(d) - r(d); } return l; }
+  return add();
+}
+function ev(e, d) { if (typeof e === "number") return e; const k = String(e); return (parsed[k] || (parsed[k] = parse(k)))(d); }
+
+/* FlashMLA split-KV 스케줄러 (buildlib.flashmla_sched와 같은 규칙) */
+const schedCache = {};
+function flashSched(B, topk) {
+  const key = B + ":" + topk;
+  if (schedCache[key]) return schedCache[key];
+  const sc = M.sched;
+  if (!sc || topk <= sc.min_topk) return (schedCache[key] = { S: 0, U: B });
+  const parts = Math.max(Math.floor(M.hw.n_sm / sc.parts_div), 1), nb = Math.floor((topk - 1) / sc.block) + 1, ov = sc.overhead;
+  const payload = Math.ceil(B * (nb + ov) / parts) + ov;
+  const sp = new Array(B).fill(0);
+  let req = 0, blk = 0, ns = 0;
+  for (let p = 0; p < parts; p++) {
+    let remain = payload;
+    while (req < B) {
+      if (remain >= nb - blk + ov) { sp[req] = ns + 1; remain -= nb - blk + ov; req++; blk = 0; ns = 0; }
+      else { if (remain - ov > 0) { blk += remain - ov; ns++; remain = 0; } break; }
+    }
+  }
+  return (schedCache[key] = { S: sp.filter(x => x > 1).reduce((a, b) => a + b, 0), U: sp.filter(x => x <= 1).length });
+}
+function dims() {
+  const d = {};
+  for (const [k, v] of Object.entries(A.dims)) d[k] = v.value;
+  for (const [k, f] of Object.entries(A.formats)) d[k] = f.options[k === UIF ? state.fmt : f.default].value;
+  d.T = T_OPTS[state.ti]; d.B = B_OPTS[state.bi];
+  if (M.sched) { const sc = flashSched(d.B, d.k); d.S_acc = sc.S; d.U_dir = sc.U; }
+  return d;
+}
+const bytesOf = (tid, d) => ev(TENS[tid].bytes, d);
+const via = e => e.via || e.t;
+function kernelNums(d) {
+  return KERN.map(k => {
+    const rk = {}, wk = {};
+    let rd = 0, wr = 0, tc = 0;
+    for (const e of k.hbm_read) { const b = bytesOf(via(e), d), kd = TENS[e.t].kind; rd += b; rk[kd] = (rk[kd] || 0) + b; }
+    for (const e of (k.hbm_write || [])) { const b = bytesOf(via(e), d), kd = TENS[e.t].kind; wr += b; wk[kd] = (wk[kd] || 0) + b; }
+    for (const sid of k.steps) { const s = STEP[sid]; if (s.flops) tc += ev(s.flops, d) / (s.unit === "gemm" ? M.hw.peak[s.prec || "bf16"] : M.hw.peak.vec); }
+    const tm = (rd + wr) / M.hw.hbm_bw;
+    return { k, rd, wr, rk, wk, t: Math.max(tm, tc) };
+  });
+}
+
+/* ── 포맷 ── */
+function fmtB(b) {
+  for (const [v, s] of [[1e12, "TB"], [1e9, "GB"], [1e6, "MB"], [1e3, "KB"]]) if (b >= v) return (b / v).toPrecision(3).replace(/\.0+$|(\.\d*?)0+$/, "$1") + " " + s;
+  return Math.round(b) + " B";
+}
+function fmtT(t) { const us = t * 1e6; return us >= 1000 ? (us / 1000).toPrecision(3) + " ms" : (us >= 100 ? us.toFixed(0) : us >= 10 ? us.toFixed(1) : us.toFixed(2)) + " µs"; }
+const fmtN = n => n.toLocaleString("en-US");
+const fmtTok = n => n >= 1048576 ? (n / 1048576) + "M" : n >= 1024 ? (n / 1024) + "K" : String(n);
+const kcol = kd => (A.kinds[kd] && A.kinds[kd].color) || "gray";
+const kc = kd => `var(--c-${kcol(kd)})`;
+const kl = kd => `var(--c-${kcol(kd)}-l)`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const isKo = c => /[ㄱ-힝]/.test(c);
+const textW = (s, px) => [...String(s)].reduce((w, c) => w + (isKo(c) ? px : px * 0.58), 0);
+function clip(s, px, max) { let w = 0, out = ""; for (const c of String(s)) { w += isKo(c) ? px : px * 0.58; if (w > max) return out + "…"; out += c; } return out; }
+const tagCls = p => ({ strong: "strong", outline: "outline" })[p.tag_style] || "";
+const onChipOf = k => (k.on_chip || []).map(e => typeof e === "string" ? { t: e, mem: "reg" } : e);
+
+/* ── shape 표기: [B, T, d_I] = [1, 131072, 128] ── */
+const symOf = e => String(e).replace(/\*/g, "·");
+const shapeSym = tid => "[" + TENS[tid].shape.map(symOf).join(", ") + "]";
+const shapeNum = (tid, d) => "[" + TENS[tid].shape.map(e => String(Math.round(ev(e, d)))).join(", ") + "]";
+function dimsUsed(tids) {
+  const s = new Set();
+  tids.forEach(t => TENS[t].shape.forEach(e => (String(e).match(/[A-Za-z_]\w*/g) || []).forEach(x => s.add(x))));
+  const known = [...Object.keys(A.dims), ...Object.keys(M.derived || {})];
+  return known.filter(x => s.has(x));
+}
+function dimLabel(x, d) {
+  const info = A.dims[x] || (M.derived && M.derived[x]);
+  return info ? `<span><b>${esc(x)}</b>${esc(info.short || "")} ${fmtN(d[x])}</span>` : "";
+}
+
+/* ── HBM 목록 (자세한 버전과 같은 묶음) ── */
+function hbmGroups(k, d) {
+  const reads = [];
+  const wts = k.hbm_read.filter(e => TENS[e.t].kind === "weight");
+  if (wts.length) reads.push({ label: "가중치 " + wts.map(e => TENS[e.t].label).join(" · "), b: wts.reduce((s, e) => s + bytesOf(e.t, d), 0), kind: "weight" });
+  const rs = k.hbm_read.filter(e => TENS[e.t].kind !== "weight").map(e => ({ label: e.pat === "gather" ? `${TENS[e.t].label} (골라 읽기)` : TENS[e.t].label, b: bytesOf(via(e), d), kind: TENS[e.t].kind }));
+  const big = x => x.b >= 64e3 || x.kind !== "act";
+  rs.filter(big).sort((a, b) => b.b - a.b).forEach(x => reads.push(x));
+  const smallR = rs.filter(x => !big(x));
+  if (smallR.length) reads.push({ label: `앞 단계 결과: ${smallR.map(x => x.label).join(" · ")}`, b: smallR.reduce((s, x) => s + x.b, 0), kind: "act", small: true });
+  const writes = (k.hbm_write || []).map(e => ({ label: TENS[e.t].label + (e.pat === "row" ? "에 1줄" : e.pat === "overwrite" ? " 덮어쓰기" : ""), b: bytesOf(via(e), d), kind: TENS[e.t].kind })).sort((a, b) => b.b - a.b);
+  return { reads, writes };
+}
+
+/* ── 흐름 한눈에: 단계별 HBM 읽기 · 쓰기 막대 → 칩 레인 ── */
+function phaseAgg(d, ks) {
+  return PH.map((p, i) => {
+    const kn = ks.filter(n => kPhase(n.k) === i);
+    const rk = {}, wk = {}, rt = {}, wt = {};
+    let rd = 0, wr = 0;
+    const add = (map, key, lab, kind, b) => { map[key] = map[key] || { b: 0, lab, kind }; map[key].b += b; };
+    kn.forEach(n => {
+      rd += n.rd; wr += n.wr;
+      for (const [kd, v] of Object.entries(n.rk)) rk[kd] = (rk[kd] || 0) + v;
+      for (const [kd, v] of Object.entries(n.wk)) wk[kd] = (wk[kd] || 0) + v;
+      n.k.hbm_read.forEach(e => { const kd = TENS[e.t].kind; add(rt, kd === "weight" ? "__w" : e.t, kd === "weight" ? "가중치" : TENS[e.t].label, kd, bytesOf(via(e), d)); });
+      (n.k.hbm_write || []).forEach(e => add(wt, e.t, TENS[e.t].label, TENS[e.t].kind, bytesOf(via(e), d)));
+    });
+    const top = m => Object.values(m).reduce((a, b) => (!a || b.b > a.b ? b : a), null);
+    return { p, kn, rd, wr, rk, wk, topR: top(rt), topW: top(wt) };
+  });
+}
+function stackRects(x, w, yb, h, parts, total, light) {
+  let s = "", y = yb;
+  parts.forEach(([kd, b], j) => {
+    const hh = h * b / total; if (hh <= 0) return;
+    const gap = j > 0 && hh > 3 ? 1.5 : 0;
+    s += `<rect x="${x}" y="${(y - hh + gap).toFixed(2)}" width="${w}" height="${Math.max(hh - gap, 0.8).toFixed(2)}" style="fill:${light ? kl(kd) : kc(kd)}${light ? ";stroke:" + kc(kd) + ";stroke-width:1.4" : ""}"/>`;
+    y -= hh;
+  });
+  return s;
+}
+function vArrow(x, y1, y2, color) {   // y1 → y2 방향
+  const dn = y2 > y1, hy = dn ? y2 - 9 : y2 + 9;
+  return `<line x1="${x}" x2="${x}" y1="${y1}" y2="${hy}" style="stroke:${color}" stroke-width="3" stroke-linecap="round"/><path d="M${x - 7} ${hy} L${x} ${y2} L${x + 7} ${hy} Z" style="fill:${color}"/>`;
+}
+function renderSummary() {
+  const d = dims(), ks = kernelNums(d), ag = phaseAgg(d, ks);
+  const n = PH.length, W = 1180, LW = 132, colW = (W - LW - 10) / n;
+  const yH0 = 72, yH1 = 290, yb = 272, maxH = 132, yC0 = 330, boxY = 346, boxH = 66, yC1 = 428, H = 474;
+  const maxB = Math.max(...ag.map(a => Math.max(a.rd, a.wr)));
+  const hOf = b => b > 0 ? Math.max(2.5, maxH * b / maxB) : 0;
+  const parts = m => KIND_ORDER.filter(kd => m[kd] > 0).map(kd => [kd, m[kd]]);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="단계별 HBM 읽기 · 쓰기: ${ag.map(a => `${a.p.label} 읽기 ${fmtB(a.rd)} 쓰기 ${fmtB(a.wr)}`).join(", ")}">`;
+  s += `<rect class="lane" x="6" y="${yH0}" width="${W - 12}" height="${yH1 - yH0}" rx="14"/>`;
+  s += `<rect class="lane" x="6" y="${yC0}" width="${W - 12}" height="${yC1 - yC0}" rx="14"/>`;
+  s += `<text x="26" y="${yH0 + 36}" font-size="19" font-weight="800">HBM</text><text x="26" y="${yH0 + 58}" font-size="13" class="t-muted">읽기 · 쓰기</text><text x="26" y="${yH0 + 78}" font-size="12" class="t-muted">${M.hw.hbm_bw / 1e12} TB/s</text>`;
+  s += `<text x="26" y="${yC0 + 36}" font-size="19" font-weight="800">칩</text><text x="26" y="${yC0 + 58}" font-size="13" class="t-muted">커널 실행</text>`;
+  ag.forEach((a, i) => {
+    const cx = LW + colW * (i + 0.5), xr = cx - 46, xw = cx + 46, bw = 54;
+    const ttl = `${CIRC[i]} ${a.p.label}`;
+    s += `<text x="${cx}" y="28" font-size="16" font-weight="800" text-anchor="middle">${esc(ttl)}</text>`;
+    const tw = textW(a.p.tag, 11) + 16, cls = tagCls(a.p);
+    s += `<rect x="${cx - tw / 2}" y="38" width="${tw}" height="19" rx="9.5" style="fill:${cls === "strong" ? "var(--ink2)" : "var(--surface)"};stroke:${cls ? "var(--ink2)" : "var(--line)"}"/>`;
+    s += `<text x="${cx}" y="51.5" font-size="11" font-weight="700" text-anchor="middle" class="${cls === "strong" ? "t-inv" : "t-muted"}">${esc(a.p.tag)}</text>`;
+    const hr = hOf(a.rd), hw = hOf(a.wr);
+    s += stackRects(xr - bw / 2, bw, yb, hr, parts(a.rk), a.rd, false);
+    s += stackRects(xw - bw / 2, bw, yb, hw, parts(a.wk), a.wr, true);
+    const lab = (x, h, b, cap) => `<text x="${x}" y="${yb - h - 22}" font-size="15" font-weight="800" text-anchor="middle">${fmtB(b)}</text><text x="${x}" y="${yb - h - 7}" font-size="11.5" text-anchor="middle" class="t-muted">${esc(clip(cap, 11.5, 88))}</text>`;
+    if (a.topR) s += lab(xr, hr, a.rd, a.topR.lab);
+    if (a.topW) s += lab(xw, hw, a.wr, a.topW.lab);
+    s += `<line x1="${cx - colW / 2 + 14}" x2="${cx + colW / 2 - 14}" y1="${yb + 0.5}" y2="${yb + 0.5}" style="stroke:var(--axis)" stroke-width="1"/>`;
+    if (a.topR) s += vArrow(xr, yb + 4, boxY - 3, kc(a.topR.kind));
+    if (a.topW) s += vArrow(xw, boxY - 3, yb + 4, kc(a.topW.kind));
+    s += `<text x="${xr}" y="${yb + 36}" font-size="11" text-anchor="end" dx="-8" class="t-muted">읽기</text><text x="${xw}" y="${yb + 36}" font-size="11" dx="8" class="t-muted">쓰기</text>`;
+    const bx = cx - colW / 2 + 12, bwid = colW - 24;
+    s += `<g class="boxhit" data-ph="${esc(a.p.id)}" tabindex="0" role="button" aria-label="${esc(ttl)} 커널로 이동"><rect class="box" x="${bx}" y="${boxY}" width="${bwid}" height="${boxH}" rx="10"/>`;
+    const ids = a.kn.map(x => x.k.id), cw = ids.map(id => id.length * 7.6 + 12), tot = cw.reduce((p, c) => p + c, 0) + (ids.length - 1) * 5;
+    let kx = cx - tot / 2;
+    ids.forEach((id, j) => {
+      s += `<rect x="${kx}" y="${boxY + 13}" width="${cw[j]}" height="20" rx="5" style="fill:var(--ink2)"/><text x="${kx + cw[j] / 2}" y="${boxY + 27.5}" font-size="12" font-weight="700" text-anchor="middle" class="t-inv t-mono">${esc(id)}</text>`;
+      kx += cw[j] + 5;
+    });
+    const units = [...new Set(a.kn.flatMap(x => x.k.steps.map(sid => UNIT[STEP[sid].unit])))].join(" · ");
+    s += `<text x="${cx}" y="${boxY + 52}" font-size="12" text-anchor="middle" class="t-muted t-mono">${esc(units)}</text></g>`;
+    if (i < n - 1) {
+      const x1 = bx + bwid + 3, x2 = bx + bwid + 21, y = boxY + boxH / 2;
+      s += `<line x1="${x1}" x2="${x2 - 7}" y1="${y}" y2="${y}" style="stroke:var(--ink2)" stroke-width="2.5"/><path d="M${x2 - 8} ${y - 6} L${x2} ${y} L${x2 - 8} ${y + 6} Z" style="fill:var(--ink2)"/>`;
+    }
+  });
+  const rd = ks.reduce((p, x) => p + x.rd, 0), wr = ks.reduce((p, x) => p + x.wr, 0), t = ks.reduce((p, x) => p + x.t, 0);
+  s += `<text x="${LW}" y="${H - 16}" font-size="14.5" font-weight="800">층 1개 · HBM 읽기 ${fmtB(rd)} · 쓰기 ${fmtB(wr)} · 이론 하한 ${fmtT(t)}</text>`;
+  s += `<text x="${W - 12}" y="${H - 16}" font-size="12" text-anchor="end" class="t-muted">진한 막대 = 읽기 · 옅은 막대 = 쓰기 · 높이 = 바이트(비례)</text>`;
+  const host = document.getElementById("sum");
+  host.innerHTML = s + "</svg>";
+  host.querySelectorAll(".boxhit").forEach(g => {
+    const go = () => { const t0 = document.getElementById("ph-" + g.dataset.ph); if (t0) t0.scrollIntoView({ behavior: "smooth", block: "start" }); };
+    g.addEventListener("click", go);
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+  document.getElementById("sumwhat").textContent = `T = ${fmtTok(d.T)} · 요청 ${d.B}개 · 단계마다 HBM에서 읽고 쓰는 양`;
+}
+
+/* ── 커널별 이동: 굵은 화살표 ── */
+const MAXTH = 60;
+function arrowSVG(dir, b, kindBytes, maxB) {   // 굵기 ∝ √바이트 — 순서는 지키고 중간 크기 이동도 보이게
+  if (!(b > 0)) return `<span class="hl-i zero">${dir === "r" ? "읽기 없음" : "쓰기 없음"}</span>`;
+  const W = 200, th = Math.max(4, MAXTH * Math.sqrt(b / maxB)),hh = th + Math.max(12, th * 0.36), hl = Math.min(40, 13 + th * 0.42);
+  const top = 26, H = Math.ceil(top + hh + 4), cy = top + hh / 2, x0 = 2, x1 = W - 2;
+  const parts = KIND_ORDER.filter(kd => kindBytes[kd] > 0).map(kd => ({ kd, b: kindBytes[kd] }));
+  const main = parts.reduce((a, p) => (p.b > a.b ? p : a));
+  const bx0 = dir === "r" ? x0 : x0 + hl, bx1 = dir === "r" ? x1 - hl + 0.5 : x1;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${dir === "r" ? "HBM에서 읽기" : "HBM에 쓰기"} ${fmtB(b)}">`;
+  let y = cy - th / 2;
+  for (const p of parts) { const h = th * p.b / b; s += `<rect x="${bx0}" y="${y.toFixed(2)}" width="${(bx1 - bx0).toFixed(2)}" height="${Math.max(h, 0.6).toFixed(2)}" style="fill:${kc(p.kd)}"/>`; y += h; }
+  s += dir === "r"
+    ? `<path d="M${x1 - hl} ${cy - hh / 2} L${x1} ${cy} L${x1 - hl} ${cy + hh / 2} Z" style="fill:${kc(main.kd)}"/>`
+    : `<path d="M${x0 + hl} ${cy - hh / 2} L${x0} ${cy} L${x0 + hl} ${cy + hh / 2} Z" style="fill:${kc(main.kd)}"/>`;
+  s += `<text x="${W / 2}" y="18" text-anchor="middle"><tspan class="al">${dir === "r" ? "읽기" : "쓰기"}</tspan><tspan class="ab" dx="6">${fmtB(b)}</tspan></text>`;
+  return s + "</svg>";
+}
+function listHTML(title, items) {
+  return `<div class="hl-t">${title}</div>` + items.map(it =>
+    `<div class="hl-i${it.small ? " sm" : ""}${it.b === 0 ? " zero" : ""}" title="${esc(it.label)} · ${fmtB(it.b)}"><i style="background:${kc(it.kind)}"></i><span class="nm">${esc(it.label)}</span><span class="b">${fmtB(it.b)}</span></div>`).join("");
+}
+function cardHTML(k, d, r) {
+  const oc = onChipOf(k), open = state.open.has(k.id);
+  const chips = oc.length ? `<span class="kchips"><span class="kcl">칩 안</span>${oc.map(e =>
+    `<span class="ocp" style="--k:${kc(TENS[e.t].kind)}"><code class="mb">${esc(M.hw.onchip[e.mem].short)}</code>${esc(e.label || TENS[e.t].label)}${e.stage ? "" : ` <em>${fmtB(bytesOf(e.t, d))}</em>`}</span>`).join("")}</span>` : "";
+  return `<button type="button" class="kcard" data-k="${esc(k.id)}" aria-expanded="${open}" aria-controls="kx-${esc(k.id)}" style="grid-row:${r} / span 2">
+    <span class="khead"><span class="kid">${esc(k.id)}</span><span class="kname">${esc(k.label)}</span><span class="kchev">텐서 모양 ${open ? "▴" : "▾"}</span></span>
+    <span class="kplain">${esc(k.plain || "")}</span>${chips}</button>`;
+}
+
+/* ── 텐서 격자 ── */
+const NCELL = 36;
+function dens(i, N) {
+  let r = Math.sin((i + 1) * 12.9898) * 43758.5453; r = r - Math.floor(r);
+  let v = Math.pow(r, 3) * 0.55;
+  if (i === 0) v = 0.75;
+  const back = N - 1 - i;
+  if (back === 0) v = 1; else if (back === 1) v = 0.85; else if (back === 2) v = 0.6;
+  return v;
+}
+function gridModel(tid, d) {
+  let sh = TENS[tid].shape.map(e => ({ e: String(e), v: ev(e, d) }));
+  if (sh.length > 1 && (sh[0].e === "B" || (M.derived && M.derived[sh[0].e]))) sh = sh.slice(1);
+  let hi = sh.findIndex(a => a.e === "T" || a.e === "k");
+  if (hi < 0) hi = sh.length - 1;
+  const h = sh[hi], rest = sh.filter((_, i) => i !== hi);
+  const v = rest.length ? rest[rest.length - 1] : null, s = rest.length > 1 ? rest[0] : null;
+  const long = h.e === "T" || h.e === "k";
+  return { h, v, s, long, hN: long ? NCELL : Math.max(1, Math.min(h.v, 16)), vN: v ? Math.max(1, Math.min(v.v, 10)) : 1 };
+}
+function splitParts(expr, d) {
+  const m = /^(\w+)\+(\w+)$/.exec(expr);
+  return m && (m[1] in d) && (m[2] in d) ? [d[m[1]], d[m[2]]] : null;
+}
+function gridHTML(tid, d, mode) {
+  const t = TENS[tid], gm = gridModel(tid, d), col = kc(t.kind);
+  const cs = gm.long ? 7 : (gm.hN > 12 ? 10 : 12);
+  const gw = gm.hN * cs, gh = gm.vN * cs, sheets = gm.s ? 3 : 1, off = 4;
+  const brk = gm.long && gm.h.v > NCELL;
+  const Wd = gw + (sheets - 1) * off + 2, Hd = gh + (sheets - 1) * off + 2 + (brk ? 9 : 0);
+  let s = `<svg viewBox="0 0 ${Wd} ${Hd}" width="${Wd}" aria-hidden="true">`;
+  const gy = 1 + (sheets - 1) * off;
+  const hp = gm.long ? null : splitParts(gm.h.e, d), vp = gm.v ? splitParts(gm.v.e, d) : null;
+  for (let si = sheets - 1; si >= 0; si--) {
+    const ox = 1 + si * off, oy = gy - si * off;
+    s += `<rect x="${ox}" y="${oy}" width="${gw}" height="${gh}" style="fill:var(--surface);stroke:var(--line)"/>`;
+    if (si) continue;
+    for (let i = 0; i < gm.hN; i++) {
+      let a = { w: 0.55, full: 0.72, onchip: 0.72, none: 0.1, tile: 0.14, append: 0.14, gather: 0.1 }[mode];
+      if (mode === "gather" && dens(i, gm.hN) > 0.15) a = 0.92;
+      if (mode === "append" && i === gm.hN - 1) a = 1;
+      if (mode === "tile" && i < 5) a = 0.85;
+      for (let j = 0; j < gm.vN; j++) s += `<rect x="${ox + i * cs + 0.5}" y="${oy + j * cs + 0.5}" width="${cs - 1}" height="${cs - 1}" style="fill:${col}" fill-opacity="${a}"/>`;
+    }
+    if (vp) { const c = Math.round(gm.vN * vp[0] / (vp[0] + vp[1])); s += `<line x1="${ox - 1}" x2="${ox + gw + 1}" y1="${oy + c * cs}" y2="${oy + c * cs}" style="stroke:var(--ink2)" stroke-width="1.4"/>`; }
+    if (hp) { const c = Math.round(gm.hN * hp[0] / (hp[0] + hp[1])); s += `<line y1="${oy - 1}" y2="${oy + gh + 1}" x1="${ox + c * cs}" x2="${ox + c * cs}" style="stroke:var(--ink2)" stroke-width="1.4"/>`; }
+    if (brk) { const bx = ox + Math.round(gm.hN * 0.62) * cs; s += `<path d="M${bx - 4} ${oy + gh + 8} l6 -6 M${bx + 1} ${oy + gh + 8} l6 -6" style="stroke:var(--ink2)" stroke-width="1.3" fill="none"/>`; }
+  }
+  s += "</svg>";
+  const ax = [`가로 ${symOf(gm.h.e)}` + (gm.h.v > gm.hN ? ` (1칸 ≈ ${fmtN(Math.round(gm.h.v / gm.hN))})` : "")];
+  if (gm.v) ax.push(`세로 ${symOf(gm.v.e)}`);
+  if (gm.s) ax.push(`× ${symOf(gm.s.e)}장`);
+  return `<div class="tgw">${s}</div><div class="t-ax">${esc(ax.join(" · "))}</div>`;
+}
+function moveTile(e, dir, d) {
+  const t = TENS[e.t], v = via(e), mv = bytesOf(v, d);
+  let mode = t.kind === "weight" ? "w" : "full", lab = t.label;
+  if (e.pat === "gather") { mode = "gather"; lab = `${t.label} 골라 읽기`; }
+  if (e.pat === "row") { mode = "append"; lab = `${t.label}에 1줄`; }
+  if (e.pat === "overwrite") lab = `${t.label} 전체 다시 씀`;
+  if (mv === 0) mode = "none";
+  const note = v !== e.t && shapeSym(v) !== shapeSym(e.t)
+    ? `${dir === "r" ? "읽는" : "쓰는"} 부분 <span class="mono">${esc(shapeSym(v))} = ${esc(shapeNum(v, d))}</span>` : "";
+  return `<div class="tile${mv === 0 ? " off" : ""}">
+    <div class="t-top"><i style="background:${kc(t.kind)}"></i><b>${esc(lab)}</b><span class="t-b">${fmtB(mv)}</span></div>
+    <div class="t-shape mono">${esc(shapeSym(e.t))}</div><div class="t-num mono">= ${esc(shapeNum(e.t, d))}</div>
+    ${gridHTML(e.t, d, mode)}${note ? `<div class="t-note">${note}</div>` : ""}${mv === 0 ? `<div class="t-zero">이번 조건에서는 안 씀</div>` : ""}</div>`;
+}
+function chipTile(e, d) {
+  const t = TENS[e.t], m = M.hw.onchip[e.mem];
+  return `<div class="tile chip" style="--k:${kc(t.kind)}">
+    <div class="t-top"><code class="mb">${esc(m.short)}</code><b>${esc(e.label || t.label)}</b><span class="t-b">${e.stage ? "타일 단위" : fmtB(bytesOf(e.t, d))}</span></div>
+    <div class="t-shape mono">${esc(shapeSym(e.t))}</div><div class="t-num mono">= ${esc(shapeNum(e.t, d))}</div>
+    ${gridHTML(e.t, d, e.stage ? "tile" : "onchip")}</div>`;
+}
+function expHTML(k, d) {
+  const oc = onChipOf(k);
+  const used = dimsUsed([...k.hbm_read.flatMap(e => [e.t, via(e)]), ...(k.hbm_write || []).flatMap(e => [e.t, via(e)]), ...oc.map(e => e.t)]);
+  const steps = k.steps.map(sid => { const s = STEP[sid]; return `<span class="kst"><code>${UNIT[s.unit]}</code>${esc(s.label)}</span>`; }).join(`<span class="kst-ar" aria-hidden="true">↓</span>`);
+  return `<div class="kx-head"><b>${esc(k.id)} ${esc(k.label)} · 텐서 모양</b><span class="kx-dims">${used.map(x => dimLabel(x, d)).join("")}</span></div>
+    <div class="kx-cols">
+      <div class="kx-col"><div class="kx-t">HBM에서 읽음</div>${k.hbm_read.map(e => moveTile(e, "r", d)).join("")}</div>
+      <div class="kx-ar" aria-hidden="true"></div>
+      <div class="kx-col mid"><div class="kx-t">칩 안 계산</div><div class="ksteps">${steps}</div>${oc.map(e => chipTile(e, d)).join("")}</div>
+      <div class="kx-ar" aria-hidden="true"></div>
+      <div class="kx-col"><div class="kx-t">HBM에 씀</div>${(k.hbm_write || []).map(e => moveTile(e, "w", d)).join("")}</div>
+    </div>`;
+}
+
+function renderFlow() {
+  const d = dims(), ks = kernelNums(d);
+  const maxB = Math.max(...ks.map(n => Math.max(n.rd, n.wr)));
+  const items = [];
+  let r = 2, prevP = -1;
+  KERN.forEach((k, i) => {
+    const p = kPhase(k);
+    if (p !== prevP) {
+      const ph = PH[p];
+      items.push(`<div class="phrow" id="ph-${esc(ph.id)}" style="grid-row:${r}"><span class="phn">${CIRC[p]} ${esc(ph.label)}</span><span class="tag ${tagCls(ph)}">${esc(ph.tag)}</span></div>`);
+      r++; prevP = p;
+    }
+    const n = ks[i], g = hbmGroups(k, d), open = state.open.has(k.id);
+    items.push(`<div class="hcell r" style="grid-row:${r}">${listHTML("읽기", g.reads)}</div>`);
+    items.push(`<div class="hcell w" style="grid-row:${r + 1}">${g.writes.length ? listHTML("쓰기", g.writes) : ""}</div>`);
+    items.push(`<div class="acell" style="grid-row:${r}">${arrowSVG("r", n.rd, n.rk, maxB)}</div>`);
+    items.push(`<div class="acell" style="grid-row:${r + 1}">${arrowSVG("l", n.wr, n.wk, maxB)}</div>`);
+    items.push(cardHTML(k, d, r));
+    items.push(`<div class="kx" id="kx-${esc(k.id)}" style="grid-row:${r + 2}"${open ? "" : " hidden"}>${open ? expHTML(k, d) : ""}</div>`);
+    r += 3;
+  });
+  const host = document.getElementById("kgrid");
+  host.style.gridTemplateRows = `repeat(${r}, auto)`;
+  host.innerHTML =
+    `<div class="lane-bg" style="grid-column:1;grid-row:1 / -1"></div><div class="lane-bg" style="grid-column:3;grid-row:1 / -1"></div>
+     <div class="lh" style="grid-column:1;grid-row:1"><b>HBM</b><span>커널이 읽고 쓰는 데이터</span></div>
+     <div class="lh mid" style="grid-column:2;grid-row:1"><span>→ 읽기 · ← 쓰기</span></div>
+     <div class="lh" style="grid-column:3;grid-row:1"><b>칩</b><span>커널 실행 · 점선 = 칩 안 메모리 (SMEM · 레지스터)</span></div>` + items.join("");
+  host.querySelectorAll(".kcard").forEach(c => c.addEventListener("click", () => toggle(c.dataset.k)));
+}
+function toggle(id) {
+  const open = !state.open.has(id);
+  if (open) state.open.add(id); else state.open.delete(id);
+  const c = document.querySelector(`.kcard[data-k="${id}"]`), x = document.getElementById("kx-" + id);
+  c.setAttribute("aria-expanded", open);
+  c.querySelector(".kchev").textContent = `텐서 모양 ${open ? "▴" : "▾"}`;
+  x.innerHTML = open ? expHTML(KERN.find(k => k.id === id), dims()) : "";
+  x.hidden = !open;
+}
+
+/* ── 조건 · 범례 · 머리말 ── */
+function seg(id, opts, cur, label, ext, onPick) {
+  const host = document.getElementById(id);
+  host.innerHTML = opts.map((v, i) => `<button type="button" data-i="${i}" aria-pressed="${i === cur}"${ext(v) ? ' class="ext" title="지원 길이 밖 · 외삽"' : ""}>${label(v)}</button>`).join("");
+  host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => onPick(+b.dataset.i)));
+}
+function renderControls() {
+  const tmax = A.dims.T_max ? A.dims.T_max.value : Infinity;
+  seg("tseg", T_OPTS, state.ti, fmtTok, v => v > tmax, i => { state.ti = i; update(); });
+  seg("bseg", B_OPTS, state.bi, String, () => false, i => { state.bi = i; update(); });
+}
+function renderLegend() {
+  const used = new Set();
+  KERN.forEach(k => { k.hbm_read.concat(k.hbm_write || []).forEach(e => used.add(TENS[e.t].kind)); onChipOf(k).forEach(e => used.add(TENS[e.t].kind)); });
+  document.getElementById("legend").innerHTML =
+    KIND_ORDER.filter(kd => used.has(kd)).map(kd => `<span><i style="background:${kc(kd)}"></i>${esc(A.kinds[kd].label)}</span>`).join("") +
+    `<span><b class="ar">→</b> 읽기 (HBM → 칩)</span><span><b class="ar">←</b> 쓰기 (칩 → HBM)</span><span><i class="dash"></i>칩 안 메모리</span>`;
+}
+function update() { renderControls(); renderSummary(); renderFlow(); }
+
+(function init() {
+  const base = DATA.pages || "";
+  document.getElementById("crumbs").innerHTML = (P.crumbs || []).map(c => `<span class="crumb">${esc(c)}</span>`).join("");
+  document.getElementById("h1").textContent = LITE.doc_title || P.doc_title;
+  document.getElementById("subtext").textContent = LITE.sub || "";
+  const links = [`<a class="main" href="${esc(base + P.file + ".html")}" target="_blank" rel="noopener">자세한 버전 →</a>`];
+  if (LITE.sibling) links.push(`<a href="${esc(base + LITE.sibling.file + "-lite.html")}" target="_blank" rel="noopener">${esc(LITE.sibling.label)} →</a>`);
+  document.getElementById("links").innerHTML = links.join("");
+  document.getElementById("foot").innerHTML = `${esc(M.name)} · 이론 하한 = max(바이트 ÷ ${M.hw.hbm_bw / 1e12} TB/s, FLOP ÷ 피크). 가정 · 검증 · 단계별 설명은 <a href="${esc(base + P.file + ".html")}" target="_blank" rel="noopener">자세한 버전</a>에 있다.`;
+  renderLegend();
+  update();
+})();
+})();
+</script>
+
+</body>
+</html>

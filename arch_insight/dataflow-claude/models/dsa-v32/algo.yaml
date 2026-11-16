@@ -264,6 +264,10 @@ page:
   links:
     - {label: "Gated DeltaNet (Hybrid linear 층)", url: "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/gdn-qwen36.html"}
   doc_title: DSA 데이터 플로우
+  lite:   # 약식 페이지 (viewer/template-lite.html)
+    doc_title: DSA 데이터 이동
+    sub: "DeepSeek-V3.2 · attention 층 1개 · 새 토큰 1개 생성(decode) · H200"
+    sibling: {label: "Gated DeltaNet 약식", file: gdn-qwen36}
   title: "DSA 데이터 플로우 — 고르고, 모으고, 계산하는 동안 데이터는 어디로 가나"
   crumbs: [Sparse attention, DeepSeek-V3.2 · DSA, 층 1개 · decode 1스텝]
   sub: "새 토큰 1개를 생성할 때 DSA attention 층 하나에서 데이터가 HBM과 칩 사이를 어떻게 오가고 어디서 계산되는지 커널 단위로 보여 준다. MoE · FFN은 빼고 attention 블록만."

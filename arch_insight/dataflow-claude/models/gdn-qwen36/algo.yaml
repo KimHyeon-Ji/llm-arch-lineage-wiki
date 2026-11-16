@@ -176,6 +176,10 @@ page:
   file: gdn-qwen36
   start: l7
   doc_title: Gated DeltaNet 데이터 플로우
+  lite:   # 약식 페이지 (viewer/template-lite.html)
+    doc_title: Gated DeltaNet 데이터 이동
+    sub: "Qwen3.6-27B · linear attention 층 1개 · 새 토큰 1개 생성(decode) · H200"
+    sibling: {label: "DSA 약식", file: dsa-v32}
   title: "Gated DeltaNet 데이터 플로우 — KV cache 대신 고정 크기 state를 읽고 다시 쓴다"
   crumbs: [Hybrid attention · linear 층, Qwen3.6-27B · Gated DeltaNet, 층 1개 · decode 1스텝]
   sub: "Hybrid 모델의 linear attention 층 하나가 새 토큰 1개를 처리할 때 데이터가 HBM과 칩 사이를 어떻게 오가는지 커널 단위로 보여 준다. KV cache가 없고, 요청마다 고정 크기 state(head 48개 × 128 × 128)를 매 스텝 전부 읽고 다시 쓴다."

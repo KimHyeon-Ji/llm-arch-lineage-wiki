@@ -164,23 +164,18 @@ def cross_table(algo, mp, Ts=(32768, 131072, 1048576)):
     return L + [""]
 
 
-def write_outputs(here, algo, mp, checks, bad, numbers_md):
-    with open(os.path.join(here, "numbers.md"), "w", encoding="utf-8") as f:
-        f.write(numbers_md)
-    data = {"algo": algo, "map": mp, "checks": {"n": len(checks), "fail": bad}}
-    js = json.dumps(data, ensure_ascii=False)
-    with open(os.path.join(here, "dataflow.json"), "w", encoding="utf-8") as f:
-        f.write(js)
-    page = algo["page"]
-    with open(os.path.join(ROOT, "viewer", "template.html"), encoding="utf-8") as f:
+PAGES = "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/"
+
+
+def _emit(template, title, js, name):
+    with open(os.path.join(ROOT, "viewer", template), encoding="utf-8") as f:
         html = f.read()
-    body = html.replace("/*__DATA__*/null", js).replace("__TITLE__", page["doc_title"])
+    body = html.replace("/*__DATA__*/null", js).replace("__TITLE__", title)
     # 1) 공유용 완전한 문서 — 브라우저 · GitHub Pages · 파일 첨부로 바로 열림
     head_end = body.index("</style>") + len("</style>")
     full = ('<!doctype html>\n<html lang="ko">\n<head>\n<meta charset="utf-8">\n'
             '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">\n'
             + body[:head_end] + "\n</head>\n<body>\n" + body[head_end:] + "\n</body>\n</html>\n")
-    name = page["file"]
     with open(os.path.join(ROOT, "viewer", f"{name}.html"), "w", encoding="utf-8") as f:
         f.write(full)
     # 2) claude.ai artifact용 본문 (게시할 때 문서 뼈대가 씌워짐)
@@ -188,6 +183,19 @@ def write_outputs(here, algo, mp, checks, bad, numbers_md):
     with open(os.path.join(ROOT, "viewer", "artifact", f"{name}.html"), "w", encoding="utf-8") as f:
         f.write(body)
     print(f"viewer/{name}.html (공유용) · viewer/artifact/{name}.html (artifact용) 생성")
+
+
+def write_outputs(here, algo, mp, checks, bad, numbers_md):
+    with open(os.path.join(here, "numbers.md"), "w", encoding="utf-8") as f:
+        f.write(numbers_md)
+    data = {"algo": algo, "map": mp, "checks": {"n": len(checks), "fail": bad}, "pages": PAGES}
+    js = json.dumps(data, ensure_ascii=False)
+    with open(os.path.join(here, "dataflow.json"), "w", encoding="utf-8") as f:
+        f.write(js)
+    page = algo["page"]
+    _emit("template.html", page["doc_title"], js, page["file"])                    # 자세한 버전
+    lite = page.get("lite", {})
+    _emit("template-lite.html", lite.get("doc_title", page["doc_title"]), js, page["file"] + "-lite")   # 약식
 
 
 def check_flops_expected(step, dims):
