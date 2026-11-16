@@ -152,7 +152,12 @@ input[type=range]::-moz-range-thumb { width: 14px; height: 14px; border-radius: 
 .memcap { font-size: 12.5px; color: var(--muted); margin: 4px 0 12px; }
 .flowwrap { overflow-x: auto; }
 .flowwrap svg { display: block; width: 100%; min-width: 880px; height: auto; }
-.viewB { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; }
+.viewB { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 12px); display: flex; flex-direction: column; gap: 12px; max-height: calc(100vh - 24px); overflow-y: auto; overscroll-behavior: contain; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--axis) transparent; padding-right: 2px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+.viewB.at-end { -webkit-mask-image: none; mask-image: none; }
+.viewB > .panel { flex-shrink: 0; }   /* 높이 제한 안에서 칸이 찌그러지지 않게 (overflow: hidden인 칸은 0까지 줄어든다) */
+.viewB::-webkit-scrollbar { width: 8px; }
+.viewB::-webkit-scrollbar-thumb { background: var(--axis); border-radius: 4px; }
 
 svg text { fill: var(--ink); font-family: var(--font-text); }
 svg .t-mono { font-family: var(--font-mono); }
@@ -235,7 +240,7 @@ td.r, th.r { text-align: right; }
 
 @media (max-width: 1240px) {
   .main { grid-template-columns: minmax(0, 1fr); }
-  .viewB { position: static; max-height: none; }
+  .viewB { position: static; max-height: none; overflow: visible; -webkit-mask-image: none; mask-image: none; }
   .lower { grid-template-columns: minmax(0, 1fr); }
   .phases { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .phase:nth-child(3)::after { content: none; }
@@ -339,6 +344,10 @@ td.r, th.r { text-align: right; }
         </div>
         <p class="desc" id="b-desc"></p>
       </div>
+      <div class="panel callout">
+        <div class="blk"><span class="name" id="b-callhead"></span></div>
+        <ul class="notes" id="b-notes"></ul>
+      </div>
       <div class="panel">
         <div class="blk"><span class="name">데이터 이동</span><span class="what">가져오기 → 계산 → 내보내기</span></div>
         <div class="flow3" id="b-moves"></div>
@@ -347,10 +356,6 @@ td.r, th.r { text-align: right; }
         <div class="blk"><span class="name">텐서 모양</span><span class="what">위가 입력, 아래가 출력</span></div>
         <div id="grid"></div>
         <p class="cap" id="b-gridcap"></p>
-      </div>
-      <div class="panel callout">
-        <div class="blk"><span class="name" id="b-callhead"></span></div>
-        <ul class="notes" id="b-notes"></ul>
       </div>
       <div class="panel">
         <details>
@@ -1122,5 +1127,11 @@ document.getElementById("verifylist").innerHTML = (A.page.verify || []).map(t =>
 document.getElementById("sources").innerHTML = A.sources.concat(M.sources || []).map(s => `<li>${esc(s.label)} — ${esc(s.ref)}</li>`).join("");
 renderMem();
 update();
+const vb = document.querySelector(".viewB");
+const markEnd = () => vb.classList.toggle("at-end", vb.scrollHeight - vb.scrollTop - vb.clientHeight < 4);
+vb.addEventListener("scroll", markEnd, { passive: true });
+window.addEventListener("resize", markEnd);
+new MutationObserver(markEnd).observe(vb, { childList: true, subtree: true });
+markEnd();
 })();
 </script>
