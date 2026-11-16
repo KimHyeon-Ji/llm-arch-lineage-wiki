@@ -219,6 +219,7 @@ def weights_meta(cfg):
     }
 
 
+# shape · FLOP 검사 전용 차원. 실제 V3.2의 YaRN(factor 40, mscale)은 생략했다 — 실제 가중치로 돌리면 출력이 달라진다.
 V32_CFG = {
     "d": 7168, "c_q": 1536, "n_h": 128, "d_nope": 128, "d_rope": 64, "d_v": 128, "c_kv": 512,
     "n_I": 64, "d_I": 128, "k": 2048, "theta": 10000.0,

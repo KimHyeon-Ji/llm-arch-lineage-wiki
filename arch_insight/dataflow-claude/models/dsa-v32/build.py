@@ -34,12 +34,50 @@ def load():
     return algo, mp
 
 
-def dims_of(algo, **over):
+def flashmla_sched(B, topk, n_sm, sc):
+    """FlashMLA sparse decode split-KV 스케줄러(get_decoding_sched_meta.cu)를 그대로 따라 한다.
+    반환: (split된 요청들의 split 수 합, split 없는 요청 수)."""
+    if topk <= sc["min_topk"]:
+        return 0, B
+    parts = max(n_sm // sc["parts_div"], 1)
+    nb = (topk - 1) // sc["block"] + 1
+    ov = sc["overhead"]
+    payload = -(-B * (nb + ov) // parts) + ov
+    sp, req, blk, ns = [0] * B, 0, 0, 0
+    for _ in range(parts):
+        remain = payload
+        while req < B:
+            if remain >= nb - blk + ov:
+                sp[req] = ns + 1
+                remain -= nb - blk + ov
+                req, blk, ns = req + 1, 0, 0
+            else:
+                if remain - ov > 0:
+                    blk += remain - ov
+                    ns += 1
+                    remain = 0
+                break
+    assert req == B
+    return sum(x for x in sp if x > 1), sum(1 for x in sp if x <= 1)
+
+
+def dims_of(algo, mp=None, **over):
     d = {k: v["value"] for k, v in algo["dims"].items()}
     for name, f in algo["formats"].items():
         d[name] = f["options"][f["default"]]["value"]
     d.update(over)
+    if mp is not None and "sched" in mp:
+        d["S_acc"], d["U_dir"] = flashmla_sched(d["B"], d["k"], mp["hw"]["n_sm"], mp["sched"])
     return d
+
+
+def merged(algo, mp):
+    """알고리즘 텐서 · 단계 + 배치 전용 텐서 · 단계."""
+    tens = dict(algo["tensors"], **mp.get("extra_tensors", {}))
+    steps = {s["id"]: s for s in algo["steps"]}
+    for s in mp.get("extra_steps", []):
+        steps[s["id"]] = s
+    return tens, steps
 
 
 # ── 1. 검증 ────────────────────────────────────────────────────────────────
@@ -85,7 +123,7 @@ def verify(algo):
 # ── 2. 수치 ────────────────────────────────────────────────────────────────
 
 def kernel_numbers(algo, mp, dims):
-    tens, steps = algo["tensors"], {s["id"]: s for s in algo["steps"]}
+    tens, steps = merged(algo, mp)
     hw = mp["hw"]
     res = []
     for k in mp["kernels"]:
@@ -97,7 +135,7 @@ def kernel_numbers(algo, mp, dims):
             if "flops" in s:
                 f = ev(s["flops"], dims)
                 fl += f
-                tc += f / hw["peak"][s.get("prec", "bf16")]
+                tc += f / (hw["peak"][s.get("prec", "bf16")] if s["unit"] == "gemm" else hw["peak"]["vec"])
         tm = (rd + wr) / hw["hbm_bw"]
         by_kind = {}
         for e in k["hbm_read"]:
@@ -124,9 +162,9 @@ def numbers_md(algo, mp, checks, bad):
          "build.py가 algo.yaml · map-gpu.yaml에서 계산한다. 손으로 고치지 않는다.", "",
          "기준: attention 블록만 (MoE · FFN 제외), 요청 1개, H200 이론 하한.", ""]
     for fmt in ("fp8", "bf16"):
-        dims = dims_of(algo, kv_row=algo["formats"]["kv_row"]["options"][fmt]["value"])
+        dims = dims_of(algo, mp, kv_row=algo["formats"]["kv_row"]["options"][fmt]["value"])
         ks = kernel_numbers(algo, mp, dims)
-        L += [f"## 128K · KV {fmt.upper()} ({dims['kv_row']} B/줄)", "",
+        L += [f"## 128K · KV {fmt.upper()} ({dims['kv_row']} B/줄) · split {dims['S_acc']}개", "",
               "| 커널 | HBM 읽기 | HBM 쓰기 | FLOP | 메모리 시간 | 연산 시간 | 하한 |",
               "|---|---:|---:|---:|---:|---:|---:|"]
         for k in ks:
@@ -141,7 +179,7 @@ def numbers_md(algo, mp, checks, bad):
         L += ["읽기 구성: " + " · ".join(f"{algo['kinds'][kk]['label']} {fmt_b(v)}" for kk, v in kinds.items()), ""]
 
     # 보고서 대조
-    dims = dims_of(algo, kv_row=1152)
+    dims = dims_of(algo, mp, kv_row=1152)
     t = algo["tensors"]
     steps = {s["id"]: s for s in algo["steps"]}
     idx_rd = ev(t["idx_cache"]["bytes"], dims)
@@ -157,18 +195,29 @@ def numbers_md(algo, mp, checks, bad):
           f"| 선택 위치 | {fmt_b(ev(t['idx']['bytes'], dims))} | 8 KB (§2.2) |", ""]
 
     # 가중치 vs 요청별 읽기가 같아지는 B
-    L += ["## 가중치 읽기 = 요청별 읽기가 되는 동시 요청 수 (KV FP8)", "",
-          "가중치는 요청이 몇 개든 한 번 읽는다. 요청별 데이터(색인 K · KV · 중간값)는 B배로 는다.", "",
-          "| T | 가중치 | 요청 1개당 | 같아지는 B |", "|---|---:|---:|---:|"]
+    L += ["## 요청별 이동이 가중치보다 커지는 동시 요청 수 (KV FP8)", "",
+          "가중치는 요청이 몇 개든 한 번 읽는다. 요청별 데이터는 B와 함께 늘지만, split 부분 출력은",
+          "스케줄러에 따라 달라져 비례하지 않는다. 그래서 B = 1, 2, 3 …을 차례로 넣어 처음 넘는 B를 찾는다.", "",
+          "| T | 가중치 | 요청 1개일 때 요청별 이동 | 요청별 > 가중치가 되는 B |", "|---|---:|---:|---:|"]
     for T in (32768, 131072, 1048576):
-        dims = dims_of(algo, T=T, B=1)
+        dims = dims_of(algo, mp, T=T, B=1)
         ks = kernel_numbers(algo, mp, dims)
         w = sum(k["read_by_kind"].get("weight", 0) for k in ks)
         per = sum(k["read"] + k["write"] for k in ks) - w
-        L.append(f"| {T // 1024}K | {fmt_b(w)} | {fmt_b(per)} | {w / per:.1f} |")
+        L.append(f"| {T // 1024}K | {fmt_b(w)} | {fmt_b(per)} | {cross_b(algo, mp, T)} |")
     L += ["", "## 검증 (meta 실행, T = 131,072)", "",
           f"shape · GEMM FLOP 검사 {len(checks)}개 중 실패 {bad}개.", ""]
     return "\n".join(L) + "\n"
+
+
+def cross_b(algo, mp, T, fmt="fp8"):
+    kv = algo["formats"]["kv_row"]["options"][fmt]["value"]
+    for B in range(1, 4097):
+        ks = kernel_numbers(algo, mp, dims_of(algo, mp, T=T, B=B, kv_row=kv))
+        w = sum(k["read_by_kind"].get("weight", 0) for k in ks)
+        if sum(k["read"] + k["write"] for k in ks) - w >= w:
+            return B
+    return None
 
 
 def main():

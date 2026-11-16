@@ -21,6 +21,8 @@ dims:
   n_I:    {value: 64, short: 색인 head,     desc: 색인 head 수}
   d_I:    {value: 128, short: 색인 폭,    desc: 색인 head 폭}
   k:      {value: 2048, short: 선택 줄,   desc: top-k 선택 줄 수}
+  n_layer: {value: 61,    short: 층 수,    desc: 전체 층 수 (보관량 계산용)}
+  T_max:  {value: 163840, short: 지원 길이, desc: 학습 · 공식 지원 컨텍스트 (max_position_embeddings)}
 
 formats:
   kv_row:
@@ -39,9 +41,9 @@ kinds:
   weight: {label: 가중치,       share: 공유,   desc: 모든 요청이 같이 쓴다 — B가 늘어도 그대로}
   kv:     {label: KV cache,     share: 요청별, desc: 요청마다 T줄 — 보관량이 가장 큼}
   idxk:   {label: 색인 K cache, share: 요청별, desc: 요청마다 T줄 — 매 스텝 전부 읽음}
-  inter:  {label: 중간 점수,    share: 요청별, desc: T에 비례하는 일시 데이터}
+  inter:  {label: 중간 결과,    share: 요청별, desc: 점수 · 부분합처럼 커널 사이에서 잠깐 쓰는 데이터}
   sel:    {label: 선택 위치,    share: 요청별, desc: top-k 결과}
-  act:    {label: 활성값,       share: 요청별, desc: 토큰 1개의 벡터 — 작음}
+  act:    {label: 토큰 벡터,    share: 요청별, desc: 토큰 1개짜리 중간 결과 벡터(x · q 등). 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음}
 
 tensors:
   # ── 가중치 (FP8, block scale 생략) ──
@@ -53,7 +55,7 @@ tensors:
   W_o:   {label: W_o,   shape: [n_h*d_v, d],               bytes: n_h*d_v*d,              kind: weight, desc: 출력 투영}
   W_Iq:  {label: W_Iq,  shape: [c_q, n_I*d_I],             bytes: c_q*n_I*d_I,            kind: weight, desc: q latent → 색인 q}
   W_Ik:  {label: W_Ik,  shape: [d, d_I],                   bytes: d*d_I,                  kind: weight, desc: x → 색인 k}
-  W_Iw:  {label: W_Iw,  shape: [d, n_I],                   bytes: 2*d*n_I,                kind: weight, desc: x → 색인 head 가중치 (BF16)}
+  W_Iw:  {label: W_Iw,  shape: [d, n_I],                   bytes: 4*d*n_I,                kind: weight, desc: "x → 색인 head 가중치 (FP32 — HF _keep_in_fp32_modules)"}
 
   # ── 요청별 상주 데이터 (HBM) ──
   kv_cache:  {label: KV cache,     shape: [B, T, c_kv+d_rope], bytes: B*T*kv_row,  kind: kv,   trace: cache.kv, desc: "줄마다 c_kv(512) + k_rope(64). head 128개가 같은 줄을 공유 (MQA처럼)"}
@@ -246,11 +248,11 @@ steps:
 
 # 화면의 "흐름 한눈에" 5단계. tag: 기존 MLA · DSA 추가 · DSA로 변경
 phases:
-  - {id: P1, label: "쿼리 · KV 만들기", tag: "기존 MLA",   steps: [p1, p2, p3, p4, p5], plain: "새 토큰으로 q와 KV 1줄을 만들고 KV cache 끝에 붙인다"}
-  - {id: P2, label: "색인 점수 매기기", tag: "DSA 추가",   steps: [i1, i2, i3, i4, i5, i6], plain: "지난 모든 토큰의 색인 키와 비교해 토큰마다 점수를 낸다"}
-  - {id: P3, label: "2,048개 고르기", tag: "DSA 추가",   steps: [s1], plain: "점수 상위 2,048개 토큰의 위치만 남긴다"}
-  - {id: P4, label: "고른 KV로 attention", tag: "DSA로 변경", steps: [a1, a2, a3, a4], plain: "고른 2,048줄만 모아 읽고 attention을 계산한다"}
-  - {id: P5, label: "출력 투영", tag: "기존 MLA",   steps: [o1, o2], plain: "head 출력을 hidden 폭으로 되돌린다"}
+  - {id: P1, focus: p1, label: "쿼리 · KV 만들기", tag: "기존 MLA",   steps: [p1, p2, p3, p4, p5], plain: "새 토큰으로 q와 KV 1줄을 만들고 KV cache 끝에 붙인다"}
+  - {id: P2, focus: i5, label: "색인 점수 매기기", tag: "DSA 추가",   steps: [i1, i2, i3, i4, i5, i6], plain: "지난 모든 토큰의 색인 키와 비교해 토큰마다 점수를 낸다"}
+  - {id: P3, focus: s1, label: "2,048개 고르기", tag: "DSA 추가",   steps: [s1], plain: "점수 상위 2,048개 토큰의 위치만 남긴다"}
+  - {id: P4, focus: a1, label: "고른 KV로 attention", tag: "DSA로 변경", steps: [a1, a2, a3, a4], plain: "고른 2,048줄만 모아 읽고 attention을 계산한다"}
+  - {id: P5, focus: o2, label: "출력 투영", tag: "기존 MLA",   steps: [o1, o2], plain: "head 출력을 hidden 폭으로 되돌린다"}
 
 sources:
   - {label: "HF transformers 5.14 · modular_deepseek_v32.py", ref: "DeepseekV32Indexer.forward (L206–271), DeepseekV32Attention.forward (L284–356)"}
