@@ -214,7 +214,8 @@ CROP_CSS = ('<style>header.top, section.ctlbar, section[aria-label="흐름 한�
             ' section[aria-label="커널별 이동"] > .blk {display:none !important}'
             ' body{padding-top:8px !important; padding-bottom:0 !important}</style>')
 CROP_JS = """<script>addEventListener('load',()=>setTimeout(()=>{
-const K="__K__", OPEN=__OPEN__, grid=document.getElementById('kgrid');
+const K="__K__", OPEN=__OPEN__, BI=__BI__, grid=document.getElementById('kgrid');
+if(BI>=0) document.querySelector('#bseg button[data-i="'+BI+'"]').click();   // 요청 수 버튼
 const card=grid.querySelector('.kcard[data-k="'+K+'"]');
 if(OPEN) card.click();
 const r0=parseInt(card.style.gridRow), keep=new Set([r0,r0+1]);
@@ -228,11 +229,15 @@ document.title='H'+Math.ceil(b.bottom+window.scrollY+10);
 },900));</script>"""
 
 
-def snap_kernel(mid, kid, open_=False, width=1280):
+CROP_B = 32                                                    # 보고서 커널별 조각의 요청 수 (문맥은 화면 기본 128K)
+
+
+def snap_kernel(mid, kid, open_=False, width=1280, b=CROP_B):
     if not BROWSER:
         return
     with open(os.path.join(ROOT, "viewer", f"{mid}-lite.html"), encoding="utf-8") as fh:
-        js = CROP_JS.replace("__K__", kid).replace("__OPEN__", "true" if open_ else "false")
+        bi = [1, 2, 4, 8, 16, 32, 64, 128, 256].index(b)   # template-lite.html B_OPTS
+        js = CROP_JS.replace("__K__", kid).replace("__OPEN__", "true" if open_ else "false").replace("__BI__", str(bi))
         html = fh.read().replace("</head>", CROP_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
     name = f"{mid.split('-')[0]}-k-{kid.lower()}{'-open' if open_ else ''}.png"
     with tempfile.TemporaryDirectory() as td:
