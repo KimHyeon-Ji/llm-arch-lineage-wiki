@@ -209,6 +209,130 @@ def snap(mid, width=1280):
     print("ok snapshot", mid, width, "x", h)
 
 
+# ---------------------------------------------------------------- 그림: 커널별 병목 위치 (요청 1 → 32 → 256)
+KIND_COL = {"weight": GRAY, "kv": BLUE, "idxk": ORANGE, "inter": YELLOW, "sel": "#e87ba4", "act": "#6250d6",
+            "state": GREEN, "conv": "#e87ba4"}
+PB = (1, 32, 256)
+
+
+def profile(mid, T=131072):
+    """커널마다 요청 1 · 32 · 256개의 읽기 · 쓰기 · FLOP · 시간 비 · 1바이트당 연산 · 주 데이터."""
+    algo, mp = mt.load(mid)
+    tens, _ = bl.merged(algo, mp)
+    out = []
+    per_b = {B: bl.kernel_numbers(algo, mp, bl.dims_of(algo, mp, T=T, B=B)) for B in PB}
+    for i, k in enumerate(mp["kernels"]):
+        rows = {}
+        for B in PB:
+            n = per_b[B][i]
+            mv = n["read"] + n["write"]
+            rows[B] = dict(rd=n["read"], wr=n["write"], fl=n["flops"], ratio=n["t_cmp"] / n["t_mem"] if n["t_mem"] else 0,
+                           ai=n["flops"] / mv if mv else 0, rk=n["read_by_kind"])
+        rk1 = rows[1]["rk"]
+        main = max(rk1, key=rk1.get)
+        own = [kd for kd in rk1 if kd in ("kv", "idxk", "state", "conv") and rk1[kd] >= 0.3 * rows[1]["rd"]]
+        if own:                                              # 요청별 상주 데이터가 30% 이상이면 그 색
+            main = max(own, key=rk1.get)
+        out.append(dict(id=k["id"], label=k["label"], main=main, b=rows))
+    return out
+
+
+def fig_bound(mid, name, model_title, sub, take, take_sub):
+    prof = profile(mid)
+    W, LX, X0, X1 = 1680, 40, 380, 1090
+    DEC_LO, DEC_HI = -3, 1                                   # 0.001 ~ 10
+    px = lambda r: X0 + (math.log10(r) - DEC_LO) / (DEC_HI - DEC_LO) * (X1 - X0)
+    RH, TOP = 50, 232
+    H = TOP + len(prof) * RH + 200
+    f = Fig(name, W, H)
+    title(f, f"{model_title} — 커널별 병목 위치: 요청이 늘면 어디로 움직이나", sub)
+    # 범례
+    x = 40
+    for lab, kind in (("● 요청 1개", "f"), ("• 요청 32개", "m"), ("○ 요청 256개", "h")):
+        cy = 124
+        if kind == "f":
+            f.raw(f'<circle cx="{x + 8}" cy="{cy}" r="8" fill="{INK}"/>')
+        elif kind == "m":
+            f.raw(f'<circle cx="{x + 8}" cy="{cy}" r="5" fill="{INK}"/>')
+        else:
+            f.raw(f'<circle cx="{x + 8}" cy="{cy}" r="7" fill="#ffffff" stroke="{INK}" stroke-width="2.5"/>')
+        f.text(x + 24, cy + 6, lab[2:], 15, color=MUTED)
+        x += 24 + text_w(lab[2:], 15) + 30
+    kinds_used = []
+    for p in prof:
+        if any(p["b"][B]["ratio"] > 0 for B in PB) and p["main"] not in kinds_used:
+            kinds_used.append(p["main"])
+    algo, _ = mt.load(mid)
+    x += 20
+    for kd in kinds_used:
+        nm = "주 데이터: " + algo["kinds"][kd]["label"] if kd == kinds_used[0] else algo["kinds"][kd]["label"]
+        f.rect(x, 124 - 9, 16, 16, KIND_COL.get(kd, GRAY), rx=3)
+        f.text(x + 24, 124 + 6, nm, 15, color=MUTED)
+        x += 24 + text_w(nm, 15) + 26
+    # 영역
+    xb = px(1)
+    f.rect(xb, TOP - 40, X1 - xb, len(prof) * RH + 40, "#fbf3ec", rx=0)
+    f.text(xb - 12, TOP - 16, "← 메모리 대역폭이 병목", 15, "end", 700, MUTED)
+    f.text(xb + 12, TOP - 16, "연산이 병목 →", 15, "start", 700, "#a33a17")
+    f.text(1130, TOP - 16, "층 1개 이동량 (요청 1 → 256)", 15, color=MUTED)
+    f.text(1430, TOP - 16, "1바이트당 연산 (1 → 256)", 15, color=MUTED)
+    for d in range(DEC_LO, DEC_HI + 1):
+        xx = px(10 ** d)
+        f.line(xx, TOP - 4, xx, TOP + len(prof) * RH, GRID if d else "#c98a5e", 1 if d else 2)
+    y = TOP
+    for p in prof:
+        cy = y + RH / 2
+        f.line(LX, y + RH, W - 40, y + RH, GRID, 1)
+        f.text(LX, cy + 6, p["id"], 16, weight=700)
+        f.text(LX + 52, cy + 6, p["label"], 16)
+        col = KIND_COL.get(p["main"], GRAY)
+        r = [p["b"][B]["ratio"] for B in PB]
+        if all(v <= 0 for v in r):
+            f.text(X0 + 6, cy + 6, "연산 거의 없음 — 바이트 · 실행 지연이 시간 결정", 14, color=MUTED)
+        else:
+            xs = [px(max(v, 10 ** DEC_LO)) for v in r]
+            if abs(xs[2] - xs[0]) > 14:
+                f.line(xs[0], cy, xs[2] - math.copysign(10, xs[2] - xs[0]), cy, col, 4)
+            f.raw(f'<circle cx="{xs[1]:.1f}" cy="{cy}" r="5" fill="{col}"/>')
+            f.raw(f'<circle cx="{xs[2]:.1f}" cy="{cy}" r="8" fill="#ffffff" stroke="{col}" stroke-width="3"/>')
+            f.raw(f'<circle cx="{xs[0]:.1f}" cy="{cy}" r="8" fill="{col}"/>')
+        b1, b2 = p["b"][1], p["b"][256]
+        f.text(1130, cy + 6, f"{bl.fmt_b(b1['rd'] + b1['wr'])} → {bl.fmt_b(b2['rd'] + b2['wr'])}", 15)
+        ai = lambda v: "0" if v < 0.05 else (f"{v:.1f}" if v < 10 else f"{v:,.0f}")
+        f.text(1430, cy + 6, f"{ai(b1['ai'])} → {ai(b2['ai'])} FLOP/B", 15)
+        y += RH
+    # 축
+    for d in range(DEC_LO, DEC_HI + 1):
+        f.text(px(10 ** d), y + 24, f"{10 ** d:g}", 14, "middle", color=MUTED)
+    f.text((X0 + X1) / 2, y + 50, "연산 시간 ÷ 메모리 시간 (H200 이론값, 로그 눈금)", 15, "middle", color=MUTED)
+    takeaway(f, H - 76, take, take_sub)
+    return f
+
+
+def dsa_bound():
+    return fig_bound(
+        "dsa-v32", "dsa-03-kernel-bound", "DSA attention 층 1개",
+        "문맥 128K · H200 이론값 (HBM 4.8 TB/s · FP8 1,979 · BF16 989 TFLOPS) · 1보다 작으면 메모리 대역폭이 병목",
+        "요청이 늘면 가중치 GEMM · Sparse MLA는 연산 쪽으로 가지만, 색인 점수는 제자리 — 요청 수로 못 푸는 대역폭 문제",
+        "색인 점수는 요청마다 자기 색인 K cache를 읽어 1바이트당 연산이 고정 · 실효 성능(작은 GEMM 효율 · 실효 대역폭)에 따라 경계 위치는 달라짐")
+
+
+def gdn_bound():
+    return fig_bound(
+        "gdn-qwen36", "gdn-03-kernel-bound", "Gated DeltaNet linear 층 1개",
+        "문맥 무관 · H200 이론값 (HBM 4.8 TB/s · BF16 989 · FP32 vector 67 TFLOPS) · 1보다 작으면 메모리 대역폭이 병목",
+        "가중치 GEMM은 요청 약 200개에서 연산 쪽으로 넘어가지만, state 갱신은 제자리 — 1바이트당 0.9 FLOP라 늘 대역폭 문제",
+        "state는 요청마다 따로라 요청이 늘어도 1바이트당 연산이 그대로 · GEMM 경계는 실효 성능에 따라 달라짐")
+
+
+def print_profile(mid):
+    print("\n== profile", mid)
+    for p in profile(mid):
+        print(f"  {p['id']:4} main={p['main']:<6} " + "  ".join(
+            f"B{B}: R {bl.fmt_b(v['rd'])} W {bl.fmt_b(v['wr'])} F {v['fl'] / 1e9:.3g}G ratio {v['ratio']:.3f} AI {v['ai']:.1f}"
+            for B, v in p["b"].items()))
+
+
 # ---------------------------------------------------------------- 본문용 수치
 def kernel_facts(mid, B, T):
     algo, mp = mt.load(mid)
@@ -253,6 +377,11 @@ def main():
     if not only or "share" in only:
         save(dsa_share()[0])
         save(gdn_share()[0])
+    if not only or "bound" in only:
+        save(dsa_bound())
+        save(gdn_bound())
+        print_profile("dsa-v32")
+        print_profile("gdn-qwen36")
     if not only or "snap" in only:
         snap("dsa-v32")
         snap("gdn-qwen36")
