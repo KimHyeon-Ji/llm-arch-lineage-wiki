@@ -116,6 +116,7 @@ svg .boxhit:hover .box { stroke: var(--ink2); }
 .hl-i i { width: 10px; height: 10px; border-radius: 2px; }
 .hl-i .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hl-i .b { color: var(--muted); font-size: 12px; }
+.l2 { font-style: normal; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--muted); border: 1px dashed var(--axis); border-radius: 4px; padding: 0 4px; margin-right: 6px; line-height: 1.4; display: inline-block; }
 .hl-i.sm { color: var(--muted); }
 .hl-i.sm i { opacity: 0.7; }
 .hl-i.zero { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--axis); }
@@ -331,8 +332,13 @@ function hbmGroups(k, d) {
   const smallR = rs.filter(x => !big(x));
   if (smallR.length) reads.push({ label: `앞 단계 결과: ${smallR.map(x => x.label).join(" · ")}`, b: smallR.reduce((s, x) => s + x.b, 0), kind: "act", small: true });
   const writes = (k.hbm_write || []).map(e => ({ label: TENS[e.t].label + (e.pat === "row" ? "에 1줄" : e.pat === "overwrite" ? " 덮어쓰기" : ""), b: bytesOf(via(e), d), kind: TENS[e.t].kind })).sort((a, b) => b.b - a.b);
+  reads.concat(writes).forEach(x => { x.l2 = isHandoff(x); });
   return { reads, writes };
 }
+/* L2 표시: 상주 데이터(가중치 · cache · state)가 아니고 L2 절반 이하인 값 = 앞뒤 커널이 주고받는 작은 전달값 */
+const L2_B = M.hw.onchip && M.hw.onchip.l2 ? M.hw.onchip.l2.total : 0;
+const isHandoff = x => L2_B > 0 && x.b > 0 && !(A.kinds[x.kind] || {}).persistent && x.b <= L2_B / 2;
+const L2_TIP = `앞뒤 커널이 주고받는 작은 값 — 실제로는 L2 캐시(${Math.round(L2_B / 1048576)} MB)에서 처리돼 HBM까지 안 갈 수 있다`;
 
 /* ── 흐름 한눈에: 단계별 HBM 읽기 · 쓰기 막대 → 칩 레인 ── */
 function phaseAgg(d, ks) {
@@ -443,7 +449,7 @@ function arrowSVG(dir, b, kindBytes, maxB) {   // 굵기 ∝ √바이트 — �
 }
 function listHTML(title, items, kid) {
   return (kid ? `<div class="hk-row"><span class="hk">${esc(kid)}</span><span class="hl-t">${title}</span></div>` : `<div class="hl-t">${title}</div>`) + items.map(it =>
-    `<div class="hl-i${it.small ? " sm" : ""}${it.b === 0 ? " zero" : ""}" title="${esc(it.label)} · ${fmtB(it.b)}"><i style="background:${kc(it.kind)}"></i><span class="nm">${esc(it.label)}</span><span class="b">${fmtB(it.b)}</span></div>`).join("");
+    `<div class="hl-i${it.small ? " sm" : ""}${it.b === 0 ? " zero" : ""}" title="${esc(it.label)} · ${fmtB(it.b)}"><i style="background:${kc(it.kind)}"></i><span class="nm">${esc(it.label)}</span><span class="b">${it.l2 ? `<em class="l2" title="${esc(L2_TIP)}">L2</em>` : ""}${fmtB(it.b)}</span></div>`).join("");
 }
 function cardHTML(k, d, r) {
   const oc = onChipOf(k), open = state.open.has(k.id);
@@ -602,7 +608,8 @@ function renderLegend() {
   KERN.forEach(k => { k.hbm_read.concat(k.hbm_write || []).forEach(e => used.add(TENS[e.t].kind)); onChipOf(k).forEach(e => used.add(TENS[e.t].kind)); });
   document.getElementById("legend").innerHTML =
     KIND_ORDER.filter(kd => used.has(kd)).map(kd => `<span><i style="background:${kc(kd)}"></i>${esc(A.kinds[kd].label)}</span>`).join("") +
-    `<span><b class="ar">→</b> 읽기 (HBM → 칩)</span><span><b class="ar">←</b> 쓰기 (칩 → HBM)</span><span><i class="dash"></i>칩 안 메모리</span>`;
+    `<span><b class="ar">→</b> 읽기 (HBM → 칩)</span><span><b class="ar">←</b> 쓰기 (칩 → HBM)</span><span><i class="dash"></i>칩 안 메모리</span>` +
+    (L2_B ? `<span title="${esc(L2_TIP)}"><em class="l2">L2</em>L2 캐시에서 끝날 수 있는 작은 전달값</span>` : "");
 }
 function update() { renderControls(); renderSummary(); renderFlow(); }
 
