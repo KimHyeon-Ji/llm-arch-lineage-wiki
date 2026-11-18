@@ -209,6 +209,60 @@ def snap(mid, width=1280):
     print("ok snapshot", mid, width, "x", h)
 
 
+# ---------------------------------------------------------------- 약식 화면 커널별 조각 (그림 바로 아래 설명용)
+CROP_CSS = ('<style>header.top, section.ctlbar, section[aria-label="흐름 한눈에"], #foot,'
+            ' section[aria-label="커널별 이동"] > .blk {display:none !important}'
+            ' body{padding-top:8px !important; padding-bottom:0 !important}</style>')
+CROP_JS = """<script>addEventListener('load',()=>setTimeout(()=>{
+const K="__K__", OPEN=__OPEN__, grid=document.getElementById('kgrid');
+const card=grid.querySelector('.kcard[data-k="'+K+'"]');
+if(OPEN) card.click();
+const r0=parseInt(card.style.gridRow), keep=new Set([r0,r0+1]);
+if(OPEN) keep.add(r0+2);
+let ph=null; grid.querySelectorAll('.phrow').forEach(p=>{if(parseInt(p.style.gridRow)<r0) ph=p;});
+if(ph) keep.add(parseInt(ph.style.gridRow));
+[...grid.children].forEach(el=>{ if(el.classList.contains('lane-bg')) return;
+  const r=parseInt(el.style.gridRow); if(!keep.has(r)) el.style.display='none'; });
+const b=document.querySelector('.wrap').getBoundingClientRect();
+document.title='H'+Math.ceil(b.bottom+window.scrollY+10);
+},900));</script>"""
+
+
+def snap_kernel(mid, kid, open_=False, width=1280):
+    if not BROWSER:
+        return
+    with open(os.path.join(ROOT, "viewer", f"{mid}-lite.html"), encoding="utf-8") as fh:
+        js = CROP_JS.replace("__K__", kid).replace("__OPEN__", "true" if open_ else "false")
+        html = fh.read().replace("</head>", CROP_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
+    name = f"{mid.split('-')[0]}-k-{kid.lower()}{'-open' if open_ else ''}.png"
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "crop.html")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        url = "file:///" + p.replace("\\", "/")
+        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", f"--window-size={width},1600",
+                              "--virtual-time-budget=6000", "--dump-dom", url],
+                             capture_output=True, timeout=120).stdout.decode("utf-8", "replace")
+        m = re.search(r"<title>H(\d+)</title>", dom)
+        h = int(m.group(1)) if m else 600
+        subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=2",
+                        f"--window-size={width},{h}", "--virtual-time-budget=6000",
+                        f"--screenshot={os.path.join(FIG, name)}", url], capture_output=True, timeout=120)
+    print("ok crop", name, h)
+
+
+CROP_OPEN = {"dsa-v32": ("K6", "K8"), "gdn-qwen36": ("K3",)}   # 핵심 커널은 텐서 모양 펼친 조각도
+
+
+def crops():
+    for mid in ("dsa-v32", "gdn-qwen36"):
+        _, mp = mt.load(mid)
+        for k in mp["kernels"]:
+            snap_kernel(mid, k["id"])
+        for kid in CROP_OPEN[mid]:
+            snap_kernel(mid, kid, open_=True)
+
+
 # ---------------------------------------------------------------- 그림: 커널별 병목 위치 (요청 1 → 32 → 256)
 KIND_COL = {"weight": GRAY, "kv": BLUE, "idxk": ORANGE, "inter": YELLOW, "sel": "#e87ba4", "act": "#6250d6",
             "state": GREEN, "conv": "#e87ba4"}
@@ -382,7 +436,9 @@ def main():
         save(gdn_bound())
         print_profile("dsa-v32")
         print_profile("gdn-qwen36")
-    if not only or "snap" in only:
+    if not only or "crop" in only:
+        crops()
+    if "snap" in only:                                       # 전체 스냅샷 (보고서에서는 커널별 조각을 씀)
         snap("dsa-v32")
         snap("gdn-qwen36")
     if not only or "facts" in only:
