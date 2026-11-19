@@ -1,4 +1,4 @@
-# Qwen3.6-27B 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/ledger.py가 읽음
+# Qwen3.6-27B 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/traits.py(보고서 그림)가 읽음
 #
 # 규칙은 dsa-v32/model.yaml과 같다. block = linear attention 층 1개(algo · map) × layers.
 # full attention 16층은 algo로 그리지 않아 식으로 적는다 (q head 24 + 출력 gate · KV head 4 · head 256 · BF16).

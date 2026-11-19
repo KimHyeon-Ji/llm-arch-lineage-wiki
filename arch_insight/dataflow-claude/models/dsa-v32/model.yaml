@@ -1,4 +1,4 @@
-# DeepSeek-V3.2 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/ledger.py가 읽음
+# DeepSeek-V3.2 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/traits.py(보고서 그림)가 읽음
 #
 # - block 항목 = algo.yaml · map-gpu.yaml의 attention 층 1개 값 × layers.
 #     kind: 그 종류의 텐서 전부 · t: 텐서 목록 · rest: 다른 block 항목이 가져가지 않은 나머지(커널 사이 중간값)
