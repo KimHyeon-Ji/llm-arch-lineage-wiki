@@ -8,7 +8,7 @@
    아래 "커널별 이동" = HBM 레인 | 굵은 화살표(굵기 = 바이트) | 칩 레인 3열. 커널 칸을 누르면 텐서 모양이 아래로 펼쳐진다.
    색 = 데이터 종류 (yaml kinds.color). 설명 문장 · 결론은 자세한 버전에 둔다. */
 :root {
-  --bg: #f6f7fb; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6;
+  --bg: #f6f7fb; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6; --hbm-r: #2f4b8c; --hbm-w: #c0304f;
   --ink: #2b2f3a; --ink2: #4a5573; --muted: #6b7080; --line: #dfe2ec; --line2: #e6e8f1; --axis: #9aa0b0;
   --c-gray: #9c9a92; --c-gray-l: #dddcd6; --c-blue: #2a78d6; --c-blue-l: #b7d3f6; --c-orange: #eb6834; --c-orange-l: #f8c6b1;
   --c-green: #1baf7a; --c-green-l: #a9e0cb; --c-yellow: #eda100; --c-yellow-l: #f7d98f; --c-pink: #e87ba4; --c-pink-l: #f6c9da; --c-violet: #6250d6; --c-violet-l: #d6d1f5;
@@ -19,7 +19,7 @@
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027;
+    --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
     --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
     --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
     --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
@@ -27,7 +27,7 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027;
+  --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
   --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
   --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
   --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
@@ -159,8 +159,9 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .eq-v { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 .eq-v > .op { font-style: normal; font-size: 18px; font-weight: 800; color: var(--ink2); margin-left: 16px; }
 .eq-n { font-size: 12px; color: var(--muted); }
-.tt { display: flex; flex-direction: column; gap: 3px; padding: 8px 11px 10px; border: 1.5px solid var(--k); border-radius: 9px; background: var(--surface); min-width: 0; max-width: 300px; }
-.tt.chip { border-style: dashed; }
+.tt { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 10px; border: 1.5px dashed var(--axis); border-radius: 9px; background: var(--surface); min-width: 0; max-width: 300px; }
+.tt.r { border: 2px solid var(--hbm-r); box-shadow: inset 0 4px 0 var(--hbm-r); }   /* HBM에서 읽음 */
+.tt.w { border: 2px solid var(--hbm-w); box-shadow: inset 0 4px 0 var(--hbm-w); }   /* HBM에 씀 */
 .tt-top { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
 .tt-top b { font-weight: 800; white-space: nowrap; }
 .tt-top em { margin-left: auto; font-style: normal; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
@@ -168,8 +169,10 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .tgw { margin-top: 4px; }
 .tgw svg { display: block; max-width: 100%; height: auto; }
 .t-ax { display: none; }   /* 그림 밑 축 설명은 숨김 — 모양은 위 [B, T, d_I]로 */
-.key { font-size: 11.5px; color: var(--muted); border: 1.5px solid var(--axis); border-radius: 7px; padding: 1px 8px; }
-.key.chip { border-style: dashed; }
+.key { font-size: 11.5px; font-weight: 700; border-radius: 7px; padding: 1px 8px; }
+.key.r { color: var(--hbm-r); border: 2px solid var(--hbm-r); }
+.key.w { color: var(--hbm-w); border: 2px solid var(--hbm-w); }
+.key.c { color: var(--muted); border: 1.5px dashed var(--axis); font-weight: 400; }
 .eq-v .tt { max-width: 168px; padding: 7px 9px 8px; }   /* 텐서가 많은 단계는 한 줄에 들어가게 좁게 */
 .eq-v .tt code { font-size: 12px; }
 .eq-v .eq { gap: 8px 8px; }
@@ -531,15 +534,16 @@ function stepOps(s) {   // 단계 → 연산 목록. yaml의 ops가 있으면 �
   }
   return [{ mm: false, ins: s.in, outs: s.out }];
 }
-function tt(k, tid, d, role) {   // 텐서 그림 1개 = 이름 · 크기 · 모양 · 격자. 실선 = HBM에서 읽음(입력) · HBM에 씀(출력), 점선 = 칩 안
+function tt(k, tid, d, role) {   // 텐서 그림 1개 = 이름 · 크기 · 모양 · 격자(색 = 데이터 종류). 테두리 = 위치: 남색 HBM에서 읽음 · 진홍 HBM에 씀 · 회색 점선 칩 안
   const t = TENS[tid], r = role === "in" ? k.hbm_read.find(x => x.t === tid) : null;
-  let size = fmtB(bytesOf(tid, d)), hbm = false, mode = t.kind === "weight" ? "w" : "full";
-  if (r) { hbm = true; if (via(r) !== tid) size = `${fmtB(bytesOf(via(r), d))} 골라 읽음`; if (r.pat === "gather") mode = "gather"; }
+  let size = fmtB(bytesOf(tid, d)), place = "c", mode = t.kind === "weight" ? "w" : "full";
+  if (r) { place = "r"; if (via(r) !== tid) size = `${fmtB(bytesOf(via(r), d))} 골라 읽음`; if (r.pat === "gather") mode = "gather"; }
   if (role === "out") {
     const w = (k.hbm_write || []).find(x => x.t === tid), wb = w ? bytesOf(via(w), d) : 0;
-    if (wb > 0) { hbm = true; if (via(w) !== tid) { size = `${fmtB(wb)} 씀`; if (w.pat === "row") mode = "append"; } }
+    if (wb > 0) { place = "w"; if (via(w) !== tid) { size = `${fmtB(wb)} 씀`; if (w.pat === "row") mode = "append"; } }
   }
-  return `<div class="tt${hbm ? "" : " chip"}" style="--k:${kc(t.kind)}" title="${esc(`${t.label} ${shapeSym(tid)} = ${shapeNum(tid, d)} · ${hbm ? "HBM" : "칩 안"}`)}">
+  const where = { r: "HBM에서 읽음", w: "HBM에 씀", c: "칩 안" }[place];
+  return `<div class="tt ${place}" title="${esc(`${t.label} ${shapeSym(tid)} = ${shapeNum(tid, d)} · ${where}`)}">
     <div class="tt-top"><b>${esc(t.label)}</b><em>${size}</em></div><code>${esc(shapeSym(tid))}</code>${gridHTML(tid, d, mode)}</div>`;
 }
 function eqHTML(k, o, d) {
@@ -560,7 +564,7 @@ function expHTML(k, d) {
   const rows = k.steps.map((sid, i) => { const s = STEP[sid];
     return `<div class="st"><div class="st-h"><span class="st-n">${CIRC[i] || i + 1}</span><code>${UNIT[s.unit]}</code><b>${esc(s.label)}</b></div><div class="st-b">${stepOps(s).map(o => eqHTML(k, o, d)).join("")}</div></div>`; }).join("");
   return `<div class="kx-head"><b>${esc(k.id)} ${esc(k.label)} · 계산 단계</b><span class="kx-dims">${used.map(x => dimLabel(x, d)).join("")}</span>
-    <span class="kx-key"><span class="key">실선 = HBM</span><span class="key chip">점선 = 칩 안</span></span></div><div class="steps">${rows}</div>`;
+    <span class="kx-key"><span class="key r">HBM에서 읽음</span><span class="key w">HBM에 씀</span><span class="key c">칩 안</span></span></div><div class="steps">${rows}</div>`;
 }
 
 function renderFlow() {
