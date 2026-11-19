@@ -38,3 +38,9 @@ data:
   - {id: kv,     label: KV cache,     block: {t: [kv_cache]},  layers: n_layer}
   - {id: idxk,   label: 색인 K cache, block: {t: [idx_cache]}, layers: n_layer}
   - {id: temp,   label: 커널 사이 중간값, block: {rest: true}, layers: n_layer, note: "q · 점수 · 선택 위치 · split 부분 출력 등 — 스텝 안에서만 삶"}
+
+# 메모리 옆에서 한 번에 처리한다고 볼 커널 묶음 — 묶음 밖으로 나가는 값 · 없어지는 HBM 왕복 · 필요한 연산을 계산
+# (map-gpu.yaml 커널 id. 묶음을 바꿔 가며 아이디어 후보를 비교한다)
+groups:
+  - {ids: [K6, K7],          label: "색인 점수 + top-k"}
+  - {ids: [K6, K7, K8, K8b], label: "색인 점수 + top-k + Sparse MLA"}
