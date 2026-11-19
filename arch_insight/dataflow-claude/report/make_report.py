@@ -258,6 +258,49 @@ def snap_kernel(mid, kid, open_=False, width=1280, b=CROP_B):
 
 CROP_OPEN = {"dsa-v32": ("K6", "K8"), "gdn-qwen36": ("K3",)}   # 핵심 커널은 텐서 모양 펼친 조각도
 
+# '흐름 한눈에' 패널 — 요청 수 · 문맥 길이 조건별
+FLOW_CSS = ('<style>header.top, section.ctlbar, section[aria-label="커널별 이동"], #foot {display:none !important}'
+            ' body{padding-top:8px !important; padding-bottom:0 !important}</style>')
+FLOW_JS = """<script>addEventListener('load',()=>setTimeout(()=>{
+document.querySelector('#tseg button[data-i="__TI__"]').click();
+document.querySelector('#bseg button[data-i="__BI__"]').click();
+const b=document.querySelector('.wrap').getBoundingClientRect();
+document.title='H'+Math.ceil(b.bottom+window.scrollY+10);
+},900));</script>"""
+T_OPTS = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]   # template-lite.html
+B_OPTS = [1, 2, 4, 8, 16, 32, 64, 128, 256]
+FLOW_CASES = {"dsa-v32": [(1, 131072), (32, 131072), (256, 131072), (32, 8192), (32, 32768)],
+              "gdn-qwen36": [(1, 131072), (32, 131072), (256, 131072)]}
+
+
+def snap_flow(mid, B, T, width=1280):
+    if not BROWSER:
+        return
+    with open(os.path.join(ROOT, "viewer", f"{mid}-lite.html"), encoding="utf-8") as fh:
+        js = FLOW_JS.replace("__TI__", str(T_OPTS.index(T))).replace("__BI__", str(B_OPTS.index(B)))
+        html = fh.read().replace("</head>", FLOW_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
+    name = f"{mid.split('-')[0]}-flow-b{B}-t{T // 1024}k.png"
+    with tempfile.TemporaryDirectory() as td:
+        p = os.path.join(td, "flow.html")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        url = "file:///" + p.replace("\\", "/")
+        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", f"--window-size={width},1200",
+                              "--virtual-time-budget=6000", "--dump-dom", url],
+                             capture_output=True, timeout=120).stdout.decode("utf-8", "replace")
+        m = re.search(r"<title>H(\d+)</title>", dom)
+        h = int(m.group(1)) if m else 640
+        subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=2",
+                        f"--window-size={width},{h}", "--virtual-time-budget=6000",
+                        f"--screenshot={os.path.join(FIG, name)}", url], capture_output=True, timeout=120)
+    print("ok flow", name, h)
+
+
+def flows():
+    for mid, cases in FLOW_CASES.items():
+        for B, T in cases:
+            snap_flow(mid, B, T)
+
 
 def crops():
     for mid in ("dsa-v32", "gdn-qwen36"):
@@ -443,6 +486,8 @@ def main():
         print_profile("gdn-qwen36")
     if not only or "crop" in only:
         crops()
+    if not only or "flow" in only:
+        flows()
     if "snap" in only:                                       # 전체 스냅샷 (보고서에서는 커널별 조각을 씀)
         snap("dsa-v32")
         snap("gdn-qwen36")
