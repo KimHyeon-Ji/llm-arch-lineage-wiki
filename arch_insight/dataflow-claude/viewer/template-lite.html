@@ -8,7 +8,10 @@
    아래 "커널별 이동" = HBM 레인 | 굵은 화살표(굵기 = 바이트) | 칩 레인 3열. 커널 칸을 누르면 텐서 모양이 아래로 펼쳐진다.
    색 = 데이터 종류 (yaml kinds.color). 설명 문장 · 결론은 자세한 버전에 둔다. */
 :root {
-  --bg: #f6f7fb; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6; --hbm-r: #2f4b8c; --hbm-w: #c0304f;
+  --bg: #f1f3f8; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6; --hbm-r: #2f4b8c; --hbm-w: #c0304f;
+  /* 화면 틀 — 진한 남색 블록 · 보라 강조 · 옅은 띠 (데이터 색과 별개) */
+  --navy: #4a5573; --navy-d: #2f3850; --navy-chip: #6a7499; --on-navy: #d9deeb; --white: #ffffff;
+  --purple: #7b61c9; --purple-t: #ebe5fa; --slate-t: #e3e6ef; --band: #eef0f6;
   --ink: #2b2f3a; --ink2: #4a5573; --muted: #6b7080; --line: #dfe2ec; --line2: #e6e8f1; --axis: #9aa0b0;
   --c-gray: #9c9a92; --c-gray-l: #dddcd6; --c-blue: #2a78d6; --c-blue-l: #b7d3f6; --c-orange: #eb6834; --c-orange-l: #f8c6b1;
   --c-green: #1baf7a; --c-green-l: #a9e0cb; --c-yellow: #eda100; --c-yellow-l: #f7d98f; --c-pink: #e87ba4; --c-pink-l: #f6c9da; --c-violet: #6250d6; --c-violet-l: #d6d1f5;
@@ -21,6 +24,7 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --navy: #3d4767; --navy-d: #2c3550; --navy-chip: #5a6590; --on-navy: #c3cbe0; --purple: #8c74de; --purple-t: #2f2852; --slate-t: #2a2f3b; --band: #20242d;
     --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
     --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
     --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
@@ -29,6 +33,7 @@
 }
 :root[data-theme="dark"] {
   --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --navy: #3d4767; --navy-d: #2c3550; --navy-chip: #5a6590; --on-navy: #c3cbe0; --purple: #8c74de; --purple-t: #2f2852; --slate-t: #2a2f3b; --band: #20242d;
   --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
   --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
   --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
@@ -41,7 +46,7 @@ body {
   padding-block: 24px 48px; font-variant-numeric: tabular-nums;
 }
 .wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-h1 { font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -0.015em; text-wrap: balance; }
+h1 { font-size: 30px; font-weight: 800; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
 .mono { font-family: var(--font-mono); }
 button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
 
@@ -49,31 +54,32 @@ header.top { display: flex; flex-direction: column; gap: 6px; padding: 2px; }
 .crumbs { display: flex; gap: 6px; flex-wrap: wrap; }
 .crumb { font-size: 12px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 999px; padding: 2px 10px; }
 .h1row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-.litechip { font-size: 12.5px; font-weight: 800; color: var(--surface); background: var(--ink2); border-radius: 6px; padding: 2px 9px; }
+.litechip { font-size: 12.5px; font-weight: 800; color: var(--white); background: var(--purple); border-radius: 7px; padding: 3px 10px; }
 .sub { color: var(--muted); margin: 0; font-size: 15px; }
 .links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .links a { font-size: 13px; color: var(--ink2); font-weight: 700; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
 .links a.main { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
 .links a:hover { border-color: var(--ink); }
 
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
-.blk { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px; }
-.blk .name { display: inline-flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 800; }
-.blk .name::before { content: ""; width: 5px; height: 18px; border-radius: 2px; background: var(--ink2); flex: none; align-self: center; }
+.panel { background: var(--surface); border: 1px solid var(--line2); border-radius: 16px; padding: 18px 22px 20px; min-width: 0; box-shadow: 0 1px 2px rgba(30, 40, 70, 0.04); }
+/* 섹션 제목 = 옅은 띠 + 왼쪽 남색 강조선 */
+.blk { position: relative; overflow: hidden; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 16px; background: var(--band); border-radius: 10px; padding: 10px 14px 10px 22px; }
+.blk::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--navy); }
+.blk .name { font-size: 17px; font-weight: 800; }
 .blk .what { font-size: 13px; color: var(--muted); }
 
 /* 조건 + 범례 */
 .ctlbar { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; padding: 12px 16px; }
 .ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ctl .cl { font-size: 13px; font-weight: 800; }
-.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.seg button { font: inherit; font-size: 12.5px; font-weight: 500; padding: 4px 9px; border: 0; background: var(--surface); color: var(--ink2); cursor: pointer; font-variant-numeric: tabular-nums; }
-.seg button + button { border-left: 1px solid var(--line); }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 11px; border: 0; border-radius: 999px; background: transparent; color: var(--ink2); cursor: pointer; font-variant-numeric: tabular-nums; }
+.seg button:hover { background: var(--tint); }
 .seg button.ext { color: var(--muted); font-style: italic; }
-.seg button[aria-pressed=true] { background: var(--ink2); color: var(--surface); font-weight: 800; font-style: normal; }
+.seg button[aria-pressed=true] { background: var(--navy); color: var(--white); font-weight: 800; font-style: normal; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); width: 100%; padding-top: 10px; border-top: 1px solid var(--line2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
+.legend i { display: inline-block; width: 13px; height: 13px; border-radius: 4px; }
 .legend .ar { font-weight: 800; color: var(--ink); }
 .legend .dash { width: 18px; height: 11px; border: 1.5px dashed var(--ink2); border-radius: 6px; background: transparent; }
 
@@ -84,31 +90,36 @@ svg .t-muted { fill: var(--muted); }
 svg .t-inv { fill: var(--surface); }
 svg .t-mono { font-family: var(--font-mono); }
 svg .lane { fill: var(--lane); }
-svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .box { fill: var(--navy); }
 svg .boxhit { cursor: pointer; }
-svg .boxhit:hover .box { stroke: var(--ink2); }
+svg .boxhit:hover .box { fill: var(--navy-d); }
+svg .t-white { fill: var(--white); }
+svg .t-onnavy { fill: var(--on-navy); }
+svg .t-purple { fill: var(--purple); }
+svg .t-navy { fill: var(--navy); }
 
 /* 커널별 이동 */
 .kgrid { display: grid; grid-template-columns: var(--cols); min-width: 900px; position: relative; }
 .lane-bg { background: var(--lane); border-radius: 14px; }
 .lh { padding: 14px 18px 8px; display: flex; flex-direction: column; gap: 1px; }
-.lh b { font-size: 18px; font-weight: 800; }
+.lh b { align-self: flex-start; font-size: 15px; font-weight: 800; color: var(--white); background: var(--navy); border-radius: 8px; padding: 3px 13px; margin-bottom: 4px; }
 .lh span { font-size: 12.5px; color: var(--muted); }
 .lh.mid { justify-content: flex-end; align-items: center; text-align: center; padding: 14px 6px 8px; }
 .lh.mid span { font-size: 12px; }
 .phrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 16px 18px 4px; scroll-margin-top: 12px; }
-.phrow .phn { font-size: 15px; font-weight: 800; }
+.phrow .phn { font-size: 16px; font-weight: 800; }
 .phrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-.tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
-.tag.strong { background: var(--ink2); border-color: var(--ink2); color: var(--surface); }
-.tag.outline { border-color: var(--ink2); color: var(--ink2); }
+/* 단계 태그: DSA 추가 = 보라 · DSA로 변경 = 연보라 · 기존 = 회청 */
+.tag { font-size: 11.5px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; color: var(--navy); background: var(--slate-t); }
+.tag.strong { background: var(--purple); color: var(--white); }
+.tag.outline { background: var(--purple-t); color: var(--purple); }
 /* 커널 1개 = 한 줄 묶음: HBM 카드(읽기 칸 + 쓰기 칸) · 화살표 띠 · 커널 카드가 같은 높이, 커널 사이에 간격 줄 */
 .hcell { grid-column: 1; margin: 0 12px 0 14px; background: var(--surface); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; justify-content: center; }
-.hcell.r { border-bottom: 0; border-radius: 10px 10px 0 0; padding: 12px 14px 10px; }
-.hcell.w { border-top: 0; border-radius: 0 0 10px 10px; padding: 10px 14px 12px; position: relative; }
+.hcell.r { border-bottom: 0; border-radius: 12px 12px 0 0; padding: 12px 14px 10px; }
+.hcell.w { border-top: 0; border-radius: 0 0 12px 12px; padding: 10px 14px 12px; position: relative; }
 .hcell.w::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; border-top: 1px dashed var(--line); }
 .hk-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.hk { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--ink2); border: 1.5px solid var(--ink2); border-radius: 5px; padding: 0 6px; line-height: 1.5; }
+.hk { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--white); background: var(--navy); border-radius: 6px; padding: 1px 7px; line-height: 1.5; }
 .hk-row .hl-t { margin-bottom: 0; }
 .bridge { grid-column: 2; background: var(--bridge); border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2); }
 .kgap { grid-column: 1 / -1; height: 18px; }
@@ -125,14 +136,14 @@ svg .boxhit:hover .box { stroke: var(--ink2); }
 .acell svg { display: block; overflow: visible; }
 .acell .al { font-size: 12px; fill: var(--muted); font-weight: 700; }
 .acell .ab { font-size: 16px; font-weight: 800; }
-.kcard { grid-column: 3; margin: 0 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 6px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; cursor: pointer; min-width: 0; }
-.kcard:hover { border-color: var(--axis); }
-.kcard[aria-expanded=true] { border-color: var(--ink2); box-shadow: 0 0 0 1px var(--ink2); }
+.kcard { grid-column: 3; margin: 0 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 6px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 18px; cursor: pointer; min-width: 0; }
+.kcard:hover { border-color: var(--navy); }
+.kcard[aria-expanded=true] { border-color: var(--navy); box-shadow: 0 0 0 1.5px var(--navy); }
 .khead { display: flex; align-items: center; gap: 10px; }
-.kid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 5px; padding: 2px 7px; flex: none; }
-.kname { font-size: 17px; font-weight: 800; }
-.kchev { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--ink2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; white-space: nowrap; flex: none; }
-.kcard[aria-expanded=true] .kchev { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
+.kid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; background: var(--navy); color: var(--white); border-radius: 6px; padding: 2px 8px; flex: none; }
+.kname { font-size: 17.5px; font-weight: 800; }
+.kchev { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--purple); background: var(--purple-t); border-radius: 999px; padding: 3px 12px; white-space: nowrap; flex: none; }
+.kcard[aria-expanded=true] .kchev { background: var(--purple); color: var(--white); }
 .kplain { font-size: 13px; color: var(--muted); }
 .kchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
 .kchips .kcl { font-weight: 700; color: var(--muted); margin-right: 2px; }
@@ -141,8 +152,8 @@ svg .boxhit:hover .box { stroke: var(--ink2); }
 code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 3px; padding: 1px 5px; }
 
 /* 펼친 계산 단계 — 단계마다 한 줄: 입력 텐서 × 입력 텐서 → 출력 텐서 */
-.kx { grid-column: 1 / -1; margin: 12px 14px 0; background: var(--surface); border: 1px solid var(--ink2); border-radius: 12px; padding: 12px 16px 4px; position: relative; z-index: 2; }
-.kx-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding-bottom: 9px; border-bottom: 1px solid var(--line2); }
+.kx { grid-column: 1 / -1; margin: 12px 14px 0; background: var(--surface); border: 2px solid var(--navy); border-radius: 14px; padding: 12px 16px 4px; position: relative; z-index: 2; overflow: hidden; }
+.kx-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: -12px -16px 0; padding: 11px 16px 10px; background: var(--band); border-bottom: 1px solid var(--line2); }
 .kx-head b { font-size: 14.5px; font-weight: 800; }
 .kx-dims { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); }
 .kx-dims b { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--ink); margin-right: 3px; }
@@ -178,9 +189,10 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .eq-v .tt code { font-size: 12px; }
 .eq-v .eq { gap: 8px 8px; }
 /* 데이터 성격 한눈에 — 막대 2개(보관 · 스텝당 이동) + 성격 표. 둥근 띠 하나 = 성격 하나, 띠 안 칸 = 데이터 (색 = 데이터 종류) */
-.blk .dp-ctl { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.dp-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 16px; }
+.dp-ctl { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .dp-ctl .cl { font-size: 12.5px; font-weight: 700; color: var(--muted); }
-.dp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.dp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); min-width: 0; }
 .dp-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dp-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 .dp-bars { display: flex; flex-direction: column; gap: 16px; }
@@ -191,7 +203,7 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-h .dp-tot { font-family: var(--font-mono); font-size: 19px; font-weight: 700; margin-top: 2px; }
 .dp-bar { display: flex; gap: 4px; min-width: 0; padding-top: 4px; }
 .dp-g { display: flex; flex-direction: column; gap: 6px; min-width: 4px; }
-.dp-strip { display: flex; gap: 1px; height: 34px; border-radius: 7px; overflow: hidden; background: var(--line2); }
+.dp-strip { display: flex; gap: 1px; height: 38px; border-radius: 9px; overflow: hidden; background: var(--line2); }
 .dp-seg { min-width: 0; display: flex; align-items: center; overflow: hidden; }
 .dp-seg span { font-size: 12px; font-weight: 700; padding: 0 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dp-seg span b { font-family: var(--font-mono); font-weight: 700; margin-left: 6px; }
@@ -199,7 +211,13 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-cap b { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
 .dp-key { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
 .dp-tab { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; margin-top: 20px; }
-.dp-tab th { text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); padding: 6px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.dp-tab th { text-align: left; font-size: 12px; font-weight: 700; color: var(--ink2); padding: 8px 12px; background: var(--band); white-space: nowrap; }
+.dp-tab th:first-child { border-radius: 8px 0 0 8px; }
+.dp-tab th:last-child { border-radius: 0 8px 8px 0; }
+/* 성격 표의 묶음 이름 = 데이터 색의 옅은 칩 */
+.gchip { display: inline-block; font-size: 13px; font-weight: 800; color: var(--ink); border-radius: 7px; padding: 2px 10px; }
+.g-ro { background: var(--c-gray-l); } .g-app { background: var(--c-blue-l); } .g-rmw { background: var(--c-green-l); }
+.g-tmp { background: var(--c-yellow-l); } .g-chip { border: 1.5px dashed var(--axis); padding: 1px 9px; }
 .dp-tab th.num, .dp-tab td.num { text-align: right; }
 .dp-tab td { padding: 11px 12px; border-bottom: 1px solid var(--line2); vertical-align: top; }
 .dp-tab tr:last-child td { border-bottom: 0; }
@@ -214,7 +232,7 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-items i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
 .dp-items i.dash { border: 1.5px dashed var(--ink2); background: transparent; }
 .dp-note { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
-@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .blk .dp-ctl { margin-left: 0; } }
+@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .dp-ctl { margin-left: 0; } }
 
 .foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
 .foot a { color: var(--ink2); font-weight: 700; }
@@ -238,8 +256,8 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
   </section>
 
   <section class="panel" aria-label="데이터 성격 한눈에" id="dpanel" hidden>
-    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span><div class="dp-ctl"><span class="cl">범위</span><div class="seg" role="group" id="dpscope" aria-label="범위"></div><span class="cl">나눠 보기</span><div class="seg" role="group" id="dpview" aria-label="나눠 보기"></div></div></div>
-    <div class="dp-legend" id="dplegend"></div>
+    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span></div>
+    <div class="dp-top"><div class="dp-legend" id="dplegend"></div><div class="dp-ctl"><span class="cl">범위</span><div class="seg" role="group" id="dpscope" aria-label="범위"></div><span class="cl">나눠 보기</span><div class="seg" role="group" id="dpview" aria-label="나눠 보기"></div></div></div>
     <div class="dp-bars" id="dpbars"></div>
     <div class="scroll"><table class="dp-tab" id="dptab"></table></div>
     <p class="dp-note" id="dpnote"></p>
@@ -438,15 +456,17 @@ function renderSummary() {
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="단계별 HBM 읽기 · 쓰기: ${ag.map(a => `${a.p.label} 읽기 ${fmtB(a.rd)} 쓰기 ${fmtB(a.wr)}`).join(", ")}">`;
   s += `<rect class="lane" x="6" y="${yH0}" width="${W - 12}" height="${yH1 - yH0}" rx="14"/>`;
   s += `<rect class="lane" x="6" y="${yC0}" width="${W - 12}" height="${yC1 - yC0}" rx="14"/>`;
-  s += `<text x="26" y="${yH0 + 36}" font-size="19" font-weight="800">HBM</text><text x="26" y="${yH0 + 58}" font-size="13" class="t-muted">읽기 · 쓰기</text><text x="26" y="${yH0 + 78}" font-size="12" class="t-muted">${M.hw.hbm_bw / 1e12} TB/s</text>`;
-  s += `<text x="26" y="${yC0 + 36}" font-size="19" font-weight="800">칩</text><text x="26" y="${yC0 + 58}" font-size="13" class="t-muted">커널 실행</text>`;
+  const lanePill = (y, t) => `<rect x="22" y="${y + 14}" width="${textW(t, 16) + 26}" height="30" rx="8" style="fill:var(--navy)"/><text x="35" y="${y + 35}" font-size="16" font-weight="800" class="t-white">${t}</text>`;
+  s += lanePill(yH0, "HBM") + `<text x="24" y="${yH0 + 66}" font-size="13" class="t-muted">읽기 · 쓰기</text><text x="24" y="${yH0 + 85}" font-size="12" class="t-muted">${M.hw.hbm_bw / 1e12} TB/s</text>`;
+  s += lanePill(yC0, "칩") + `<text x="24" y="${yC0 + 66}" font-size="13" class="t-muted">커널 실행</text>`;
   ag.forEach((a, i) => {
     const cx = LW + colW * (i + 0.5), xr = cx - 46, xw = cx + 46, bw = 54;
     const ttl = `${CIRC[i]} ${a.p.label}`;
     s += `<text x="${cx}" y="28" font-size="16" font-weight="800" text-anchor="middle">${esc(ttl)}</text>`;
-    const tw = textW(a.p.tag, 11) + 16, cls = tagCls(a.p);
-    s += `<rect x="${cx - tw / 2}" y="38" width="${tw}" height="19" rx="9.5" style="fill:${cls === "strong" ? "var(--ink2)" : "var(--surface)"};stroke:${cls ? "var(--ink2)" : "var(--line)"}"/>`;
-    s += `<text x="${cx}" y="51.5" font-size="11" font-weight="700" text-anchor="middle" class="${cls === "strong" ? "t-inv" : "t-muted"}">${esc(a.p.tag)}</text>`;
+    const tw = textW(a.p.tag, 11.5) + 20, cls = tagCls(a.p);   // 태그: DSA 추가 = 보라 · DSA로 변경 = 연보라 · 기존 = 회청
+    const tf = { strong: "var(--purple)", outline: "var(--purple-t)" }[cls] || "var(--slate-t)", tc = { strong: "t-white", outline: "t-purple" }[cls] || "t-navy";
+    s += `<rect x="${cx - tw / 2}" y="37" width="${tw}" height="21" rx="10.5" style="fill:${tf}"/>`;
+    s += `<text x="${cx}" y="51.5" font-size="11.5" font-weight="700" text-anchor="middle" class="${tc}">${esc(a.p.tag)}</text>`;
     const hr = hOf(a.rd), hw = hOf(a.wr);
     s += stackRects(xr - bw / 2, bw, yb, hr, parts(a.rk), a.rd, false);
     s += stackRects(xw - bw / 2, bw, yb, hw, parts(a.wk), a.wr, true);
@@ -458,15 +478,15 @@ function renderSummary() {
     if (a.topW) s += vArrow(xw, boxY - 3, yb + 4, kc(a.topW.kind));
     s += `<text x="${xr}" y="${yb + 36}" font-size="11" text-anchor="end" dx="-8" class="t-muted">읽기</text><text x="${xw}" y="${yb + 36}" font-size="11" dx="8" class="t-muted">쓰기</text>`;
     const bx = cx - colW / 2 + 12, bwid = colW - 24;
-    s += `<g class="boxhit" data-ph="${esc(a.p.id)}" tabindex="0" role="button" aria-label="${esc(ttl)} 커널로 이동"><rect class="box" x="${bx}" y="${boxY}" width="${bwid}" height="${boxH}" rx="10"/>`;
+    s += `<g class="boxhit" data-ph="${esc(a.p.id)}" tabindex="0" role="button" aria-label="${esc(ttl)} 커널로 이동"><rect class="box" x="${bx}" y="${boxY}" width="${bwid}" height="${boxH}" rx="12"/>`;
     const ids = a.kn.map(x => x.k.id), cw = ids.map(id => id.length * 7.6 + 12), tot = cw.reduce((p, c) => p + c, 0) + (ids.length - 1) * 5;
     let kx = cx - tot / 2;
     ids.forEach((id, j) => {
-      s += `<rect x="${kx}" y="${boxY + 13}" width="${cw[j]}" height="20" rx="5" style="fill:var(--ink2)"/><text x="${kx + cw[j] / 2}" y="${boxY + 27.5}" font-size="12" font-weight="700" text-anchor="middle" class="t-inv t-mono">${esc(id)}</text>`;
+      s += `<rect x="${kx}" y="${boxY + 13}" width="${cw[j]}" height="20" rx="6" style="fill:var(--navy-chip)"/><text x="${kx + cw[j] / 2}" y="${boxY + 27.5}" font-size="12" font-weight="700" text-anchor="middle" class="t-white t-mono">${esc(id)}</text>`;
       kx += cw[j] + 5;
     });
     const units = [...new Set(a.kn.flatMap(x => x.k.steps.map(sid => UNIT[STEP[sid].unit])))].join(" · ");
-    s += `<text x="${cx}" y="${boxY + 52}" font-size="12" text-anchor="middle" class="t-muted t-mono">${esc(units)}</text></g>`;
+    s += `<text x="${cx}" y="${boxY + 52}" font-size="12" text-anchor="middle" class="t-onnavy t-mono">${esc(units)}</text></g>`;
     if (i < n - 1) {
       const x1 = bx + bwid + 3, x2 = bx + bwid + 21, y = boxY + boxH / 2;
       s += `<line x1="${x1}" x2="${x2 - 7}" y1="${y}" y2="${y}" style="stroke:var(--ink2)" stroke-width="2.5"/><path d="M${x2 - 8} ${y - 6} L${x2} ${y} L${x2 - 8} ${y + 6} Z" style="fill:var(--ink2)"/>`;
@@ -822,13 +842,13 @@ function renderTraits() {
   const sw = x => `<span title="${esc(x.note)}"><i style="background:${colOf(x.color)}"></i>${esc(x.name)}</span>`;
   const rows = groups.map(({ g, its }) => {
     const s = sum(its, x => x.store), r = sum(its, x => x.rd), w = sum(its, x => x.wr);
-    return `<tr><td><b>${GRP[g].label}</b><span class="sm">${GRP[g].sub}</span></td>
+    return `<tr><td><span class="gchip g-${g}">${GRP[g].label}</span><span class="sm">${GRP[g].sub}</span></td>
       <td><div class="dp-items">${its.map(sw).join("")}</div></td>
       <td class="nw">${GRP[g].life}</td><td>${reread[g][0]}<span class="sm">${esc(reread[g][1])}</span></td><td class="nw">${GRP[g].write}</td>
       <td class="num">${g === "tmp" ? "—" : `<b>${fmtB(s)}</b><span class="sm">${pct(s, totS)}</span>`}</td>
       <td class="num"><b>${fmtB(r + w)}</b><span class="sm">${pct(r + w, totM)}${w > 0 ? ` · 그중 쓰기 ${fmtB(w)}` : ""}</span></td></tr>`;
   });
-  rows.push(`<tr class="chip"><td><b>${GRP.chip.label}</b><span class="sm">${GRP.chip.sub}</span></td>
+  rows.push(`<tr class="chip"><td><span class="gchip g-chip">${GRP.chip.label}</span><span class="sm">${GRP.chip.sub}</span></td>
     <td><div class="dp-items">${chip.top.map(l => `<span><i class="dash"></i>${esc(l)}</span>`).join("")}</div></td>
     <td class="nw">${GRP.chip.life}</td><td>${reread.chip[0]}<span class="sm">${reread.chip[1]}</span></td><td class="nw">${GRP.chip.write}</td>
     <td class="num">—</td><td class="num"><b>0</b><span class="sm">칩 안에서 생기는 양 ${fmtB(chip.b)}</span></td></tr>`);
