@@ -179,6 +179,53 @@ def gdn_share():
         "state는 48층 × 6.4 MB(읽기 + 쓰기)로 문맥과 무관 · 요청이 적을 때만 attention 가중치가 attention 몫의 대부분")
 
 
+
+def local_font(html):
+    """잘라내기용: 웹 글꼴 Noto Sans KR(유니코드 범위별 조각이 늦게 들어와 줄바꿈이 바뀜)을 빼고
+    이 PC에 설치된 Noto Sans KR로 그린다 — 높이 재는 실행과 찍는 실행의 레이아웃을 같게."""
+    return html.replace("family=Noto+Sans+KR:wght@400;500;700;800&", "")
+
+
+TRIM_HTML = """<html><body style="margin:0"><pre id="o"></pre><script>
+const im = new Image();
+im.onload = () => {
+  const W = im.naturalWidth, H = im.naturalHeight, c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d"); g.drawImage(im, 0, 0);
+  const px = g.getImageData(0, 0, W, H).data, bg = [px[(H - 1) * W * 4], px[(H - 1) * W * 4 + 1], px[(H - 1) * W * 4 + 2]];
+  let last = H - 1;
+  scan: for (; last > 0; last--) {
+    for (let x = 0; x < W; x += 2) {
+      const i = (last * W + x) * 4;
+      if (Math.abs(px[i] - bg[0]) + Math.abs(px[i + 1] - bg[1]) + Math.abs(px[i + 2] - bg[2]) > 12) break scan;
+    }
+  }
+  const h = Math.min(H, last + 24), o = document.createElement("canvas");
+  o.width = W; o.height = h; o.getContext("2d").drawImage(c, 0, 0);
+  document.getElementById("o").textContent = h + " " + o.toDataURL("image/png");
+};
+im.src = "__SRC__";
+</script></body></html>"""
+
+
+def trim_png(path):
+    """찍은 PNG의 아래쪽 빈 배경을 잘라낸다 (Chrome canvas로 — PIL 없이)."""
+    import base64
+    with tempfile.TemporaryDirectory() as td:
+        page = os.path.join(td, "trim.html")
+        with open(page, "w", encoding="utf-8") as fh:
+            fh.write(TRIM_HTML.replace("__SRC__", "file:///" + path.replace("\\", "/")))
+        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--allow-file-access-from-files",
+                              "--virtual-time-budget=20000", "--dump-dom", "file:///" + page.replace("\\", "/")],
+                             capture_output=True, timeout=180).stdout.decode("utf-8", "replace")
+    m = re.search(r'<pre id="o">(\d+) data:image/png;base64,([A-Za-z0-9+/=]+)</pre>', dom)
+    if not m:
+        print("  trim 실패 — 원본 유지", os.path.basename(path))
+        return
+    with open(path, "wb") as fh:
+        fh.write(base64.b64decode(m.group(2)))
+    print("  trim →", m.group(1), "px", os.path.basename(path))
+
 # ---------------------------------------------------------------- 약식 화면 스냅샷
 HIDE = ('<style>header.top, section[aria-label="흐름 한눈에"], #foot {display:none !important}'
         ' body{padding-top:8px !important}</style>')
@@ -191,20 +238,20 @@ def snap(mid, width=1280):
         print("브라우저 없음 — 스냅샷 생략")
         return
     with open(os.path.join(ROOT, "viewer", f"{mid}-lite.html"), encoding="utf-8") as fh:
-        html = fh.read().replace("</head>", HIDE + "\n</head>", 1).replace("</body>", MEASURE + "\n</body>", 1)
+        html = local_font(fh.read()).replace("</head>", HIDE + "\n</head>", 1).replace("</body>", MEASURE + "\n</body>", 1)
     with tempfile.TemporaryDirectory() as td:
         p = os.path.join(td, "snap.html")
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(html)
         url = "file:///" + p.replace("\\", "/")
-        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", f"--window-size={width},1200",
-                              "--virtual-time-budget=6000", "--dump-dom", url],
+        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--force-device-scale-factor=2", f"--window-size={width},1200",
+                              "--virtual-time-budget=9000", "--dump-dom", url],
                              capture_output=True, timeout=120).stdout.decode("utf-8", "replace")
         m = re.search(r"<title>H(\d+)</title>", dom)
         h = int(m.group(1)) if m else 2400
         out = os.path.join(FIG, f"{mid.split('-')[0]}-02-kernel-snapshot.png")
         subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=2",
-                        f"--window-size={width},{h}", "--virtual-time-budget=6000", f"--screenshot={out}", url],
+                        f"--window-size={width},{h}", "--virtual-time-budget=9000", f"--screenshot={out}", url],
                        capture_output=True, timeout=120)
     print("ok snapshot", mid, width, "x", h)
 
@@ -217,15 +264,16 @@ CROP_JS = """<script>addEventListener('load',()=>setTimeout(()=>{
 const K="__K__", OPEN=__OPEN__, BI=__BI__, grid=document.getElementById('kgrid');
 if(BI>=0) document.querySelector('#bseg button[data-i="'+BI+'"]').click();   // 요청 수 버튼
 const card=grid.querySelector('.kcard[data-k="'+K+'"]');
-if(OPEN) card.click();
+if(OPEN){ card.click(); const all=document.querySelector('.op-all[data-k="'+K+'"]'); if(all) all.click(); }   // 텐서 모양 + 칩 안 계산 단계 모두 펼침
 const r0=parseInt(card.style.gridRow), keep=new Set([r0,r0+1]);
 if(OPEN) keep.add(r0+2);
 let ph=null; grid.querySelectorAll('.phrow').forEach(p=>{if(parseInt(p.style.gridRow)<r0) ph=p;});
 if(ph) keep.add(parseInt(ph.style.gridRow));
 [...grid.children].forEach(el=>{ if(el.classList.contains('lane-bg')) return;
   const r=parseInt(el.style.gridRow); if(!keep.has(r)) el.style.display='none'; });
+setInterval(()=>{   // 웹 글꼴 조각이 늦게 들어오면 줄바꿈이 바뀌므로 끝까지 다시 잰다 (마지막 값 사용)
 const b=document.querySelector('.wrap').getBoundingClientRect();
-document.title='H'+Math.ceil(b.bottom+window.scrollY+10);
+document.title='H'+Math.ceil(b.bottom+window.scrollY+10);},250);
 },900));</script>"""
 
 
@@ -238,21 +286,22 @@ def snap_kernel(mid, kid, open_=False, width=1280, b=CROP_B):
     with open(os.path.join(ROOT, "viewer", f"{mid}-lite.html"), encoding="utf-8") as fh:
         bi = [1, 2, 4, 8, 16, 32, 64, 128, 256].index(b)   # template-lite.html B_OPTS
         js = CROP_JS.replace("__K__", kid).replace("__OPEN__", "true" if open_ else "false").replace("__BI__", str(bi))
-        html = fh.read().replace("</head>", CROP_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
+        html = local_font(fh.read()).replace("</head>", CROP_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
     name = f"{mid.split('-')[0]}-k-{kid.lower()}{'-open' if open_ else ''}.png"
     with tempfile.TemporaryDirectory() as td:
         p = os.path.join(td, "crop.html")
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(html)
         url = "file:///" + p.replace("\\", "/")
-        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", f"--window-size={width},1600",
-                              "--virtual-time-budget=6000", "--dump-dom", url],
+        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--force-device-scale-factor=2", f"--window-size={width},1600",
+                              "--virtual-time-budget=9000", "--dump-dom", url],
                              capture_output=True, timeout=120).stdout.decode("utf-8", "replace")
         m = re.search(r"<title>H(\d+)</title>", dom)
         h = int(m.group(1)) if m else 600
         subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=2",
-                        f"--window-size={width},{h}", "--virtual-time-budget=6000",
+                        f"--window-size={width},{h}", "--virtual-time-budget=9000",
                         f"--screenshot={os.path.join(FIG, name)}", url], capture_output=True, timeout=120)
+    trim_png(os.path.join(FIG, name))
     print("ok crop", name, h)
 
 
@@ -264,8 +313,9 @@ FLOW_CSS = ('<style>header.top, section.ctlbar, section[aria-label="커널별 �
 FLOW_JS = """<script>addEventListener('load',()=>setTimeout(()=>{
 document.querySelector('#tseg button[data-i="__TI__"]').click();
 document.querySelector('#bseg button[data-i="__BI__"]').click();
+setInterval(()=>{   // 웹 글꼴 조각이 늦게 들어오면 줄바꿈이 바뀌므로 끝까지 다시 잰다 (마지막 값 사용)
 const b=document.querySelector('.wrap').getBoundingClientRect();
-document.title='H'+Math.ceil(b.bottom+window.scrollY+10);
+document.title='H'+Math.ceil(b.bottom+window.scrollY+10);},250);
 },900));</script>"""
 T_OPTS = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576]   # template-lite.html
 B_OPTS = [1, 2, 4, 8, 16, 32, 64, 128, 256]
@@ -278,21 +328,22 @@ def snap_flow(mid, B, T, width=1280):
         return
     with open(os.path.join(ROOT, "viewer", f"{mid}-lite.html"), encoding="utf-8") as fh:
         js = FLOW_JS.replace("__TI__", str(T_OPTS.index(T))).replace("__BI__", str(B_OPTS.index(B)))
-        html = fh.read().replace("</head>", FLOW_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
+        html = local_font(fh.read()).replace("</head>", FLOW_CSS + "\n</head>", 1).replace("</body>", js + "\n</body>", 1)
     name = f"{mid.split('-')[0]}-flow-b{B}-t{T // 1024}k.png"
     with tempfile.TemporaryDirectory() as td:
         p = os.path.join(td, "flow.html")
         with open(p, "w", encoding="utf-8") as fh:
             fh.write(html)
         url = "file:///" + p.replace("\\", "/")
-        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", f"--window-size={width},1200",
-                              "--virtual-time-budget=6000", "--dump-dom", url],
+        dom = subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--force-device-scale-factor=2", f"--window-size={width},1200",
+                              "--virtual-time-budget=9000", "--dump-dom", url],
                              capture_output=True, timeout=120).stdout.decode("utf-8", "replace")
         m = re.search(r"<title>H(\d+)</title>", dom)
         h = int(m.group(1)) if m else 640
         subprocess.run([BROWSER, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--force-device-scale-factor=2",
-                        f"--window-size={width},{h}", "--virtual-time-budget=6000",
+                        f"--window-size={width},{h}", "--virtual-time-budget=9000",
                         f"--screenshot={os.path.join(FIG, name)}", url], capture_output=True, timeout=120)
+    trim_png(os.path.join(FIG, name))
     print("ok flow", name, h)
 
 

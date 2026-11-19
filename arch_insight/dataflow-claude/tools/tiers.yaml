@@ -1,0 +1,37 @@
+# 메모리 층 — "이 데이터를 어디에 둘 수 있나" 판단용 (tools/ledger.py가 읽음)
+#
+# - 값은 GPU 1장 몫. 시스템 값 = GPU 수(models/<id>/model.yaml의 deploy.n_gpu) × 이 값
+#   (데이터를 GPU에 고르게 나눈다고 가정).
+# - cap = 용량 (B), bw = 칩이 그 층에서 읽어 오는 대역폭 (B/s), rewrite = 매 스텝 전부 다시 쓰기를 견디나
+# - 값을 바꾸거나 층을 한 줄 더하면 report/ledger.md 표가 다시 계산된다.
+#   새 메모리 층 아이디어(예: 다른 용량 · 대역폭의 층)도 여기에 한 줄로 넣어 기존 층과 비교한다.
+
+system: H200 서버 (HGX 8-GPU 구성 기준)
+budget_ms: 50     # 목표 스텝 시간(TPOT). 초당 20토큰 — 가정값
+ok_frac: 0.1      # 데이터 하나의 스텝당 이동 시간이 목표의 10% 이하 = ✓, 목표 이하 = △, 넘으면 ✗
+
+tiers:
+  sram:
+    label: 칩 안 SRAM
+    cap: 80e6
+    bw: 33e12
+    rewrite: true
+    desc: "L2 50 MB + SMEM 132개 × 228 KB(≈ 30 MB). bw = SMEM 132개 합계 추정(128 B/클럭 × 1.98 GHz), L2는 이보다 낮음. 커널이 끝난 뒤에도 남는 곳은 L2뿐"
+  hbm:
+    label: HBM
+    cap: 141e9
+    bw: 4.8e12
+    rewrite: true
+    desc: "HBM3e 141 GB · 4.8 TB/s"
+  host:
+    label: CPU 메모리
+    cap: 256e9
+    bw: 64e9
+    rewrite: true
+    desc: "서버 DRAM 2 TB ÷ GPU 8장. GPU ↔ CPU는 PCIe 5.0 x16 한 방향 64 GB/s가 상한 (실효는 더 낮음)"
+  ssd:
+    label: NVMe SSD
+    cap: 3.84e12
+    bw: 7e9
+    rewrite: false
+    desc: "GPU 1장당 NVMe 1개(3.84 TB) · 순차 읽기 약 7 GB/s(PCIe 4.0 추정). 플래시라 매 스텝 전부 다시 쓰기에는 수명 · 지연이 맞지 않음"

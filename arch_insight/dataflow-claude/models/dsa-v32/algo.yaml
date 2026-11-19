@@ -120,6 +120,9 @@ steps:
     prec: fp8
     in: [q_a, W_qb]
     out: [qr, q]
+    ops:   # 칩 안 계산 펼침용 짝 (없으면 뷰어가 in · out에서 추정)
+      - {in: [q_a], out: qr, op: RMSNorm}
+      - {a: qr, b: W_qb, out: q}
     flops: 2*B*c_q*n_h*(d_nope+d_rope)
     desc: q latent를 정규화(qr)하고 head 128개 × 192폭으로 펼친다.
   - id: p5
@@ -129,6 +132,8 @@ steps:
     prec: bf16
     in: [q, W_UK]
     out: [q_full]
+    ops:
+      - {a: q, b: W_UK, out: q_full, note: "q 192폭 중 q_nope 128만 W_UK와 곱해 512로 — q_rope 64는 RoPE만 거쳐 뒤에 붙음(512 + 64)"}
     flops: 2*B*n_h*d_nope*c_kv
     desc: head마다 q_nope(128)에 W_UK를 곱해 latent 폭(512)으로 바꾼다. KV를 풀지 않고 latent 그대로 비교하기 위해서다.
   - id: i1
@@ -228,6 +233,8 @@ steps:
     prec: bf16
     in: [p, kv_sel]
     out: [o_lat]
+    ops:
+      - {a: p, b: kv_sel, out: o_lat, note: "V로는 KV 1줄 576 중 앞 512(c_kv)만 사용"}
     flops: 2*B*n_h*c_kv*k
     desc: 확률로 선택 KV의 c_kv(512) 부분을 가중합한다. V를 따로 저장하지 않고 latent를 V로 쓴다.
   - id: o1

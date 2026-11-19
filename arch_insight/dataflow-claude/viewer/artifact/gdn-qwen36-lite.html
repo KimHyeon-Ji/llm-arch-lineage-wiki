@@ -169,6 +169,32 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .t-note { font-size: 12px; color: var(--ink2); font-weight: 700; margin-top: 2px; overflow-wrap: anywhere; }
 .t-note .mono { font-weight: 700; }
 .t-zero { font-size: 12px; color: var(--muted); }
+button.kst { font-family: inherit; color: inherit; cursor: pointer; }
+button.kst:hover, .kst.on { border-color: var(--ink2); }
+.kst.on { background: var(--tint); }
+.kx-ops { margin-top: 14px; padding-top: 12px; border-top: 1px dashed var(--line2); display: flex; flex-direction: column; gap: 8px; }
+.kx-ops > .kx-t { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+.op-hint { font-size: 12px; font-weight: 400; color: var(--muted); }
+.op-all { margin-left: auto; font: inherit; font-size: 12px; font-weight: 700; color: var(--ink2); background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 2px 11px; cursor: pointer; }
+.op { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.op.open { border-color: var(--ink2); }
+.op-h { display: flex; align-items: center; gap: 9px; width: 100%; padding: 8px 12px; background: none; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.op-h code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 4px; padding: 1px 5px; flex: none; }
+.op-h b { font-size: 13px; font-weight: 800; white-space: nowrap; flex: none; }
+.op-f { flex: 1; min-width: 0; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.op-chev { font-size: 12px; color: var(--ink2); flex: none; }
+.op-b { padding: 2px 12px 12px; display: flex; flex-direction: column; gap: 8px; }
+.op-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.op-row .tile { flex: 1 1 210px; max-width: 340px; }
+.op-x { font-size: 24px; font-weight: 800; color: var(--ink2); flex: none; }
+.op-fn { flex: none; font-size: 13px; font-weight: 800; color: var(--ink2); background: var(--tint); border-radius: 7px; padding: 5px 10px; }
+.op-v { display: flex; flex-direction: column; gap: 6px; }
+.op-lab { font-size: 12px; font-weight: 700; color: var(--muted); }
+.op-down { align-self: flex-start; margin: 2px 0; }
+.op-cap { font-size: 12.5px; color: var(--ink2); }
+.op-cap b { font-weight: 800; }
+.op-desc { font-size: 12.5px; color: var(--muted); }
+code.pl { margin-left: auto; flex: none; }
 .foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
 .foot a { color: var(--ink2); font-weight: 700; }
 
@@ -225,7 +251,7 @@ const UIF = Object.keys(A.formats).find(k => A.formats[k].ui);
 const T_OPTS = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
 const B_OPTS = [1, 2, 4, 8, 16, 32, 64, 128, 256];
 const UNIT = { gemm: "GEMM", gemv: "GEMV", vec: "VEC", sel: "TOP-K", gather: "GATHER", mem: "WRITE" };
-const state = { ti: 5, bi: 0, fmt: UIF ? A.formats[UIF].default : null, open: new Set() };
+const state = { ti: 5, bi: 0, fmt: UIF ? A.formats[UIF].default : null, open: new Set(), stepOpen: new Set() };
 
 /* ── 식 계산 (eval 없이) ── */
 const parsed = {};
@@ -537,8 +563,10 @@ function chipTile(e, d) {
 }
 function expHTML(k, d) {
   const oc = onChipOf(k);
-  const used = dimsUsed([...k.hbm_read.flatMap(e => [e.t, via(e)]), ...(k.hbm_write || []).flatMap(e => [e.t, via(e)]), ...oc.map(e => e.t)]);
-  const steps = k.steps.map(sid => { const s = STEP[sid]; return `<span class="kst"><code>${UNIT[s.unit]}</code>${esc(s.label)}</span>`; }).join(`<span class="kst-ar" aria-hidden="true">↓</span>`);
+  const used = dimsUsed([...k.hbm_read.flatMap(e => [e.t, via(e)]), ...(k.hbm_write || []).flatMap(e => [e.t, via(e)]), ...oc.map(e => e.t),
+    ...k.steps.flatMap(sid => [...STEP[sid].in, ...STEP[sid].out])]);
+  const steps = k.steps.map(sid => { const s = STEP[sid], key = k.id + ":" + sid;
+    return `<button type="button" class="kst${state.stepOpen.has(key) ? " on" : ""}" data-op="${esc(key)}" title="눌러서 이 단계의 텐서 계산 펼치기"><code>${UNIT[s.unit]}</code>${esc(s.label)}</button>`; }).join(`<span class="kst-ar" aria-hidden="true">↓</span>`);
   return `<div class="kx-head"><b>${esc(k.id)} ${esc(k.label)} · 텐서 모양</b><span class="kx-dims">${used.map(x => dimLabel(x, d)).join("")}</span></div>
     <div class="kx-cols">
       <div class="kx-col"><div class="kx-t">HBM에서 읽음</div>${k.hbm_read.map(e => moveTile(e, "r", d)).join("")}</div>
@@ -546,7 +574,80 @@ function expHTML(k, d) {
       <div class="kx-col mid"><div class="kx-t">칩 안 계산</div><div class="ksteps">${steps}</div>${oc.map(e => chipTile(e, d)).join("")}</div>
       <div class="kx-ar" aria-hidden="true"></div>
       <div class="kx-col"><div class="kx-t">HBM에 씀</div>${(k.hbm_write || []).map(e => moveTile(e, "w", d)).join("")}</div>
-    </div>`;
+    </div>
+    <div class="kx-ops"><div class="kx-t">칩 안 계산 — 단계별 텐서<span class="op-hint">단계를 누르면 어떤 텐서끼리 계산해 무엇이 나오는지 펼쳐진다</span><button type="button" class="op-all" data-k="${esc(k.id)}">모두 펼치기</button></div>
+      ${k.steps.map(sid => stepRowHTML(k, sid, d)).join("")}</div>`;
+}
+
+/* ── 칩 안 계산 단계 펼침: A × B → C ── */
+const isW = t => TENS[t].kind === "weight";
+function stepOps(s) {   // 단계 → 연산 목록. yaml의 ops가 있으면 그대로, 없으면 입력 · 출력 목록에서 짝을 짓는다
+  if (s.ops) return s.ops.map(o => o.a ? { mm: true, a: o.a, b: o.b, out: o.out, note: o.note }
+                                       : { mm: false, ins: [].concat(o.in), outs: [].concat(o.out), op: o.op || s.label, note: o.note });
+  if (s.unit === "gemm" || s.unit === "gemv") {
+    const acts = s.in.filter(t => !isW(t)), wts = s.in.filter(isW);
+    if (acts.length === 1 && wts.length && wts.length === s.out.length) return wts.map((w, i) => ({ mm: true, a: acts[0], b: w, out: s.out[i] }));
+    if (s.in.length === 2 && s.out.length === 1) return [{ mm: true, a: s.in[0], b: s.in[1], out: s.out[0] }];
+  }
+  return [{ mm: false, ins: s.in, outs: s.out, op: s.label }];
+}
+function placeOf(k, tid) {   // 이 커널에서 텐서가 있는 곳
+  const oc = onChipOf(k).find(e => e.t === tid);
+  const rd = k.hbm_read.some(e => e.t === tid), wr = (k.hbm_write || []).some(e => e.t === tid);
+  if (rd && oc) return `HBM → ${M.hw.onchip[oc.mem].short}`;
+  if (rd) return "HBM에서";
+  if (wr) return "HBM으로";
+  return oc ? M.hw.onchip[oc.mem].short : "칩 안";
+}
+function opTile(k, tid, d) {
+  const t = TENS[tid], e = k.hbm_read.find(x => x.t === tid);
+  const part = e && via(e) !== tid;   // 일부만 읽는 텐서 (예: KV cache에서 2,048줄만)
+  const size = part ? `읽는 양 ${fmtB(bytesOf(via(e), d))} (전체 ${fmtB(bytesOf(tid, d))})` : fmtB(bytesOf(tid, d));
+  const mode = t.kind === "weight" ? "w" : (e && e.pat === "gather" ? "gather" : "full");
+  return `<div class="tile op-t"><div class="t-top"><i style="background:${kc(t.kind)}"></i><b>${esc(t.label)}</b><code class="mb pl">${esc(placeOf(k, tid))}</code></div>
+    <div class="t-shape mono">${esc(shapeSym(tid))}</div><div class="t-num mono">= ${esc(shapeNum(tid, d))} · ${size}</div>${gridHTML(tid, d, mode)}</div>`;
+}
+const fmtF = f => f >= 1e9 ? (f / 1e9).toPrecision(3) + " GFLOP" : f >= 1e6 ? (f / 1e6).toPrecision(3) + " MFLOP" : fmtN(Math.round(f)) + " FLOP";
+function opHTML(k, o, d) {
+  if (o.mm) {
+    const sa = TENS[o.a].shape.map(String), so = new Set(TENS[o.out].shape.map(String));
+    const red = sa.filter(e => !so.has(e)), bat = sa.filter(e => so.has(e));
+    const rv = red.reduce((p, e) => p * ev(e, d), 1);
+    const cap = [`곱해서 더하는 축: <b class="mono">${esc(red.map(symOf).join(" · ") || "—")}</b> (${fmtN(rv)}개씩)`];
+    if (bat.length) cap.push(`그대로 두는 축: <span class="mono">${esc(bat.map(symOf).join(", "))}</span>`);
+    if (o.note) cap.push(esc(o.note));
+    return `<div class="op-row">${opTile(k, o.a, d)}<span class="op-x">×</span>${opTile(k, o.b, d)}<span class="op-x">→</span>${opTile(k, o.out, d)}</div><div class="op-cap">${cap.join(" · ")}</div>`;
+  }
+  const ins = o.ins.map(t => opTile(k, t, d)).join(""), outs = o.outs.map(t => opTile(k, t, d)).join("");
+  const note = o.note ? `<div class="op-cap">${esc(o.note)}</div>` : "";
+  if (o.ins.length + o.outs.length <= 3)   // 적으면 가로: 입력 → 연산 → 출력
+    return `<div class="op-row">${ins}<span class="op-fn">→ ${esc(o.op)} →</span>${outs}</div>${note}`;
+  return `<div class="op-v"><div class="op-lab">입력</div><div class="op-row">${ins}</div>
+    <div class="op-fn op-down">↓ ${esc(o.op)}</div><div class="op-lab">출력</div><div class="op-row">${outs}</div></div>${note}`;   // 많으면 세로
+}
+const opFormula = o => o.mm ? `${shapeSym(o.a)} × ${shapeSym(o.b)} → ${shapeSym(o.out)}` : `${o.ins.map(shapeSym).join(", ")} → ${o.outs.map(shapeSym).join(", ")}`;
+function opBody(k, s, d) {
+  const meta = [s.desc ? esc(s.desc) : "", s.flops ? `연산량 ${fmtF(ev(s.flops, d))}` : ""].filter(Boolean).join(" · ");
+  return stepOps(s).map(o => opHTML(k, o, d)).join("") + (meta ? `<div class="op-desc">${meta}</div>` : "");
+}
+function stepRowHTML(k, sid, d) {
+  const s = STEP[sid], key = k.id + ":" + sid, open = state.stepOpen.has(key);
+  return `<div class="op${open ? " open" : ""}" data-op="${esc(key)}"><button type="button" class="op-h" aria-expanded="${open}"><code>${UNIT[s.unit]}</code><b>${esc(s.label)}</b><span class="op-f mono">${esc(stepOps(s).map(opFormula).join("  ·  "))}</span><span class="op-chev">${open ? "▴" : "▾"}</span></button>
+    <div class="op-b"${open ? "" : " hidden"}>${open ? opBody(k, s, d) : ""}</div></div>`;
+}
+function setOp(key, open, scroll) {
+  if (open) state.stepOpen.add(key); else state.stepOpen.delete(key);
+  const row = document.querySelector(`.op[data-op="${key}"]`);
+  if (!row) return;
+  const [kid, sid] = key.split(":");
+  row.classList.toggle("open", open);
+  row.querySelector(".op-h").setAttribute("aria-expanded", open);
+  row.querySelector(".op-chev").textContent = open ? "▴" : "▾";
+  const b = row.querySelector(".op-b");
+  b.innerHTML = open ? opBody(KERN.find(x => x.id === kid), STEP[sid], dims()) : "";
+  b.hidden = !open;
+  document.querySelectorAll(`.kst[data-op="${key}"]`).forEach(c => c.classList.toggle("on", open));
+  if (scroll && open) row.scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function renderFlow() {
@@ -623,6 +724,21 @@ function update() { renderControls(); renderSummary(); renderFlow(); }
   document.getElementById("links").innerHTML = links.join("");
   document.getElementById("foot").innerHTML = `${esc(M.name)} · 이론 하한 = max(바이트 ÷ ${M.hw.hbm_bw / 1e12} TB/s, FLOP ÷ 피크). 가정 · 검증 · 단계별 설명은 <a href="${esc(base + P.file + ".html")}" target="_blank" rel="noopener">자세한 버전</a>에 있다.`;
   renderLegend();
+  // 칩 안 계산 단계 펼침 — kgrid 안에서 위임 처리 (펼침 영역은 다시 그려지므로)
+  document.getElementById("kgrid").addEventListener("click", e => {
+    const all = e.target.closest(".op-all");
+    if (all) {
+      const keys = KERN.find(x => x.id === all.dataset.k).steps.map(sid => all.dataset.k + ":" + sid);
+      const open = keys.some(key => !state.stepOpen.has(key));
+      keys.forEach(key => setOp(key, open, false));
+      all.textContent = open ? "모두 접기" : "모두 펼치기";
+      return;
+    }
+    const h = e.target.closest(".op-h, button.kst");
+    if (!h) return;
+    const key = h.closest("[data-op]").dataset.op;
+    setOp(key, !state.stepOpen.has(key), h.classList.contains("kst"));
+  });
   update();
 })();
 })();
