@@ -1,0 +1,30 @@
+# Qwen3.6-27B 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/ledger.py가 읽음
+#
+# 규칙은 dsa-v32/model.yaml과 같다. block = linear attention 층 1개(algo · map) × layers.
+# full attention 16층은 algo로 그리지 않아 식으로 적는다 (q head 24 + 출력 gate · KV head 4 · head 256 · BF16).
+# config: reports/llm-memory-requirements/data/raw/cfg_Qwen_Qwen3.6-27B.json
+
+model: Qwen3.6-27B
+deploy: {n_gpu: 1, desc: "H200 1장 — BF16 가중치 약 54 GB"}
+
+dims:
+  L_full: {value: 16,     desc: full attention 층 수 (4층마다 1층)}
+  n_q:    {value: 24,     desc: full 층 q head 수}
+  d_ff:   {value: 17408,  desc: FFN 폭}
+  V:      {value: 248320, desc: 어휘 수}
+
+data:
+  - {id: w_lin,  label: "가중치 · linear attention", short: linear attention, block: {kind: weight}, layers: n_lin}
+  - {id: w_full, label: "가중치 · full attention", short: full attention, color: gray-l, share: 공유, layers: L_full,
+     store: "L_full*(2*d*(2*n_q*d_hf + 2*n_kv_f*d_hf) + 2*n_q*d_hf*d)",
+     read:  "L_full*(2*d*(2*n_q*d_hf + 2*n_kv_f*d_hf) + 2*n_q*d_hf*d)", note: "q는 출력 gate까지 2배"}
+  - {id: w_ffn,  label: "가중치 · FFN", short: FFN, color: gray-l, share: 공유, layers: n_layer,
+     store: "n_layer*3*d*d_ff*2", read: "n_layer*3*d*d_ff*2"}
+  - {id: w_head, label: "가중치 · LM head", short: LM head, color: gray-l, share: 공유, layers: 1, store: "2*V*d", read: "2*V*d"}
+  - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, color: gray-l, share: 공유, layers: 1, store: "2*V*d", read: "2*B*d", note: "토큰 B개의 행만 읽음"}
+  - {id: kv_full, label: "KV cache · full 16층", short: KV cache (full 16층), color: blue, share: 요청별, layers: L_full,
+     store: "L_full*B*T*2*n_kv_f*d_hf*2", read: "L_full*B*T*2*n_kv_f*d_hf*2", write: "L_full*B*2*n_kv_f*d_hf*2",
+     note: "GQA KV head 4 · BF16 · 토큰당 4,096 B/층"}
+  - {id: state,  label: recurrent state, short: recurrent state, block: {t: [ssm_state]},  layers: n_lin}
+  - {id: conv,   label: conv state,      short: conv state,      block: {t: [conv_state]}, layers: n_lin}
+  - {id: temp,   label: 커널 사이 중간값, short: "q · k · v · gate 등 토큰 벡터", color: yellow, block: {rest: true}, layers: n_lin, note: "linear 층만 — full 층 중간값은 뺌"}

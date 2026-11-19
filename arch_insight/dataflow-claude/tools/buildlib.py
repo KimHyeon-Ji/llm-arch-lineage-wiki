@@ -189,6 +189,10 @@ def write_outputs(here, algo, mp, checks, bad, numbers_md):
     with open(os.path.join(here, "numbers.md"), "w", encoding="utf-8") as f:
         f.write(numbers_md)
     data = {"algo": algo, "map": mp, "checks": {"n": len(checks), "fail": bad}, "pages": PAGES}
+    mfile = os.path.join(here, "model.yaml")   # 모델 전체 데이터 (약식 뷰어 "데이터 성격 한눈에")
+    if os.path.exists(mfile):
+        with open(mfile, encoding="utf-8") as f:
+            data["model"] = yaml.safe_load(f)
     js = json.dumps(data, ensure_ascii=False)
     with open(os.path.join(here, "dataflow.json"), "w", encoding="utf-8") as f:
         f.write(js)
