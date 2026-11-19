@@ -20,11 +20,12 @@
   --font-text: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --bridge: #f8f9fc;
+  --l-svc: #2f4b8c; --l-req: #5b74b8; --l-step: #a9b8e2;   /* 수명 — 길수록 진한 남색 */
   --cols: 290px 232px minmax(0, 1fr);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
     --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
     --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
     --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
@@ -32,7 +33,7 @@
   }
 }
 :root[data-theme="dark"] {
-  --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+  --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
   --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
   --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
   --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
@@ -182,7 +183,11 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .eq-v .tt code { font-size: 12px; }
 .eq-v .eq { gap: 8px 8px; }
 /* 데이터 성격 한눈에 — 막대 2개(보관 · 스텝당 이동) + 성격 표. 둥근 띠 하나 = 성격 하나, 띠 안 칸 = 데이터 (색 = 데이터 종류) */
-.blk .dp-scope { margin-left: auto; }
+.blk .dp-ctl { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.dp-ctl .cl { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.dp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.dp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dp-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 .dp-bars { display: flex; flex-direction: column; gap: 16px; }
 .dp-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 6px 18px; align-items: start; }
 .dp-h { display: flex; flex-direction: column; gap: 1px; }
@@ -214,7 +219,7 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-items i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
 .dp-items i.dash { border: 1.5px dashed var(--ink2); background: transparent; }
 .dp-note { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
-@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .blk .dp-scope { margin-left: 0; } }
+@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .blk .dp-ctl { margin-left: 0; } }
 
 .foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
 .foot a { color: var(--ink2); font-weight: 700; }
@@ -241,7 +246,8 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
   </section>
 
   <section class="panel" aria-label="데이터 성격 한눈에" id="dpanel" hidden>
-    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span><div class="seg dp-scope" role="group" id="dpscope" aria-label="범위"></div></div>
+    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span><div class="dp-ctl"><span class="cl">범위</span><div class="seg" role="group" id="dpscope" aria-label="범위"></div><span class="cl">나눠 보기</span><div class="seg" role="group" id="dpview" aria-label="나눠 보기"></div></div></div>
+    <div class="dp-legend" id="dplegend"></div>
     <div class="dp-bars" id="dpbars"></div>
     <div class="scroll"><table class="dp-tab" id="dptab"></table></div>
     <p class="dp-note" id="dpnote"></p>
@@ -282,7 +288,7 @@ const UIF = Object.keys(A.formats).find(k => A.formats[k].ui);
 const T_OPTS = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
 const B_OPTS = [1, 2, 4, 8, 16, 32, 64, 128, 256];
 const UNIT = { gemm: "GEMM", gemv: "GEMV", vec: "VEC", sel: "TOP-K", gather: "GATHER", mem: "WRITE" };
-const state = { ti: 5, bi: 0, fmt: UIF ? A.formats[UIF].default : null, open: new Set(), scope: "model" };
+const state = { ti: 5, bi: 0, fmt: UIF ? A.formats[UIF].default : null, open: new Set(), scope: "model", view: "kind" };
 
 /* ── 식 계산 (eval 없이) ── */
 const parsed = {};
@@ -703,12 +709,21 @@ const MATCH = (() => {   // model.yaml block 항목 → 텐서 판정
   for (const it of MD.data) if (it.block && it.block.rest) m[it.id] = t => !named.some(f => f(t));
   return m;
 })();
-function mdDims() {
+function mdDimsAt(B, T) {   // B · T를 바꾼 차원 (null = 지금 조건). 성격의 '골라 읽음' 판정 기준 조건에 씀
   const d = dims();
+  if (B != null) { d.B = B; d.T = T; if (M.sched) { const sc = flashSched(B, d.k); d.S_acc = sc.S; d.U_dir = sc.U; } }
   for (const [k, v] of Object.entries(MD.dims || {})) d[k] = v.value;
   for (const [k, v] of Object.entries(MD.derived || {})) d[k] = ev(v.expr, d);
   return d;
 }
+const mdDims = () => mdDimsAt(null);
+/* 나눠 보기 — 수명(길수록 진한 남색) · 성격(색 계열 = 쓰기 방식, 진하기 = 전부 읽음 / 골라 읽음). tools/traits.py와 같은 규칙 */
+const LIFE_C = { svc: ["서비스 내내", "--l-svc", false], req: ["요청 동안", "--l-req", false], step: ["스텝 안", "--l-step", true] };
+const CHAR_C = {
+  ro_all: ["read-only · 전부 읽음", "--c-gray", false], ro_sel: ["read-only · 골라 읽음", "--c-gray-l", true],
+  app_all: ["끝에 추가 · 전부 읽음", "--c-blue", false], app_sel: ["끝에 추가 · 골라 읽음", "--c-blue-l", true],
+  rmw: ["매 스텝 전부 다시 씀", "--c-green", false], tmp: ["임시 (커널 사이)", "--c-yellow", true],
+};
 const colOf = c => `var(--c-${c})`;
 const colL = c => c.endsWith("-l") ? colOf(c) : `var(--c-${c}-l)`;
 function mdItems(d, scope) {
@@ -733,7 +748,7 @@ function mdItems(d, scope) {
       store = ev(it.store, d); rd = ev(it.read || 0, d); wr = ev(it.write || 0, d); color = it.color || "gray";
     }
     const g = tmp ? "tmp" : wr === 0 ? "ro" : wr >= 0.99 * store ? "rmw" : "app";
-    out.push({ name: it.short || it.label, note: it.note || "", store, rd, wr, color, g });
+    out.push({ id: it.id, name: it.short || it.label, group: it.group || it.short || it.label, note: it.note || "", store, rd, wr, color, g });
   }
   return out;
 }
@@ -752,11 +767,30 @@ function renderTraits() {
   if (!MD) return;
   document.getElementById("dpanel").hidden = false;
   const d = mdDims(), sc = state.scope, items = mdItems(d, sc), chip = chipOf(d, sc);
-  const sg = document.getElementById("dpscope");
-  sg.innerHTML = [["model", "모델 전체"], ["layer", "attention 층 1개"]].map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === sc}">${l}</button>`).join("");
-  sg.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { state.scope = b.dataset.v; renderTraits(); }));
+  const segBtns = (id, opts, cur, key) => {
+    const host = document.getElementById(id);
+    host.innerHTML = opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("");
+    host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { state[key] = b.dataset.v; renderTraits(); }));
+  };
+  const vw = state.view;
+  segBtns("dpscope", [["model", "모델 전체"], ["layer", "attention 층 1개"]], sc, "scope");
+  segBtns("dpview", [["kind", "데이터 종류"], ["life", "수명"], ["char", "데이터 성격"]], vw, "view");
   document.getElementById("dpwhat").textContent =
-    `${sc === "model" ? MD.model + " 모델 전체" : "attention 층 1개"} · decode 1스텝 · 요청 ${d.B}개 · ${fmtTok(d.T)} · 진한 칸 = 읽기 · 옅은 칸 = 쓰기`;
+    `${sc === "model" ? MD.model + " 모델 전체" : "attention 층 1개"} · decode 1스텝 · 요청 ${d.B}개 · ${fmtTok(d.T)}` + (vw === "kind" ? " · 진한 칸 = 읽기 · 옅은 칸 = 쓰기" : "");
+  const ref = Object.fromEntries(mdItems(mdDimsAt(1, 131072), sc).map(x => [x.id, x]));
+  items.forEach(x => {   // 수명 · 성격 판정
+    const r = ref[x.id], sel = r && r.rd < 0.9 * r.store;
+    x.life = x.g === "tmp" ? "step" : x.g === "ro" ? "svc" : "req";
+    x.char = x.g === "tmp" || x.g === "rmw" ? x.g : (x.g === "ro" ? "ro" : "app") + (sel ? "_sel" : "_all");
+  });
+  let cats;   // 막대의 둥근 띠 = 고른 기준의 묶음 하나
+  if (vw === "kind") {
+    const m = new Map();
+    items.forEach(x => { if (!m.has(x.group)) m.set(x.group, { label: x.group, its: [] }); m.get(x.group).its.push(x); });
+    cats = [...m.values()];
+  } else {
+    cats = Object.entries(vw === "life" ? LIFE_C : CHAR_C).map(([k, [label, col, pale]]) => ({ label, col, pale, its: items.filter(x => x[vw] === k) })).filter(c => c.its.length);
+  }
 
   const groups = GRP_ORDER.map(g => ({ g, its: items.filter(x => x.g === g) })).filter(x => x.its.length);
   const sum = (its, f) => its.reduce((s, x) => s + f(x), 0);
@@ -764,26 +798,29 @@ function renderTraits() {
   const pct = (v, t) => { const p = 100 * v / t; return p >= 10 ? p.toFixed(0) + "%" : p >= 0.1 ? p.toPrecision(2) + "%" : p > 0 ? "0.1% 미만" : "0%"; };
   const bar = kind => {
     const tot = kind === "store" ? totS : totM;
-    return groups.map(({ g, its }) => {
+    return cats.map(({ label: glab, its, col, pale: cp }) => {
       const gv = sum(its, x => kind === "store" ? x.store : x.rd + x.wr);
       if (gv <= 0) return "";
-      const segs = its.flatMap(x => kind === "store"
-          ? [[x.store, x.color, false, x.name, "보관"]]
-          : [[x.rd, x.color, false, x.name, "읽기"], [x.wr, x.color, true, x.name, "쓰기"]])
+      const segs = its.flatMap(x => kind === "store" ? [[x.store, false, x, "보관"]]
+          : vw === "kind" ? [[x.rd, false, x, "읽기"], [x.wr, true, x, "쓰기"]] : [[x.rd + x.wr, false, x, "읽기 + 쓰기"]])
         .filter(s => s[0] > 0)
-        .map(([v, c, w, name, what]) => {
-          const pale = w || c.endsWith("-l") || c === "yellow";   // 옅은 칸 · 노랑은 진한 글자
-          const lab = v / tot >= 0.1 ? `<span style="color:var(${pale ? "--ink" : "--surface"})">${esc(name)}${w ? " 쓰기" : ""}<b>${fmtB(v)}</b></span>` : "";
-          return `<div class="dp-seg" style="flex:${(1000 * v / gv).toFixed(4)} 1 0;background:${w ? colL(c) : colOf(c)}" title="${esc(`${name} · ${what} ${fmtB(v)} · ${pct(v, tot)}`)}">${lab}</div>`;
+        .map(([v, w, x, what]) => {
+          const c = x.color, bg = col ? `var(${col})` : (w ? colL(c) : colOf(c));
+          const pale = col ? cp : (w || c.endsWith("-l") || c === "yellow");   // 옅은 칸 · 노랑은 진한 글자
+          const lab = v / tot >= 0.1 ? `<span style="color:var(${pale ? "--ink" : "--surface"})">${esc(x.name)}${w ? " 쓰기" : ""}<b>${fmtB(v)}</b></span>` : "";
+          return `<div class="dp-seg" style="flex:${(1000 * v / gv).toFixed(4)} 1 0;background:${bg}" title="${esc(`${x.name} · ${what} ${fmtB(v)} · ${pct(v, tot)}`)}">${lab}</div>`;
         }).join("");
       const sh = gv / tot;
       return `<div class="dp-g" style="flex:${(1000 * sh).toFixed(4)} 1 0"><div class="dp-strip">${segs}</div>` +
-        `<div class="dp-cap">${sh >= 0.12 ? `${esc(GRP[g].label)} <b>${pct(gv, tot)}</b>` : sh >= 0.03 ? `<b>${pct(gv, tot)}</b>` : ""}</div></div>`;
+        `<div class="dp-cap">${sh >= 0.12 ? `${esc(glab)} <b>${pct(gv, tot)}</b>` : sh >= 0.03 ? `<b>${pct(gv, tot)}</b>` : ""}</div></div>`;
     }).join("");
   };
   const row = (t, s, v, inner) => `<div class="dp-row"><div class="dp-h"><b>${t}</b><span>${s}</span><span class="dp-tot">${fmtB(v)}</span></div><div class="dp-bar">${inner}</div></div>`;
   document.getElementById("dpbars").innerHTML =
     row("보관", "HBM에 들고 있는 양", totS, bar("store")) + row("스텝당 이동", "HBM 읽기 + 쓰기", totM, bar("move"));
+  document.getElementById("dplegend").innerHTML =
+    cats.map(c => `<span><i style="background:${c.col ? `var(${c.col})` : colOf(c.its[0].color)}"></i>${esc(c.label)}</span>`).join("") +
+    (vw === "char" ? `<span>골라 읽음 = 요청 1개 · 128K에서 스텝당 읽기가 보관의 90% 미만</span>` : vw === "life" ? `<span>커널 안 값은 HBM 밖 — 아래 표 맨 아래 줄</span>` : "");
 
   const nG = (MD.deploy || {}).n_gpu || 1;
   const allM = sc === "model" ? totM : sum(mdItems(d, "model"), x => x.rd + x.wr);

@@ -26,16 +26,16 @@ derived:
   E_hit: {expr: "E*(1-(1-E_k/E)**B)", desc: "요청 B개가 건드리는 expert 수 기댓값 — 균등 라우팅 가정 (쏠림이 있으면 더 적음)"}
 
 data:
-  - {id: w_attn, label: "가중치 · attention", short: attention, block: {kind: weight}, layers: n_layer}
-  - {id: w_ffn,  label: "가중치 · dense FFN", short: dense FFN, color: gray-l, share: 공유, layers: L_dense,
+  - {id: w_attn, label: "가중치 · attention", short: attention, group: attention 가중치, block: {kind: weight}, layers: n_layer}
+  - {id: w_ffn,  label: "가중치 · dense FFN", short: dense FFN, group: "MoE · FFN 가중치", color: gray-l, share: 공유, layers: L_dense,
      store: "L_dense*3*d*d_ff", read: "L_dense*3*d*d_ff", note: "FP8"}
-  - {id: w_moe,  label: "가중치 · MoE expert", short: MoE expert, color: gray-l, share: 공유, layers: L_moe,
+  - {id: w_moe,  label: "가중치 · MoE expert", short: MoE expert, group: "MoE · FFN 가중치", color: gray-l, share: 공유, layers: L_moe,
      store: "L_moe*((E+E_s)*3*d*d_moe + 2*d*E)", read: "L_moe*((E_hit+E_s)*3*d*d_moe + 2*d*E)",
      note: "FP8 · router 포함. 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정 기댓값)"}
-  - {id: w_head, label: "가중치 · LM head", short: LM head, color: gray-l, share: 공유, layers: 1,
+  - {id: w_head, label: "가중치 · LM head", short: LM head, group: "LM head · 임베딩", color: gray-l, share: 공유, layers: 1,
      store: "2*V*d", read: "2*V*d", note: "BF16"}
-  - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, color: gray-l, share: 공유, layers: 1,
+  - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, group: "LM head · 임베딩", color: gray-l, share: 공유, layers: 1,
      store: "2*V*d", read: "2*B*d", note: "BF16 · 토큰 B개의 행만 읽음"}
-  - {id: kv,     label: KV cache,     short: KV cache,     block: {t: [kv_cache]},  layers: n_layer}
-  - {id: idxk,   label: 색인 K cache, short: 색인 K cache, block: {t: [idx_cache]}, layers: n_layer}
-  - {id: temp,   label: 커널 사이 중간값, short: "q · 점수 · 선택 위치 · split 부분 출력", color: yellow, block: {rest: true}, layers: n_layer}
+  - {id: kv,     label: KV cache,     short: KV cache,     group: KV cache,     block: {t: [kv_cache]},  layers: n_layer}
+  - {id: idxk,   label: 색인 K cache, short: 색인 K cache, group: 색인 K cache, block: {t: [idx_cache]}, layers: n_layer}
+  - {id: temp,   label: 커널 사이 중간값, short: "q · 점수 · 선택 위치 · split 부분 출력", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: n_layer}
