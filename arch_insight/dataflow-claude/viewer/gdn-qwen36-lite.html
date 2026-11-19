@@ -158,16 +158,26 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .st-h code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 4px; padding: 1px 5px; }
 .st-h b { font-weight: 800; }
 .st-b { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.eq { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-.eq .op { font-style: normal; font-size: 16px; font-weight: 800; color: var(--ink2); }
-.eq .cm { font-style: normal; color: var(--muted); margin-left: -4px; }
-.eq-n { flex-basis: 100%; font-size: 12px; color: var(--muted); }
-.pill { display: inline-flex; align-items: baseline; gap: 6px; padding: 3px 9px; border: 1.5px solid var(--k); border-radius: 8px; background: var(--surface); font-size: 12.5px; white-space: nowrap; }
-.pill.chip { border-style: dashed; }
-.pill b { font-weight: 800; }
-.pill code { font-family: var(--font-mono); font-size: 12px; }
-.pill em { font-style: normal; font-size: 11.5px; color: var(--muted); }
-.pill.key { --k: var(--axis); font-size: 11.5px; color: var(--muted); padding: 1px 8px; }
+.eq { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.eq .op { font-style: normal; font-size: 22px; font-weight: 800; color: var(--ink2); }
+.eq .cm { font-style: normal; color: var(--muted); margin-left: -6px; }
+.eq-v { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.eq-v > .op { font-style: normal; font-size: 18px; font-weight: 800; color: var(--ink2); margin-left: 16px; }
+.eq-n { font-size: 12px; color: var(--muted); }
+.tt { display: flex; flex-direction: column; gap: 3px; padding: 8px 11px 10px; border: 1.5px solid var(--k); border-radius: 9px; background: var(--surface); min-width: 0; max-width: 300px; }
+.tt.chip { border-style: dashed; }
+.tt-top { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.tt-top b { font-weight: 800; white-space: nowrap; }
+.tt-top em { margin-left: auto; font-style: normal; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.tt code { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.tgw { margin-top: 4px; }
+.tgw svg { display: block; max-width: 100%; height: auto; }
+.t-ax { display: none; }   /* 그림 밑 축 설명은 숨김 — 모양은 위 [B, T, d_I]로 */
+.key { font-size: 11.5px; color: var(--muted); border: 1.5px solid var(--axis); border-radius: 7px; padding: 1px 8px; }
+.key.chip { border-style: dashed; }
+.eq-v .tt { max-width: 168px; padding: 7px 9px 8px; }   /* 텐서가 많은 단계는 한 줄에 들어가게 좁게 */
+.eq-v .tt code { font-size: 12px; }
+.eq-v .eq { gap: 8px 8px; }
 .foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
 .foot a { color: var(--ink2); font-weight: 700; }
 
@@ -462,7 +472,62 @@ function cardHTML(k, d, r) {
     <span class="kplain">${esc(k.plain || "")}</span>${chips}</button>`;
 }
 
-/* ── 펼침: 칩 안 계산 단계 — 텐서 칩으로 A × B → C ── */
+/* ── 텐서 격자 (펼침의 텐서 그림) ── */
+const NCELL = 36;
+function dens(i, N) {
+  let r = Math.sin((i + 1) * 12.9898) * 43758.5453; r = r - Math.floor(r);
+  let v = Math.pow(r, 3) * 0.55;
+  if (i === 0) v = 0.75;
+  const back = N - 1 - i;
+  if (back === 0) v = 1; else if (back === 1) v = 0.85; else if (back === 2) v = 0.6;
+  return v;
+}
+function gridModel(tid, d) {
+  let sh = TENS[tid].shape.map(e => ({ e: String(e), v: ev(e, d) }));
+  if (sh.length > 1 && (sh[0].e === "B" || (M.derived && M.derived[sh[0].e]))) sh = sh.slice(1);
+  let hi = sh.findIndex(a => a.e === "T" || a.e === "k");
+  if (hi < 0) hi = sh.length - 1;
+  const h = sh[hi], rest = sh.filter((_, i) => i !== hi);
+  const v = rest.length ? rest[rest.length - 1] : null, s = rest.length > 1 ? rest[0] : null;
+  const long = h.e === "T" || h.e === "k";
+  return { h, v, s, long, hN: long ? NCELL : Math.max(1, Math.min(h.v, 16)), vN: v ? Math.max(1, Math.min(v.v, 10)) : 1 };
+}
+function splitParts(expr, d) {
+  const m = /^(\w+)\+(\w+)$/.exec(expr);
+  return m && (m[1] in d) && (m[2] in d) ? [d[m[1]], d[m[2]]] : null;
+}
+function gridHTML(tid, d, mode) {
+  const t = TENS[tid], gm = gridModel(tid, d), col = kc(t.kind);
+  const cs = gm.long ? 7 : (gm.hN > 12 ? 10 : 12);
+  const gw = gm.hN * cs, gh = gm.vN * cs, sheets = gm.s ? 3 : 1, off = 4;
+  const brk = gm.long && gm.h.v > NCELL;
+  const Wd = gw + (sheets - 1) * off + 2, Hd = gh + (sheets - 1) * off + 2 + (brk ? 9 : 0);
+  let s = `<svg viewBox="0 0 ${Wd} ${Hd}" width="${Wd}" aria-hidden="true">`;
+  const gy = 1 + (sheets - 1) * off;
+  const hp = gm.long ? null : splitParts(gm.h.e, d), vp = gm.v ? splitParts(gm.v.e, d) : null;
+  for (let si = sheets - 1; si >= 0; si--) {
+    const ox = 1 + si * off, oy = gy - si * off;
+    s += `<rect x="${ox}" y="${oy}" width="${gw}" height="${gh}" style="fill:var(--surface);stroke:var(--line)"/>`;
+    if (si) continue;
+    for (let i = 0; i < gm.hN; i++) {
+      let a = { w: 0.55, full: 0.72, onchip: 0.72, none: 0.1, tile: 0.14, append: 0.14, gather: 0.1 }[mode];
+      if (mode === "gather" && dens(i, gm.hN) > 0.15) a = 0.92;
+      if (mode === "append" && i === gm.hN - 1) a = 1;
+      if (mode === "tile" && i < 5) a = 0.85;
+      for (let j = 0; j < gm.vN; j++) s += `<rect x="${ox + i * cs + 0.5}" y="${oy + j * cs + 0.5}" width="${cs - 1}" height="${cs - 1}" style="fill:${col}" fill-opacity="${a}"/>`;
+    }
+    if (vp) { const c = Math.round(gm.vN * vp[0] / (vp[0] + vp[1])); s += `<line x1="${ox - 1}" x2="${ox + gw + 1}" y1="${oy + c * cs}" y2="${oy + c * cs}" style="stroke:var(--ink2)" stroke-width="1.4"/>`; }
+    if (hp) { const c = Math.round(gm.hN * hp[0] / (hp[0] + hp[1])); s += `<line y1="${oy - 1}" y2="${oy + gh + 1}" x1="${ox + c * cs}" x2="${ox + c * cs}" style="stroke:var(--ink2)" stroke-width="1.4"/>`; }
+    if (brk) { const bx = ox + Math.round(gm.hN * 0.62) * cs; s += `<path d="M${bx - 4} ${oy + gh + 8} l6 -6 M${bx + 1} ${oy + gh + 8} l6 -6" style="stroke:var(--ink2)" stroke-width="1.3" fill="none"/>`; }
+  }
+  s += "</svg>";
+  const ax = [`가로 ${symOf(gm.h.e)}` + (gm.h.v > gm.hN ? ` (1칸 ≈ ${fmtN(Math.round(gm.h.v / gm.hN))})` : "")];
+  if (gm.v) ax.push(`세로 ${symOf(gm.v.e)}`);
+  if (gm.s) ax.push(`× ${symOf(gm.s.e)}장`);
+  return `<div class="tgw">${s}</div><div class="t-ax">${esc(ax.join(" · "))}</div>`;
+}
+
+/* ── 펼침: 칩 안 계산 단계 — 텐서 그림으로 A × B → C ── */
 const isW = t => TENS[t].kind === "weight";
 function stepOps(s) {   // 단계 → 연산 목록. yaml의 ops가 있으면 그대로, 없으면 입력 · 출력 목록에서 짝을 짓는다
   if (s.ops) return s.ops.map(o => o.a ? { mm: true, a: o.a, b: o.b, out: o.out, note: o.note }
@@ -474,35 +539,36 @@ function stepOps(s) {   // 단계 → 연산 목록. yaml의 ops가 있으면 �
   }
   return [{ mm: false, ins: s.in, outs: s.out }];
 }
-function pill(k, tid, d, role) {   // 텐서 1개 = 이름 · 모양 · 크기. 실선 = HBM에서 읽음(입력) · HBM에 씀(출력), 점선 = 칩 안
-  const t = TENS[tid];
-  let size = fmtB(bytesOf(tid, d)), hbm = false;
-  if (role === "in") {
-    const r = k.hbm_read.find(x => x.t === tid);
-    if (r) { hbm = true; if (via(r) !== tid) size = `${fmtB(bytesOf(via(r), d))} 골라 읽음`; }
-  } else {
+function tt(k, tid, d, role) {   // 텐서 그림 1개 = 이름 · 크기 · 모양 · 격자. 실선 = HBM에서 읽음(입력) · HBM에 씀(출력), 점선 = 칩 안
+  const t = TENS[tid], r = role === "in" ? k.hbm_read.find(x => x.t === tid) : null;
+  let size = fmtB(bytesOf(tid, d)), hbm = false, mode = t.kind === "weight" ? "w" : "full";
+  if (r) { hbm = true; if (via(r) !== tid) size = `${fmtB(bytesOf(via(r), d))} 골라 읽음`; if (r.pat === "gather") mode = "gather"; }
+  if (role === "out") {
     const w = (k.hbm_write || []).find(x => x.t === tid), wb = w ? bytesOf(via(w), d) : 0;
-    if (wb > 0) { hbm = true; if (via(w) !== tid) size = `${fmtB(wb)} 씀`; }
+    if (wb > 0) { hbm = true; if (via(w) !== tid) { size = `${fmtB(wb)} 씀`; if (w.pat === "row") mode = "append"; } }
   }
-  return `<span class="pill${hbm ? "" : " chip"}" style="--k:${kc(t.kind)}" title="${esc(`${t.label} ${shapeSym(tid)} = ${shapeNum(tid, d)} · ${hbm ? "HBM" : "칩 안"}`)}"><b>${esc(t.label)}</b><code>${esc(shapeSym(tid))}</code><em>${size}</em></span>`;
+  return `<div class="tt${hbm ? "" : " chip"}" style="--k:${kc(t.kind)}" title="${esc(`${t.label} ${shapeSym(tid)} = ${shapeNum(tid, d)} · ${hbm ? "HBM" : "칩 안"}`)}">
+    <div class="tt-top"><b>${esc(t.label)}</b><em>${size}</em></div><code>${esc(shapeSym(tid))}</code>${gridHTML(tid, d, mode)}</div>`;
 }
 function eqHTML(k, o, d) {
-  const join = (ts, role) => ts.map(t => pill(k, t, d, role)).join(`<i class="cm">,</i>`);
+  const join = (ts, role) => ts.map(t => tt(k, t, d, role)).join(`<i class="cm">,</i>`);
   if (o.mm) {
     const so = new Set(TENS[o.out].shape.map(String));
     const red = TENS[o.a].shape.map(String).filter(e => !so.has(e));
     const rv = red.reduce((p, e) => p * ev(e, d), 1);
     const note = [red.length ? `${red.map(symOf).join(" · ")} ${fmtN(rv)}개씩 곱해 더함` : "", o.note || ""].filter(Boolean).join(" · ");
-    return `<div class="eq">${pill(k, o.a, d, "in")}<i class="op">×</i>${pill(k, o.b, d, "in")}<i class="op">→</i>${pill(k, o.out, d, "out")}${note ? `<span class="eq-n">${esc(note)}</span>` : ""}</div>`;
+    return `<div class="eq">${tt(k, o.a, d, "in")}<i class="op">×</i>${tt(k, o.b, d, "in")}<i class="op">→</i>${tt(k, o.out, d, "out")}</div>${note ? `<div class="eq-n">${esc(note)}</div>` : ""}`;
   }
-  return `<div class="eq">${join(o.ins, "in")}<i class="op">→</i>${join(o.outs, "out")}${o.note ? `<span class="eq-n">${esc(o.note)}</span>` : ""}</div>`;
+  const note = o.note ? `<div class="eq-n">${esc(o.note)}</div>` : "";
+  if (o.ins.length + o.outs.length <= 3) return `<div class="eq">${join(o.ins, "in")}<i class="op">→</i>${join(o.outs, "out")}</div>${note}`;
+  return `<div class="eq-v"><div class="eq">${join(o.ins, "in")}</div><i class="op">↓</i><div class="eq">${join(o.outs, "out")}</div></div>${note}`;
 }
 function expHTML(k, d) {
   const used = dimsUsed(k.steps.flatMap(sid => [...STEP[sid].in, ...STEP[sid].out]));
   const rows = k.steps.map((sid, i) => { const s = STEP[sid];
     return `<div class="st"><div class="st-h"><span class="st-n">${CIRC[i] || i + 1}</span><code>${UNIT[s.unit]}</code><b>${esc(s.label)}</b></div><div class="st-b">${stepOps(s).map(o => eqHTML(k, o, d)).join("")}</div></div>`; }).join("");
   return `<div class="kx-head"><b>${esc(k.id)} ${esc(k.label)} · 계산 단계</b><span class="kx-dims">${used.map(x => dimLabel(x, d)).join("")}</span>
-    <span class="kx-key"><span class="pill key">실선 = HBM</span><span class="pill key chip">점선 = 칩 안</span></span></div><div class="steps">${rows}</div>`;
+    <span class="kx-key"><span class="key">실선 = HBM</span><span class="key chip">점선 = 칩 안</span></span></div><div class="steps">${rows}</div>`;
 }
 
 function renderFlow() {
