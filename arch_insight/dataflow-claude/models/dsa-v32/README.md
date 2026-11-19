@@ -2,7 +2,7 @@
 
 lightning indexer(색인) + top-k 2,048줄 선택 + 흡수형 MLA. 층 1개 · decode 1스텝 · attention 블록.
 
-- 뷰어: [../../viewer/dsa-v32.html](../../viewer/dsa-v32.html) · [게시본](https://claude.ai/artifact/3YVxmZwKAEJXpf8sYtZ42k)
+- 뷰어(약식): [../../viewer/dsa-v32-lite.html](../../viewer/dsa-v32-lite.html) · [GitHub Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32-lite.html) · [claude.ai](https://claude.ai/artifact/PbR2Jbzr7ePzxU1KviAFPH)
 - 수치: [numbers.md](numbers.md)
 
 ## 차원

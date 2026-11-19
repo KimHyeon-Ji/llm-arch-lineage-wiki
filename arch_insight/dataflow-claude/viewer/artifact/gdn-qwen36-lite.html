@@ -6,12 +6,15 @@
 <style>
 /* Layout: 약식 — 보고서 그림 문법(연한 레인 패널 · 흰 카드 · 굵은 수치). 위 "흐름 한눈에" = 단계별 HBM 막대 + 칩 레인,
    아래 "커널별 이동" = HBM 레인 | 굵은 화살표(굵기 = 바이트) | 칩 레인 3열. 커널 칸을 누르면 텐서 모양이 아래로 펼쳐진다.
-   색 = 데이터 종류 (yaml kinds.color). 설명 문장 · 결론은 자세한 버전에 둔다. */
+   색 = 데이터 종류 (yaml kinds.color). 설명 문장 · 결론은 보고서(report/)에 둔다. */
 :root {
-  --bg: #f6f7fb; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6; --hbm-r: #2f4b8c; --hbm-w: #c0304f;
+  --bg: #f1f3f8; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6; --hbm-r: #2f4b8c; --hbm-w: #c0304f;
+  /* 화면 틀 — 진한 남색 블록 · 보라 강조 · 옅은 띠 (데이터 색과 별개) */
+  --navy: #4a5573; --navy-d: #2f3850; --navy-chip: #6a7499; --on-navy: #d9deeb; --white: #ffffff;
+  --purple: #7b61c9; --purple-t: #ebe5fa; --slate-t: #e3e6ef; --band: #eef0f6;
   --ink: #2b2f3a; --ink2: #4a5573; --muted: #6b7080; --line: #dfe2ec; --line2: #e6e8f1; --axis: #9aa0b0;
   --c-gray: #9c9a92; --c-gray-l: #dddcd6; --c-blue: #2a78d6; --c-blue-l: #b7d3f6; --c-orange: #eb6834; --c-orange-l: #f8c6b1;
-  --c-green: #1baf7a; --c-green-l: #a9e0cb; --c-yellow: #eda100; --c-yellow-l: #f7d98f; --c-pink: #e87ba4; --c-pink-l: #f6c9da; --c-violet: #6250d6; --c-violet-l: #d6d1f5;
+  --c-green: #1baf7a; --c-green-l: #a9e0cb; --c-yellow: #eda100; --c-yellow-l: #f7d98f; --c-pink: #e87ba4; --c-pink-l: #f6c9da; --c-violet: #6250d6; --c-violet-l: #d6d1f5; --c-gray-ll: #efeeea;
   --font-text: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
   --bridge: #f8f9fc;
@@ -21,17 +24,19 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --navy: #3d4767; --navy-d: #2c3550; --navy-chip: #5a6590; --on-navy: #c3cbe0; --purple: #8c74de; --purple-t: #2f2852; --slate-t: #2a2f3b; --band: #20242d;
     --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
     --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
-    --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
+    --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c; --c-gray-ll: #34332f;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --navy: #3d4767; --navy-d: #2c3550; --navy-chip: #5a6590; --on-navy: #c3cbe0; --purple: #8c74de; --purple-t: #2f2852; --slate-t: #2a2f3b; --band: #20242d;
   --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
   --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
-  --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c;
+  --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c; --c-gray-ll: #34332f;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
@@ -41,7 +46,7 @@ body {
   padding-block: 24px 48px; font-variant-numeric: tabular-nums;
 }
 .wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
-h1 { font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -0.015em; text-wrap: balance; }
+h1 { font-size: 30px; font-weight: 800; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
 .mono { font-family: var(--font-mono); }
 button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
 
@@ -49,31 +54,32 @@ header.top { display: flex; flex-direction: column; gap: 6px; padding: 2px; }
 .crumbs { display: flex; gap: 6px; flex-wrap: wrap; }
 .crumb { font-size: 12px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 999px; padding: 2px 10px; }
 .h1row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
-.litechip { font-size: 12.5px; font-weight: 800; color: var(--surface); background: var(--ink2); border-radius: 6px; padding: 2px 9px; }
+.litechip { font-size: 12.5px; font-weight: 800; color: var(--white); background: var(--purple); border-radius: 7px; padding: 3px 10px; }
 .sub { color: var(--muted); margin: 0; font-size: 15px; }
 .links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .links a { font-size: 13px; color: var(--ink2); font-weight: 700; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
 .links a.main { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
 .links a:hover { border-color: var(--ink); }
 
-.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; min-width: 0; }
-.blk { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px; }
-.blk .name { display: inline-flex; align-items: center; gap: 9px; font-size: 16px; font-weight: 800; }
-.blk .name::before { content: ""; width: 5px; height: 18px; border-radius: 2px; background: var(--ink2); flex: none; align-self: center; }
+.panel { background: var(--surface); border: 1px solid var(--line2); border-radius: 16px; padding: 18px 22px 20px; min-width: 0; box-shadow: 0 1px 2px rgba(30, 40, 70, 0.04); }
+/* 섹션 제목 = 옅은 띠 + 왼쪽 남색 강조선 */
+.blk { position: relative; overflow: hidden; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 16px; background: var(--band); border-radius: 10px; padding: 10px 14px 10px 22px; }
+.blk::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--navy); }
+.blk .name { font-size: 17px; font-weight: 800; }
 .blk .what { font-size: 13px; color: var(--muted); }
 
 /* 조건 + 범례 */
 .ctlbar { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; padding: 12px 16px; }
 .ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ctl .cl { font-size: 13px; font-weight: 800; }
-.seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.seg button { font: inherit; font-size: 12.5px; font-weight: 500; padding: 4px 9px; border: 0; background: var(--surface); color: var(--ink2); cursor: pointer; font-variant-numeric: tabular-nums; }
-.seg button + button { border-left: 1px solid var(--line); }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 11px; border: 0; border-radius: 999px; background: transparent; color: var(--ink2); cursor: pointer; font-variant-numeric: tabular-nums; }
+.seg button:hover { background: var(--tint); }
 .seg button.ext { color: var(--muted); font-style: italic; }
-.seg button[aria-pressed=true] { background: var(--ink2); color: var(--surface); font-weight: 800; font-style: normal; }
+.seg button[aria-pressed=true] { background: var(--navy); color: var(--white); font-weight: 800; font-style: normal; }
 .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); width: 100%; padding-top: 10px; border-top: 1px solid var(--line2); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
-.legend i { display: inline-block; width: 11px; height: 11px; border-radius: 3px; }
+.legend i { display: inline-block; width: 13px; height: 13px; border-radius: 4px; }
 .legend .ar { font-weight: 800; color: var(--ink); }
 .legend .dash { width: 18px; height: 11px; border: 1.5px dashed var(--ink2); border-radius: 6px; background: transparent; }
 
@@ -84,36 +90,41 @@ svg .t-muted { fill: var(--muted); }
 svg .t-inv { fill: var(--surface); }
 svg .t-mono { font-family: var(--font-mono); }
 svg .lane { fill: var(--lane); }
-svg .box { fill: var(--surface); stroke: var(--line); stroke-width: 1.2; }
+svg .box { fill: var(--navy); }
 svg .boxhit { cursor: pointer; }
-svg .boxhit:hover .box { stroke: var(--ink2); }
+svg .boxhit:hover .box { fill: var(--navy-d); }
+svg .t-white { fill: var(--white); }
+svg .t-onnavy { fill: var(--on-navy); }
+svg .t-purple { fill: var(--purple); }
+svg .t-navy { fill: var(--navy); }
 
 /* 커널별 이동 */
 .kgrid { display: grid; grid-template-columns: var(--cols); min-width: 900px; position: relative; }
 .lane-bg { background: var(--lane); border-radius: 14px; }
-.lh { padding: 14px 18px 8px; display: flex; flex-direction: column; gap: 1px; }
-.lh b { font-size: 18px; font-weight: 800; }
+.lh { padding: 18px 18px 12px; display: flex; flex-direction: column; gap: 1px; }
+.lh b { align-self: flex-start; font-size: 15px; font-weight: 800; color: var(--white); background: var(--navy); border-radius: 8px; padding: 3px 13px; margin-bottom: 4px; }
 .lh span { font-size: 12.5px; color: var(--muted); }
 .lh.mid { justify-content: flex-end; align-items: center; text-align: center; padding: 14px 6px 8px; }
 .lh.mid span { font-size: 12px; }
-.phrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 16px 18px 4px; scroll-margin-top: 12px; }
-.phrow .phn { font-size: 15px; font-weight: 800; }
+.phrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 30px 18px 14px; scroll-margin-top: 12px; }
+.phrow .phn { font-size: 16px; font-weight: 800; }
 .phrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
-.tag { font-size: 11px; font-weight: 700; padding: 1px 8px; border-radius: 999px; white-space: nowrap; border: 1px solid var(--line); color: var(--muted); background: var(--surface); }
-.tag.strong { background: var(--ink2); border-color: var(--ink2); color: var(--surface); }
-.tag.outline { border-color: var(--ink2); color: var(--ink2); }
+/* 단계 태그: DSA 추가 = 보라 · DSA로 변경 = 연보라 · 기존 = 회청 */
+.tag { font-size: 11.5px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; color: var(--navy); background: var(--slate-t); }
+.tag.strong { background: var(--purple); color: var(--white); }
+.tag.outline { background: var(--purple-t); color: var(--purple); }
 /* 커널 1개 = 한 줄 묶음: HBM 카드(읽기 칸 + 쓰기 칸) · 화살표 띠 · 커널 카드가 같은 높이, 커널 사이에 간격 줄 */
 .hcell { grid-column: 1; margin: 0 12px 0 14px; background: var(--surface); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; justify-content: center; }
-.hcell.r { border-bottom: 0; border-radius: 10px 10px 0 0; padding: 12px 14px 10px; }
-.hcell.w { border-top: 0; border-radius: 0 0 10px 10px; padding: 10px 14px 12px; position: relative; }
+.hcell.r { border-bottom: 0; border-radius: 12px 12px 0 0; padding: 16px 16px 14px; }
+.hcell.w { border-top: 0; border-radius: 0 0 12px 12px; padding: 14px 16px 16px; position: relative; }
 .hcell.w::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; border-top: 1px dashed var(--line); }
 .hk-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
-.hk { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--ink2); border: 1.5px solid var(--ink2); border-radius: 5px; padding: 0 6px; line-height: 1.5; }
+.hk { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--white); background: var(--navy); border-radius: 6px; padding: 1px 7px; line-height: 1.5; }
 .hk-row .hl-t { margin-bottom: 0; }
 .bridge { grid-column: 2; background: var(--bridge); border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2); }
-.kgap { grid-column: 1 / -1; height: 18px; }
+.kgap { grid-column: 1 / -1; height: 30px; }
 .hl-t { font-size: 12.5px; font-weight: 800; margin-bottom: 3px; color: var(--ink); }
-.hl-i { display: grid; grid-template-columns: 11px minmax(0, 1fr) auto; gap: 7px; align-items: center; font-size: 12.5px; line-height: 1.55; }
+.hl-i { display: grid; grid-template-columns: 11px minmax(0, 1fr) auto; gap: 7px; align-items: center; font-size: 12.5px; line-height: 1.75; }
 .hl-i i { width: 10px; height: 10px; border-radius: 2px; }
 .hl-i .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hl-i .b { color: var(--muted); font-size: 12px; }
@@ -121,18 +132,18 @@ svg .boxhit:hover .box { stroke: var(--ink2); }
 .hl-i.sm { color: var(--muted); }
 .hl-i.sm i { opacity: 0.7; }
 .hl-i.zero { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--axis); }
-.acell { grid-column: 2; display: flex; align-items: center; justify-content: center; margin: 0 -14px 0 -12px; padding: 12px 0; min-width: 0; position: relative; z-index: 1; }
+.acell { grid-column: 2; display: flex; align-items: center; justify-content: center; margin: 0 -14px 0 -12px; padding: 18px 0; min-width: 0; position: relative; z-index: 1; }
 .acell svg { display: block; overflow: visible; }
 .acell .al { font-size: 12px; fill: var(--muted); font-weight: 700; }
 .acell .ab { font-size: 16px; font-weight: 800; }
-.kcard { grid-column: 3; margin: 0 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 6px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; cursor: pointer; min-width: 0; }
-.kcard:hover { border-color: var(--axis); }
-.kcard[aria-expanded=true] { border-color: var(--ink2); box-shadow: 0 0 0 1px var(--ink2); }
+.kcard { grid-column: 3; margin: 0 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 9px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; cursor: pointer; min-width: 0; }
+.kcard:hover { border-color: var(--navy); }
+.kcard[aria-expanded=true] { border-color: var(--navy); box-shadow: 0 0 0 1.5px var(--navy); }
 .khead { display: flex; align-items: center; gap: 10px; }
-.kid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 5px; padding: 2px 7px; flex: none; }
-.kname { font-size: 17px; font-weight: 800; }
-.kchev { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--ink2); border: 1px solid var(--line); border-radius: 999px; padding: 1px 10px; white-space: nowrap; flex: none; }
-.kcard[aria-expanded=true] .kchev { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
+.kid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; background: var(--navy); color: var(--white); border-radius: 6px; padding: 2px 8px; flex: none; }
+.kname { font-size: 17.5px; font-weight: 800; }
+.kchev { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--purple); background: var(--purple-t); border-radius: 999px; padding: 3px 12px; white-space: nowrap; flex: none; }
+.kcard[aria-expanded=true] .kchev { background: var(--purple); color: var(--white); }
 .kplain { font-size: 13px; color: var(--muted); }
 .kchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
 .kchips .kcl { font-weight: 700; color: var(--muted); margin-right: 2px; }
@@ -141,20 +152,20 @@ svg .boxhit:hover .box { stroke: var(--ink2); }
 code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 3px; padding: 1px 5px; }
 
 /* 펼친 계산 단계 — 단계마다 한 줄: 입력 텐서 × 입력 텐서 → 출력 텐서 */
-.kx { grid-column: 1 / -1; margin: 12px 14px 0; background: var(--surface); border: 1px solid var(--ink2); border-radius: 12px; padding: 12px 16px 4px; position: relative; z-index: 2; }
-.kx-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding-bottom: 9px; border-bottom: 1px solid var(--line2); }
+.kx { grid-column: 1 / -1; margin: 18px 14px 4px; background: var(--surface); border: 2px solid var(--navy); border-radius: 14px; padding: 14px 22px 10px; position: relative; z-index: 2; overflow: hidden; }
+.kx-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: -14px -22px 6px; padding: 13px 22px 12px; background: var(--band); border-bottom: 1px solid var(--line2); }
 .kx-head b { font-size: 14.5px; font-weight: 800; }
 .kx-dims { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); }
 .kx-dims b { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--ink); margin-right: 3px; }
 .kx-key { margin-left: auto; display: flex; gap: 6px; }
-.st { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 12px; align-items: start; padding: 11px 0; }
+.st { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; padding: 20px 0; }
 .st + .st { border-top: 1px dashed var(--line2); }
 .st-h { display: flex; align-items: center; gap: 7px; font-size: 13px; padding-top: 3px; min-width: 0; }
 .st-n { font-weight: 800; color: var(--ink2); }
 .st-h code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 4px; padding: 1px 5px; }
 .st-h b { font-weight: 800; }
-.st-b { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
-.eq { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.st-b { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.eq { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; }
 .eq .op { font-style: normal; font-size: 22px; font-weight: 800; color: var(--ink2); }
 .eq .cm { font-style: normal; color: var(--muted); margin-left: -6px; }
 .eq-v { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
@@ -178,9 +189,10 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .eq-v .tt code { font-size: 12px; }
 .eq-v .eq { gap: 8px 8px; }
 /* 데이터 성격 한눈에 — 막대 2개(보관 · 스텝당 이동) + 성격 표. 둥근 띠 하나 = 성격 하나, 띠 안 칸 = 데이터 (색 = 데이터 종류) */
-.blk .dp-ctl { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.dp-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 16px; }
+.dp-ctl { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
 .dp-ctl .cl { font-size: 12.5px; font-weight: 700; color: var(--muted); }
-.dp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); margin: 0 0 12px; }
+.dp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); min-width: 0; }
 .dp-legend span { display: inline-flex; align-items: center; gap: 6px; }
 .dp-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
 .dp-bars { display: flex; flex-direction: column; gap: 16px; }
@@ -191,7 +203,7 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-h .dp-tot { font-family: var(--font-mono); font-size: 19px; font-weight: 700; margin-top: 2px; }
 .dp-bar { display: flex; gap: 4px; min-width: 0; padding-top: 4px; }
 .dp-g { display: flex; flex-direction: column; gap: 6px; min-width: 4px; }
-.dp-strip { display: flex; gap: 1px; height: 34px; border-radius: 7px; overflow: hidden; background: var(--line2); }
+.dp-strip { display: flex; gap: 1px; height: 38px; border-radius: 9px; overflow: hidden; background: var(--line2); }
 .dp-seg { min-width: 0; display: flex; align-items: center; overflow: hidden; }
 .dp-seg span { font-size: 12px; font-weight: 700; padding: 0 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dp-seg span b { font-family: var(--font-mono); font-weight: 700; margin-left: 6px; }
@@ -199,7 +211,13 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-cap b { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
 .dp-key { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
 .dp-tab { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; margin-top: 20px; }
-.dp-tab th { text-align: left; font-size: 12px; font-weight: 700; color: var(--muted); padding: 6px 12px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.dp-tab th { text-align: left; font-size: 12px; font-weight: 700; color: var(--ink2); padding: 8px 12px; background: var(--band); white-space: nowrap; }
+.dp-tab th:first-child { border-radius: 8px 0 0 8px; }
+.dp-tab th:last-child { border-radius: 0 8px 8px 0; }
+/* 성격 표의 묶음 이름 = 데이터 색의 옅은 칩 */
+.gchip { display: inline-block; font-size: 13px; font-weight: 800; color: var(--ink); border-radius: 7px; padding: 2px 10px; }
+.g-ro { background: var(--c-gray-l); } .g-app { background: var(--c-blue-l); } .g-rmw { background: var(--c-green-l); }
+.g-tmp { background: var(--c-yellow-l); } .g-chip { border: 1.5px dashed var(--axis); padding: 1px 9px; }
 .dp-tab th.num, .dp-tab td.num { text-align: right; }
 .dp-tab td { padding: 11px 12px; border-bottom: 1px solid var(--line2); vertical-align: top; }
 .dp-tab tr:last-child td { border-bottom: 0; }
@@ -214,8 +232,11 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-items i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
 .dp-items i.dash { border: 1.5px dashed var(--ink2); background: transparent; }
 .dp-note { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
-@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .blk .dp-ctl { margin-left: 0; } }
+@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .dp-ctl { margin-left: 0; } }
 
+.assume { background: var(--surface); border: 1px solid var(--line2); border-radius: 14px; padding: 12px 18px; font-size: 13px; color: var(--ink2); }
+.assume summary { cursor: pointer; font-weight: 800; color: var(--ink); }
+.assume ul { margin: 10px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
 .foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
 .foot a { color: var(--ink2); font-weight: 700; }
 
@@ -238,8 +259,8 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
   </section>
 
   <section class="panel" aria-label="데이터 성격 한눈에" id="dpanel" hidden>
-    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span><div class="dp-ctl"><span class="cl">범위</span><div class="seg" role="group" id="dpscope" aria-label="범위"></div><span class="cl">나눠 보기</span><div class="seg" role="group" id="dpview" aria-label="나눠 보기"></div></div></div>
-    <div class="dp-legend" id="dplegend"></div>
+    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span></div>
+    <div class="dp-top"><div class="dp-legend" id="dplegend"></div><div class="dp-ctl"><span class="cl">범위</span><div class="seg" role="group" id="dpscope" aria-label="범위"></div><span class="cl">나눠 보기</span><div class="seg" role="group" id="dpview" aria-label="나눠 보기"></div></div></div>
     <div class="dp-bars" id="dpbars"></div>
     <div class="scroll"><table class="dp-tab" id="dptab"></table></div>
     <p class="dp-note" id="dpnote"></p>
@@ -255,11 +276,12 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
     <div class="scroll"><div class="kgrid" id="kgrid"></div></div>
   </section>
 
+  <details class="assume"><summary>가정 · 검증</summary><ul id="assume"></ul></details>
   <p class="foot" id="foot"></p>
 </div>
 
 <script>
-const DATA = {"algo": {"model": "Qwen3.6-27B (Gated DeltaNet · linear attention 층)", "scope": "층 1개 · decode 1스텝 · linear attention 블록 (FFN · full attention 층 제외)", "dims": {"B": {"value": 1, "short": "요청", "desc": "동시 요청 수", "var": true}, "T": {"value": 131072, "short": "토큰", "desc": "컨텍스트 길이 — linear 층에는 영향 없음 (비교용)", "var": true}, "d": {"value": 5120, "short": "hidden 폭", "desc": "hidden 폭"}, "n_k": {"value": 16, "short": "key head", "desc": "q · k head 수"}, "n_v": {"value": 48, "short": "value head", "desc": "v head 수 = state head 수"}, "d_k": {"value": 128, "short": "key 폭", "desc": "head당 q · k 폭"}, "d_v": {"value": 128, "short": "value 폭", "desc": "head당 v 폭"}, "d_conv": {"value": 4, "short": "conv 탭", "desc": "짧은 합성곱 길이"}, "C": {"value": 10240, "short": "conv 채널", "desc": "q · k · v 채널 = 2 × 16 × 128 + 48 × 128"}, "n_layer": {"value": 64, "short": "층 수", "desc": "전체 층 수"}, "n_lin": {"value": 48, "short": "linear 층 수", "desc": "linear attention 층 수 (4층마다 full 1층)"}, "T_max": {"value": 262144, "short": "지원 길이", "desc": "max_position_embeddings"}, "n_kv_f": {"value": 4, "short": "full KV head", "desc": "같은 모델 full attention 층의 KV head 수 (비교용)"}, "d_hf": {"value": 256, "short": "full head 폭", "desc": "full attention 층 head 폭 (비교용)"}}, "formats": {"state_b": {"desc": "state 원소 1개 바이트", "title": "state 정밀도", "ui": true, "options": {"fp32": {"value": 4, "label": "FP32 (배포 · mamba_ssm_dtype)"}, "bf16": {"value": 2, "label": "BF16 (가정 · 이동량 절반)"}}, "default": "fp32"}}, "kinds": {"weight": {"label": "가중치", "share": "공유", "color": "gray", "persistent": true, "desc": "모든 요청이 같이 쓴다 — B가 늘어도 그대로"}, "state": {"label": "recurrent state", "share": "요청별", "color": "green", "persistent": true, "desc": "요청마다 head 48개 × 128 × 128 고정 크기 — 매 스텝 전부 읽고 다시 씀"}, "conv": {"label": "conv state", "share": "요청별", "color": "pink", "persistent": true, "desc": "요청마다 최근 3토큰의 q · k · v 채널 — 매 스텝 한 칸 밀어 다시 씀"}, "act": {"label": "토큰 벡터", "share": "요청별", "color": "violet", "desc": "토큰 1개짜리 중간 결과 벡터. 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음"}, "inter": {"label": "중간 결과", "share": "요청별", "color": "yellow", "desc": "커널 안에서 잠깐 쓰는 값 (감쇠한 state · 기억 읽기 값 등)"}}, "tensors": {"W_qkv": {"label": "W_qkv", "shape": ["d", "C"], "bytes": "2*d*C", "kind": "weight", "desc": "x → q · k · v"}, "W_z": {"label": "W_z", "shape": ["d", "n_v*d_v"], "bytes": "2*d*n_v*d_v", "kind": "weight", "desc": "x → 출력 gate z"}, "W_b": {"label": "W_b", "shape": ["d", "n_v"], "bytes": "2*d*n_v", "kind": "weight", "desc": "x → 쓰기 강도 β"}, "W_a": {"label": "W_a", "shape": ["d", "n_v"], "bytes": "2*d*n_v", "kind": "weight", "desc": "x → 감쇠 a"}, "w_conv": {"label": "conv 가중치", "shape": ["C", "d_conv"], "bytes": "2*C*d_conv", "kind": "weight", "desc": "채널마다 4탭"}, "A_log": {"label": "A_log", "shape": ["n_v"], "bytes": "4*n_v", "kind": "weight", "desc": "head별 감쇠 크기"}, "dt_bias": {"label": "dt_bias", "shape": ["n_v"], "bytes": "4*n_v", "kind": "weight", "desc": "head별 감쇠 bias"}, "w_norm": {"label": "norm 가중치", "shape": ["d_v"], "bytes": "2*d_v", "kind": "weight"}, "W_out": {"label": "W_out", "shape": ["n_v*d_v", "d"], "bytes": "2*n_v*d_v*d", "kind": "weight", "desc": "출력 투영"}, "conv_state": {"label": "conv state", "shape": ["B", "C", "d_conv-1"], "bytes": "2*B*C*(d_conv-1)", "kind": "conv", "trace": "cache.conv", "desc": "최근 3토큰의 q · k · v 채널 (BF16)"}, "ssm_state": {"label": "state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "state", "trace": "cache.ssm", "desc": "head마다 [128 × 128] 행렬 — KV cache를 대신하는 고정 크기 기억"}, "x": {"label": "x", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act", "desc": "input RMSNorm 이후 hidden"}, "qkv": {"label": "qkv", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act", "desc": "합성곱 전 q · k · v"}, "z": {"label": "z", "shape": ["B", "n_v*d_v"], "bytes": "2*B*n_v*d_v", "kind": "act", "desc": "출력 gate"}, "b": {"label": "b", "shape": ["B", "n_v"], "bytes": "2*B*n_v", "kind": "act"}, "a": {"label": "a", "shape": ["B", "n_v"], "bytes": "2*B*n_v", "kind": "act"}, "conv_win": {"label": "conv 창", "shape": ["B", "C", "d_conv"], "bytes": "2*B*C*d_conv", "kind": "inter", "desc": "state 3칸 + 새 값"}, "qkv_c": {"label": "qkv (합성곱 후)", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act"}, "q": {"label": "q", "shape": ["B", "n_v", "d_k"], "bytes": "4*B*n_v*d_k", "kind": "inter", "desc": "L2 정규화 · scale 후 value head 수로 확장"}, "k": {"label": "k", "shape": ["B", "n_v", "d_k"], "bytes": "4*B*n_v*d_k", "kind": "inter"}, "v": {"label": "v", "shape": ["B", "n_v", "d_v"], "bytes": "4*B*n_v*d_v", "kind": "inter"}, "beta": {"label": "β", "shape": ["B", "n_v"], "bytes": "4*B*n_v", "kind": "inter", "desc": "쓰기 강도 (sigmoid)"}, "g": {"label": "g", "shape": ["B", "n_v"], "bytes": "4*B*n_v", "kind": "inter", "desc": "감쇠 (log 공간", "음수)": null}, "S_dec": {"label": "감쇠한 state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "inter"}, "kv_mem": {"label": "기억 읽기 값", "shape": ["B", "n_v", "d_v"], "bytes": "4*B*n_v*d_v", "kind": "inter", "desc": "지금 k로 state에서 읽은 값"}, "S_new": {"label": "새 state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "state"}, "o": {"label": "o", "shape": ["B", "n_v", "d_v"], "bytes": "2*B*n_v*d_v", "kind": "act", "desc": "state에서 읽은 출력"}, "o_n": {"label": "o (정규화)", "shape": ["B", "n_v", "d_v"], "bytes": "2*B*n_v*d_v", "kind": "act"}, "y": {"label": "y", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act", "desc": "linear attention 출력 (잔차 더하기 전)"}}, "steps": [{"id": "l1", "group": "입력 투영", "label": "입력 투영", "unit": "gemm", "prec": "bf16", "in": ["x", "W_qkv", "W_z", "W_b", "W_a"], "out": ["qkv", "z", "b", "a"], "flops": "2*B*d*(C+n_v*d_v+2*n_v)", "desc": "같은 x로 q · k · v(10,240), 출력 gate z(6,144), 쓰기 강도 β와 감쇠 a(head 48개씩)를 만든다."}, {"id": "l2", "group": "짧은 합성곱", "label": "짧은 합성곱", "unit": "vec", "in": ["qkv", "conv_state", "w_conv"], "out": ["qkv_c"], "flops": "2*B*C*d_conv", "desc": "채널마다 최근 3토큰 + 지금 값, 4칸을 가중합하고 SiLU를 씌운다. 채널끼리는 섞지 않는다."}, {"id": "l3", "group": "짧은 합성곱", "label": "conv state 갱신", "unit": "mem", "viz": "append", "in": ["qkv"], "out": ["conv_state"], "elems": "B*C*(d_conv-1)", "desc": "가장 오래된 칸을 버리고 지금 값을 붙여 conv state 3칸을 다시 쓴다."}, {"id": "l4", "group": "state 갱신", "label": "q·k 정규화 · gate", "unit": "vec", "in": ["qkv_c", "a", "b", "A_log", "dt_bias"], "out": ["q", "k", "v", "beta", "g"], "flops": "6*B*n_k*d_k+8*B*n_v", "desc": "q · k를 L2 정규화하고 value head 48개로 넓힌다(key head 1개를 3개가 공유). β = sigmoid(b), g = −exp(A_log) · softplus(a + dt_bias)."}, {"id": "l5", "group": "state 갱신", "label": "state 감쇠", "unit": "vec", "in": ["ssm_state", "g"], "out": ["S_dec"], "flops": "B*n_v*d_k*d_v", "desc": "state 전체에 exp(g)를 곱해 오래된 기억을 줄인다. head마다 128 × 128 원소 전부를 건드린다."}, {"id": "l6", "group": "state 갱신", "label": "기억 읽기", "unit": "gemv", "in": ["S_dec", "k"], "out": ["kv_mem"], "flops": "2*B*n_v*d_k*d_v", "check_flops": "2*B*n_v*d_k*d_v", "desc": "지금 k로 state를 읽어 \"이미 기억한 값\"을 꺼낸다 (head마다 128 × 128 행렬 × 벡터)."}, {"id": "l7", "group": "state 갱신", "label": "delta 기록", "unit": "vec", "in": ["S_dec", "k", "v", "kv_mem", "beta"], "out": ["S_new"], "flops": "2*B*n_v*d_k*d_v+3*B*n_v*d_v", "desc": "새 v와 기억한 값의 차이(delta)만 β만큼 k 방향으로 더한다 — rank-1 갱신. state 전체를 다시 쓴다."}, {"id": "l8", "group": "출력 읽기", "label": "출력 읽기", "unit": "gemv", "in": ["S_new", "q"], "out": ["o"], "flops": "2*B*n_v*d_k*d_v", "check_flops": "2*B*n_v*d_k*d_v", "desc": "갱신한 state에 q를 곱해 출력을 읽는다. full attention의 \"KV 전부와 내적\"을 이 행렬 × 벡터 한 번이 대신한다."}, {"id": "l9", "group": "출력 읽기", "label": "gate 정규화", "unit": "vec", "in": ["o", "z", "w_norm"], "out": ["o_n"], "flops": "8*B*n_v*d_v", "desc": "head마다 RMSNorm 후 SiLU(z)를 곱한다."}, {"id": "l10", "group": "출력 투영", "label": "출력 투영", "unit": "gemm", "prec": "bf16", "in": ["o_n", "W_out"], "out": ["y"], "flops": "2*B*n_v*d_v*d", "desc": "head 출력 6,144폭을 hidden 5,120으로 투영한다."}], "phases": [{"id": "P1", "focus": "l1", "label": "입력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l1"], "plain": "x로 q · k · v와 gate · 쓰기 강도 · 감쇠를 한 번에 만든다"}, {"id": "P2", "focus": "l2", "label": "짧은 합성곱", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l2", "l3"], "plain": "최근 4토큰을 채널마다 섞는다 — conv state 3칸을 밀어 갱신"}, {"id": "P3", "focus": "l7", "label": "state 갱신", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l4", "l5", "l6", "l7"], "plain": "state를 감쇠하고, 기억과 새 v의 차이만 기록한다 (delta rule)"}, {"id": "P4", "focus": "l8", "label": "출력 읽기", "tag": "KV 대신 state", "tag_style": "outline", "steps": ["l8", "l9"], "plain": "갱신한 state에 q를 곱해 출력을 읽고 gate로 정규화"}, {"id": "P5", "focus": "l10", "label": "출력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l10"], "plain": "head 출력을 hidden 폭으로 되돌린다"}], "page": {"file": "gdn-qwen36", "start": "l7", "doc_title": "Gated DeltaNet 데이터 플로우", "lite": {"doc_title": "Gated DeltaNet 데이터 이동", "sub": "Qwen3.6-27B · linear attention 층 1개 · 새 토큰 1개 생성(decode) · H200", "sibling": {"label": "DSA 약식", "file": "dsa-v32"}}, "title": "Gated DeltaNet 데이터 플로우 — KV cache 대신 고정 크기 state를 읽고 다시 쓴다", "crumbs": ["Hybrid attention · linear 층", "Qwen3.6-27B · Gated DeltaNet", "층 1개 · decode 1스텝"], "sub": "Hybrid 모델의 linear attention 층 하나가 새 토큰 1개를 처리할 때 데이터가 HBM과 칩 사이를 어떻게 오가는지 커널 단위로 보여 준다. KV cache가 없고, 요청마다 고정 크기 state(head 48개 × 128 × 128)를 매 스텝 전부 읽고 다시 쓴다.", "t_hint": "linear 층은 T와 무관하다 — 길어져도 이동량이 그대로다", "flow_note": "KV를 읽는 대신 ② 짧은 합성곱 ③ state 갱신 ④ state에서 출력 읽기 · 카드 위 색 막대 = 그 단계가 주로 읽는 데이터 · 누르면 아래 그림의 해당 단계로", "hl2": "같은 자리가 full attention 층이었다면 KV {B:B*T*n_kv_f*d_hf*2*2}를 {per}매 스텝 읽어야 한다(T = {N:T}{sum}). linear 층은 대신 {sw:state}<b>state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 쓴다</b> — T와 무관하다.", "store": {"expr": "B*n_lin*(state_b*n_v*d_k*d_v+2*C*(d_conv-1))", "label": "48개 linear 층 state 보관"}, "sweep_cap": "막대 = 층 1개의 HBM 읽기 + 쓰기. linear 층에는 T에 비례하는 데이터가 없어 막대가 모두 같다 — Hybrid가 긴 문맥에서 이득을 보는 이유다. 점선 오른쪽은 지원 길이 밖.", "links": [{"label": "DSA (DeepSeek-V3.2)", "url": "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32.html"}], "scope": ["Qwen3.6-27B 차원(value head 48 · key head 16 · 128 × 128, hidden 5,120)의 Gated DeltaNet 층 1개 · decode 1스텝. 잔차 · FFN · full attention 층 제외", "기준 보고서의 Qwen3.8-Flash-Next와 state 크기(48 × 128 × 128 FP32 ≈ 층당 3.2 MB)가 같다. Qwen3.8 config는 로컬에 없어 hidden 폭 등은 Qwen3.6-27B 값", "커널 묶음은 SGLang · vLLM의 Qwen3-Next / Qwen3.5 경로(in_proj GEMM → causal_conv1d_update → fused recurrent gated delta rule → gated RMSNorm → out_proj)를 대표로 단순화", "가중치 BF16(배포 config dtype). state는 FP32(mamba_ssm_dtype) — BF16 버튼은 가정", "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). state 감쇠 · 갱신 같은 원소별 · 행렬 × 벡터 연산은 CUDA core FP32 피크 67 TFLOPS 적용", "보관량 경고는 48개 linear 층의 state + conv state만 셈. 가중치 · full 층 KV는 빼서 실제 여유는 더 작다"], "verify": ["참조 구현 ref_decode.py(1스텝 recurrent · conv state 3칸) = HF Qwen3_5GatedDeltaNet(전체 시퀀스 chunk 방식) 출력 일치, 상대 오차 4e-6 수준", "실제 차원 meta 실행으로 텐서 shape · GEMM FLOP 식 검사 {checks}", "보고서 수치 재현: state + conv state 층당 3.21 MB (보고서 약 3.2 MB/층)"]}, "sources": [{"label": "HF transformers 5.14 · modeling_qwen3_5.py", "ref": "Qwen3_5GatedDeltaNet.forward (L441–563), torch_recurrent_gated_delta_rule (L329–370), torch_causal_conv1d_update (L224–239)"}, {"label": "Qwen3.6-27B config.json", "ref": "linear_num_value_heads 48 · linear_num_key_heads 16 · head 128 · conv 4 · mamba_ssm_dtype float32"}, {"label": "fla (flash-linear-attention) · causal-conv1d", "ref": "fused_recurrent_gated_delta_rule · causal_conv1d_update — 배포 decode 커널"}, {"label": "기준 보고서", "ref": "arch_insight/sparse-hybrid-hw-report-v2-refined.md §1.6 · §2.4 · 부록 B"}]}, "map": {"name": "GPU 현재 실행 (H200 기준)", "hw": {"label": "H200", "hbm_bw": 4800000000000.0, "hbm_cap": 141000000000, "peak": {"fp8": 1979000000000000.0, "bf16": 989000000000000.0, "vec": 67000000000000.0}, "n_sm": 132, "onchip": {"l2": {"label": "L2 캐시", "short": "L2", "total": 52428800, "desc": "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}, "smem": {"label": "공유 메모리", "short": "SMEM", "per_sm": 233472, "desc": "SM마다 있는 SRAM. 커널이 직접 타일을 올려 두고 쓴다"}, "reg": {"label": "레지스터", "short": "REG", "per_sm": 262144, "desc": "SM마다 256 KB. 계산 중인 값이 여기에 있다"}}, "note": "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"}, "insights": [{"text": "state는 head마다 레지스터에 올려 감쇠 · 기억 읽기 · delta 기록 · 출력 읽기를 한 커널에서 끝내고 전부 다시 쓴다 — 읽기와 쓰기가 같은 양이고, 연산은 state 1 B당 1 FLOP도 안 된다."}], "kernels": [{"id": "K1", "label": "입력 투영 GEMM", "plain": "x로 q·k·v · gate · β · 감쇠 만들기", "impl": "in_proj_qkvz + in_proj_ba GEMM (SGLang · vLLM은 투영을 묶어 x를 한 번만 읽는다)", "steps": ["l1"], "notes": ["가중치 {B:2*d*(C+n_v*d_v+2*n_v)} 읽기 — 요청이 적으면 이 층 이동의 대부분", "x 하나로 다섯 가지 투영 → 한 GEMM으로 묶임. 동시 요청 수(B)로 가중치 읽기를 나눠 낸다"], "hbm_read": [{"t": "x", "pat": "small"}, {"t": "W_qkv", "pat": "stream"}, {"t": "W_z", "pat": "stream"}, {"t": "W_b", "pat": "stream"}, {"t": "W_a", "pat": "stream"}], "hbm_write": [{"t": "qkv", "pat": "small"}, {"t": "z", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "a", "pat": "small"}]}, {"id": "K2", "label": "짧은 합성곱", "plain": "최근 4토큰을 채널마다 섞고 conv state 갱신", "impl": "causal_conv1d_update — conv state 3칸 + 새 값으로 4탭 depthwise 합성곱 · SiLU, state를 한 칸 밀어 다시 씀", "steps": ["l2", "l3"], "notes": ["conv state {B:2*B*C*(d_conv-1)}를 읽고 한 칸 밀어 전부 다시 씀 — 작지만 매 스텝 왕복", "채널 10,240개가 서로 독립 → 단순 원소별 연산이라 메모리 근처 처리에 맞는 일"], "hbm_read": [{"t": "qkv", "pat": "small"}, {"t": "conv_state", "pat": "stream"}, {"t": "w_conv", "pat": "stream"}], "hbm_write": [{"t": "qkv_c", "pat": "small"}, {"t": "conv_state", "pat": "overwrite"}], "on_chip": [{"t": "conv_win", "mem": "reg", "how": "state 3칸 + 새 값 = 창 4칸을 레지스터에 모아 채널마다 가중합"}]}, {"id": "K3", "label": "state 갱신 커널", "plain": "state를 읽어 감쇠 · 읽기 · 기록 · 출력 후 다시 쓰기", "impl": "fla fused_recurrent_gated_delta_rule (SGLang fused_sigmoid_gating_delta_rule_update) — head마다 state 블록을 레지스터에 올려 l2norm · gate · 감쇠 · 기억 읽기 · rank-1 갱신 · 출력까지 한 번에 하고 state를 다시 씀", "steps": ["l4", "l5", "l6", "l7", "l8"], "notes": ["요청마다 state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 씀 — T와 무관한 고정 비용", "연산은 head마다 행렬 × 벡터 2번 + rank-1 갱신 → state 1 B당 1 FLOP 미만. Tensor core가 아니라 대역폭이 시간을 정함", "state를 HBM 밖으로 꺼내지 않고 메모리 안에서 갱신하면(PIM) 이 왕복이 사라짐 — Pimba 등 (보고서 2.4)", "동시 요청 {N:B}개 state 합 {B:state_b*B*n_v*d_k*d_v}를 칩 안 SRAM에 두려면 이 크기가 기준 — 요청이 늘면 금방 넘침"], "hbm_read": [{"t": "qkv_c", "pat": "small"}, {"t": "a", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "A_log", "pat": "small"}, {"t": "dt_bias", "pat": "small"}, {"t": "ssm_state", "pat": "stream"}], "hbm_write": [{"t": "o", "pat": "small"}, {"t": "ssm_state", "via": "S_new", "pat": "overwrite"}], "on_chip": [{"t": "ssm_state", "mem": "reg", "stage": true, "label": "state 블록", "how": "head마다 [128 × 블록] 단위로 state를 HBM에서 레지스터로 올림"}, {"t": "S_dec", "mem": "reg", "how": "감쇠한 state — 레지스터에서 바로 다음 계산에 사용"}, {"t": "kv_mem", "mem": "reg", "how": "지금 k로 읽은 기억 값 (head마다 128개)"}, {"t": "S_new", "mem": "reg", "how": "갱신한 state — 출력 읽기에 쓰고 HBM에 다시 씀"}]}, {"id": "K4", "label": "gate 정규화", "plain": "head마다 RMSNorm 후 SiLU(z) 곱하기", "impl": "FusedRMSNormGated — head마다 RMSNorm 후 SiLU(z)를 곱함", "steps": ["l9"], "notes": ["작은 원소별 연산 — K3 끝이나 K5 앞에 붙이면 o · z의 HBM 왕복이 사라짐"], "hbm_read": [{"t": "o", "pat": "small"}, {"t": "z", "pat": "small"}, {"t": "w_norm", "pat": "small"}], "hbm_write": [{"t": "o_n", "pat": "small"}]}, {"id": "K5", "label": "출력 투영 GEMM", "plain": "head 출력 6,144폭을 hidden 5,120으로 투영", "impl": "out_proj GEMM", "steps": ["l10"], "notes": ["W_out {B:2*n_v*d_v*d} — 요청별 데이터와 무관하므로 동시 요청 수(B)로 분할 상환"], "hbm_read": [{"t": "o_n", "pat": "small"}, {"t": "W_out", "pat": "stream"}], "hbm_write": [{"t": "y", "pat": "small"}]}]}, "checks": {"n": 39, "fail": 0}, "pages": "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/", "model": {"model": "Qwen3.6-27B", "deploy": {"n_gpu": 1, "desc": "H200 1장 — BF16 가중치 약 54 GB"}, "dims": {"L_full": {"value": 16, "desc": "full attention 층 수 (4층마다 1층)"}, "n_q": {"value": 24, "desc": "full 층 q head 수"}, "d_ff": {"value": 17408, "desc": "FFN 폭"}, "V": {"value": 248320, "desc": "어휘 수"}}, "data": [{"id": "w_lin", "label": "가중치 · linear attention", "short": "linear attention", "block": {"kind": "weight"}, "layers": "n_lin"}, {"id": "w_full", "label": "가중치 · full attention", "short": "full attention", "color": "gray-l", "share": "공유", "layers": "L_full", "store": "L_full*(2*d*(2*n_q*d_hf + 2*n_kv_f*d_hf) + 2*n_q*d_hf*d)", "read": "L_full*(2*d*(2*n_q*d_hf + 2*n_kv_f*d_hf) + 2*n_q*d_hf*d)", "note": "q는 출력 gate까지 2배"}, {"id": "w_ffn", "label": "가중치 · FFN", "short": "FFN", "color": "gray-l", "share": "공유", "layers": "n_layer", "store": "n_layer*3*d*d_ff*2", "read": "n_layer*3*d*d_ff*2"}, {"id": "w_head", "label": "가중치 · LM head", "short": "LM head", "color": "gray-l", "share": "공유", "layers": 1, "store": "2*V*d", "read": "2*V*d"}, {"id": "w_emb", "label": "가중치 · 임베딩", "short": "임베딩", "color": "gray-l", "share": "공유", "layers": 1, "store": "2*V*d", "read": "2*B*d", "note": "토큰 B개의 행만 읽음"}, {"id": "kv_full", "label": "KV cache · full 16층", "short": "KV cache (full 16층)", "color": "blue", "share": "요청별", "layers": "L_full", "store": "L_full*B*T*2*n_kv_f*d_hf*2", "read": "L_full*B*T*2*n_kv_f*d_hf*2", "write": "L_full*B*2*n_kv_f*d_hf*2", "note": "GQA KV head 4 · BF16 · 토큰당 4,096 B/층"}, {"id": "state", "label": "recurrent state", "short": "recurrent state", "block": {"t": ["ssm_state"]}, "layers": "n_lin"}, {"id": "conv", "label": "conv state", "short": "conv state", "block": {"t": ["conv_state"]}, "layers": "n_lin"}, {"id": "temp", "label": "커널 사이 중간값", "short": "q · k · v · gate 등 토큰 벡터", "color": "yellow", "block": {"rest": true}, "layers": "n_lin", "note": "linear 층만 — full 층 중간값은 뺌"}]}};
+const DATA = {"algo": {"model": "Qwen3.6-27B (Gated DeltaNet · linear attention 층)", "scope": "층 1개 · decode 1스텝 · linear attention 블록 (FFN · full attention 층 제외)", "dims": {"B": {"value": 1, "short": "요청", "desc": "동시 요청 수", "var": true}, "T": {"value": 131072, "short": "토큰", "desc": "컨텍스트 길이 — linear 층에는 영향 없음 (비교용)", "var": true}, "d": {"value": 5120, "short": "hidden 폭", "desc": "hidden 폭"}, "n_k": {"value": 16, "short": "key head", "desc": "q · k head 수"}, "n_v": {"value": 48, "short": "value head", "desc": "v head 수 = state head 수"}, "d_k": {"value": 128, "short": "key 폭", "desc": "head당 q · k 폭"}, "d_v": {"value": 128, "short": "value 폭", "desc": "head당 v 폭"}, "d_conv": {"value": 4, "short": "conv 탭", "desc": "짧은 합성곱 길이"}, "C": {"value": 10240, "short": "conv 채널", "desc": "q · k · v 채널 = 2 × 16 × 128 + 48 × 128"}, "n_layer": {"value": 64, "short": "층 수", "desc": "전체 층 수"}, "n_lin": {"value": 48, "short": "linear 층 수", "desc": "linear attention 층 수 (4층마다 full 1층)"}, "T_max": {"value": 262144, "short": "지원 길이", "desc": "max_position_embeddings"}, "n_kv_f": {"value": 4, "short": "full KV head", "desc": "같은 모델 full attention 층의 KV head 수 (비교용)"}, "d_hf": {"value": 256, "short": "full head 폭", "desc": "full attention 층 head 폭 (비교용)"}}, "formats": {"state_b": {"desc": "state 원소 1개 바이트", "title": "state 정밀도", "ui": true, "options": {"fp32": {"value": 4, "label": "FP32 (배포 · mamba_ssm_dtype)"}, "bf16": {"value": 2, "label": "BF16 (가정 · 이동량 절반)"}}, "default": "fp32"}}, "kinds": {"weight": {"label": "가중치", "share": "공유", "color": "gray", "persistent": true, "desc": "모든 요청이 같이 쓴다 — B가 늘어도 그대로"}, "state": {"label": "recurrent state", "share": "요청별", "color": "green", "persistent": true, "desc": "요청마다 head 48개 × 128 × 128 고정 크기 — 매 스텝 전부 읽고 다시 씀"}, "conv": {"label": "conv state", "share": "요청별", "color": "pink", "persistent": true, "desc": "요청마다 최근 3토큰의 q · k · v 채널 — 매 스텝 한 칸 밀어 다시 씀"}, "act": {"label": "토큰 벡터", "share": "요청별", "color": "violet", "desc": "토큰 1개짜리 중간 결과 벡터. 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음"}, "inter": {"label": "중간 결과", "share": "요청별", "color": "yellow", "desc": "커널 안에서 잠깐 쓰는 값 (감쇠한 state · 기억 읽기 값 등)"}}, "tensors": {"W_qkv": {"label": "W_qkv", "shape": ["d", "C"], "bytes": "2*d*C", "kind": "weight", "desc": "x → q · k · v"}, "W_z": {"label": "W_z", "shape": ["d", "n_v*d_v"], "bytes": "2*d*n_v*d_v", "kind": "weight", "desc": "x → 출력 gate z"}, "W_b": {"label": "W_b", "shape": ["d", "n_v"], "bytes": "2*d*n_v", "kind": "weight", "desc": "x → 쓰기 강도 β"}, "W_a": {"label": "W_a", "shape": ["d", "n_v"], "bytes": "2*d*n_v", "kind": "weight", "desc": "x → 감쇠 a"}, "w_conv": {"label": "conv 가중치", "shape": ["C", "d_conv"], "bytes": "2*C*d_conv", "kind": "weight", "desc": "채널마다 4탭"}, "A_log": {"label": "A_log", "shape": ["n_v"], "bytes": "4*n_v", "kind": "weight", "desc": "head별 감쇠 크기"}, "dt_bias": {"label": "dt_bias", "shape": ["n_v"], "bytes": "4*n_v", "kind": "weight", "desc": "head별 감쇠 bias"}, "w_norm": {"label": "norm 가중치", "shape": ["d_v"], "bytes": "2*d_v", "kind": "weight"}, "W_out": {"label": "W_out", "shape": ["n_v*d_v", "d"], "bytes": "2*n_v*d_v*d", "kind": "weight", "desc": "출력 투영"}, "conv_state": {"label": "conv state", "shape": ["B", "C", "d_conv-1"], "bytes": "2*B*C*(d_conv-1)", "kind": "conv", "trace": "cache.conv", "desc": "최근 3토큰의 q · k · v 채널 (BF16)"}, "ssm_state": {"label": "state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "state", "trace": "cache.ssm", "desc": "head마다 [128 × 128] 행렬 — KV cache를 대신하는 고정 크기 기억"}, "x": {"label": "x", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act", "desc": "input RMSNorm 이후 hidden"}, "qkv": {"label": "qkv", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act", "desc": "합성곱 전 q · k · v"}, "z": {"label": "z", "shape": ["B", "n_v*d_v"], "bytes": "2*B*n_v*d_v", "kind": "act", "desc": "출력 gate"}, "b": {"label": "b", "shape": ["B", "n_v"], "bytes": "2*B*n_v", "kind": "act"}, "a": {"label": "a", "shape": ["B", "n_v"], "bytes": "2*B*n_v", "kind": "act"}, "conv_win": {"label": "conv 창", "shape": ["B", "C", "d_conv"], "bytes": "2*B*C*d_conv", "kind": "inter", "desc": "state 3칸 + 새 값"}, "qkv_c": {"label": "qkv (합성곱 후)", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act"}, "q": {"label": "q", "shape": ["B", "n_v", "d_k"], "bytes": "4*B*n_v*d_k", "kind": "inter", "desc": "L2 정규화 · scale 후 value head 수로 확장"}, "k": {"label": "k", "shape": ["B", "n_v", "d_k"], "bytes": "4*B*n_v*d_k", "kind": "inter"}, "v": {"label": "v", "shape": ["B", "n_v", "d_v"], "bytes": "4*B*n_v*d_v", "kind": "inter"}, "beta": {"label": "β", "shape": ["B", "n_v"], "bytes": "4*B*n_v", "kind": "inter", "desc": "쓰기 강도 (sigmoid)"}, "g": {"label": "g", "shape": ["B", "n_v"], "bytes": "4*B*n_v", "kind": "inter", "desc": "감쇠 (log 공간", "음수)": null}, "S_dec": {"label": "감쇠한 state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "inter"}, "kv_mem": {"label": "기억 읽기 값", "shape": ["B", "n_v", "d_v"], "bytes": "4*B*n_v*d_v", "kind": "inter", "desc": "지금 k로 state에서 읽은 값"}, "S_new": {"label": "새 state", "shape": ["B", "n_v", "d_k", "d_v"], "bytes": "state_b*B*n_v*d_k*d_v", "kind": "state"}, "o": {"label": "o", "shape": ["B", "n_v", "d_v"], "bytes": "2*B*n_v*d_v", "kind": "act", "desc": "state에서 읽은 출력"}, "o_n": {"label": "o (정규화)", "shape": ["B", "n_v", "d_v"], "bytes": "2*B*n_v*d_v", "kind": "act"}, "y": {"label": "y", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act", "desc": "linear attention 출력 (잔차 더하기 전)"}}, "steps": [{"id": "l1", "group": "입력 투영", "label": "입력 투영", "unit": "gemm", "prec": "bf16", "in": ["x", "W_qkv", "W_z", "W_b", "W_a"], "out": ["qkv", "z", "b", "a"], "flops": "2*B*d*(C+n_v*d_v+2*n_v)", "desc": "같은 x로 q · k · v(10,240), 출력 gate z(6,144), 쓰기 강도 β와 감쇠 a(head 48개씩)를 만든다."}, {"id": "l2", "group": "짧은 합성곱", "label": "짧은 합성곱", "unit": "vec", "in": ["qkv", "conv_state", "w_conv"], "out": ["qkv_c"], "flops": "2*B*C*d_conv", "desc": "채널마다 최근 3토큰 + 지금 값, 4칸을 가중합하고 SiLU를 씌운다. 채널끼리는 섞지 않는다."}, {"id": "l3", "group": "짧은 합성곱", "label": "conv state 갱신", "unit": "mem", "viz": "append", "in": ["qkv"], "out": ["conv_state"], "elems": "B*C*(d_conv-1)", "desc": "가장 오래된 칸을 버리고 지금 값을 붙여 conv state 3칸을 다시 쓴다."}, {"id": "l4", "group": "state 갱신", "label": "q·k 정규화 · gate", "unit": "vec", "in": ["qkv_c", "a", "b", "A_log", "dt_bias"], "out": ["q", "k", "v", "beta", "g"], "flops": "6*B*n_k*d_k+8*B*n_v", "desc": "q · k를 L2 정규화하고 value head 48개로 넓힌다(key head 1개를 3개가 공유). β = sigmoid(b), g = −exp(A_log) · softplus(a + dt_bias)."}, {"id": "l5", "group": "state 갱신", "label": "state 감쇠", "unit": "vec", "in": ["ssm_state", "g"], "out": ["S_dec"], "flops": "B*n_v*d_k*d_v", "desc": "state 전체에 exp(g)를 곱해 오래된 기억을 줄인다. head마다 128 × 128 원소 전부를 건드린다."}, {"id": "l6", "group": "state 갱신", "label": "기억 읽기", "unit": "gemv", "in": ["S_dec", "k"], "out": ["kv_mem"], "flops": "2*B*n_v*d_k*d_v", "check_flops": "2*B*n_v*d_k*d_v", "desc": "지금 k로 state를 읽어 \"이미 기억한 값\"을 꺼낸다 (head마다 128 × 128 행렬 × 벡터)."}, {"id": "l7", "group": "state 갱신", "label": "delta 기록", "unit": "vec", "in": ["S_dec", "k", "v", "kv_mem", "beta"], "out": ["S_new"], "flops": "2*B*n_v*d_k*d_v+3*B*n_v*d_v", "desc": "새 v와 기억한 값의 차이(delta)만 β만큼 k 방향으로 더한다 — rank-1 갱신. state 전체를 다시 쓴다."}, {"id": "l8", "group": "출력 읽기", "label": "출력 읽기", "unit": "gemv", "in": ["S_new", "q"], "out": ["o"], "flops": "2*B*n_v*d_k*d_v", "check_flops": "2*B*n_v*d_k*d_v", "desc": "갱신한 state에 q를 곱해 출력을 읽는다. full attention의 \"KV 전부와 내적\"을 이 행렬 × 벡터 한 번이 대신한다."}, {"id": "l9", "group": "출력 읽기", "label": "gate 정규화", "unit": "vec", "in": ["o", "z", "w_norm"], "out": ["o_n"], "flops": "8*B*n_v*d_v", "desc": "head마다 RMSNorm 후 SiLU(z)를 곱한다."}, {"id": "l10", "group": "출력 투영", "label": "출력 투영", "unit": "gemm", "prec": "bf16", "in": ["o_n", "W_out"], "out": ["y"], "flops": "2*B*n_v*d_v*d", "desc": "head 출력 6,144폭을 hidden 5,120으로 투영한다."}], "phases": [{"id": "P1", "focus": "l1", "label": "입력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l1"], "plain": "x로 q · k · v와 gate · 쓰기 강도 · 감쇠를 한 번에 만든다"}, {"id": "P2", "focus": "l2", "label": "짧은 합성곱", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l2", "l3"], "plain": "최근 4토큰을 채널마다 섞는다 — conv state 3칸을 밀어 갱신"}, {"id": "P3", "focus": "l7", "label": "state 갱신", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l4", "l5", "l6", "l7"], "plain": "state를 감쇠하고, 기억과 새 v의 차이만 기록한다 (delta rule)"}, {"id": "P4", "focus": "l8", "label": "출력 읽기", "tag": "KV 대신 state", "tag_style": "outline", "steps": ["l8", "l9"], "plain": "갱신한 state에 q를 곱해 출력을 읽고 gate로 정규화"}, {"id": "P5", "focus": "l10", "label": "출력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l10"], "plain": "head 출력을 hidden 폭으로 되돌린다"}], "page": {"file": "gdn-qwen36", "doc_title": "Gated DeltaNet 데이터 이동", "lite": {"doc_title": "Gated DeltaNet 데이터 이동", "sub": "Qwen3.6-27B · linear attention 층 1개 · 새 토큰 1개 생성(decode) · H200", "sibling": {"label": "DSA 약식", "file": "dsa-v32"}}, "crumbs": ["Hybrid attention · linear 층", "Qwen3.6-27B · Gated DeltaNet", "층 1개 · decode 1스텝"], "scope": ["Qwen3.6-27B 차원(value head 48 · key head 16 · 128 × 128, hidden 5,120)의 Gated DeltaNet 층 1개 · decode 1스텝. 잔차 · FFN · full attention 층 제외", "기준 보고서의 Qwen3.8-Flash-Next와 state 크기(48 × 128 × 128 FP32 ≈ 층당 3.2 MB)가 같다. Qwen3.8 config는 로컬에 없어 hidden 폭 등은 Qwen3.6-27B 값", "커널 묶음은 SGLang · vLLM의 Qwen3-Next / Qwen3.5 경로(in_proj GEMM → causal_conv1d_update → fused recurrent gated delta rule → gated RMSNorm → out_proj)를 대표로 단순화", "가중치 BF16(배포 config dtype). state는 FP32(mamba_ssm_dtype) — BF16 버튼은 가정", "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). state 감쇠 · 갱신 같은 원소별 · 행렬 × 벡터 연산은 CUDA core FP32 피크 67 TFLOPS 적용"], "verify": ["참조 구현 ref_decode.py(1스텝 recurrent · conv state 3칸) = HF Qwen3_5GatedDeltaNet(전체 시퀀스 chunk 방식) 출력 일치, 상대 오차 4e-6 수준", "실제 차원 meta 실행으로 텐서 shape · GEMM FLOP 식 검사 {checks}", "보고서 수치 재현: state + conv state 층당 3.21 MB (보고서 약 3.2 MB/층)"]}, "sources": [{"label": "HF transformers 5.14 · modeling_qwen3_5.py", "ref": "Qwen3_5GatedDeltaNet.forward (L441–563), torch_recurrent_gated_delta_rule (L329–370), torch_causal_conv1d_update (L224–239)"}, {"label": "Qwen3.6-27B config.json", "ref": "linear_num_value_heads 48 · linear_num_key_heads 16 · head 128 · conv 4 · mamba_ssm_dtype float32"}, {"label": "fla (flash-linear-attention) · causal-conv1d", "ref": "fused_recurrent_gated_delta_rule · causal_conv1d_update — 배포 decode 커널"}, {"label": "기준 보고서", "ref": "arch_insight/sparse-hybrid-hw-report-v2-refined.md §1.6 · §2.4 · 부록 B"}]}, "map": {"name": "GPU 현재 실행 (H200 기준)", "hw": {"label": "H200", "hbm_bw": 4800000000000.0, "hbm_cap": 141000000000, "peak": {"fp8": 1979000000000000.0, "bf16": 989000000000000.0, "vec": 67000000000000.0}, "n_sm": 132, "onchip": {"l2": {"label": "L2 캐시", "short": "L2", "total": 52428800, "desc": "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}, "smem": {"label": "공유 메모리", "short": "SMEM", "per_sm": 233472, "desc": "SM마다 있는 SRAM. 커널이 직접 타일을 올려 두고 쓴다"}, "reg": {"label": "레지스터", "short": "REG", "per_sm": 262144, "desc": "SM마다 256 KB. 계산 중인 값이 여기에 있다"}}, "note": "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"}, "insights": [{"text": "state는 head마다 레지스터에 올려 감쇠 · 기억 읽기 · delta 기록 · 출력 읽기를 한 커널에서 끝내고 전부 다시 쓴다 — 읽기와 쓰기가 같은 양이고, 연산은 state 1 B당 1 FLOP도 안 된다."}], "kernels": [{"id": "K1", "label": "입력 투영 GEMM", "plain": "x로 q·k·v · gate · β · 감쇠 만들기", "impl": "in_proj_qkvz + in_proj_ba GEMM (SGLang · vLLM은 투영을 묶어 x를 한 번만 읽는다)", "steps": ["l1"], "notes": ["가중치 {B:2*d*(C+n_v*d_v+2*n_v)} 읽기 — 요청이 적으면 이 층 이동의 대부분", "x 하나로 다섯 가지 투영 → 한 GEMM으로 묶임. 동시 요청 수(B)로 가중치 읽기를 나눠 낸다"], "hbm_read": [{"t": "x", "pat": "small"}, {"t": "W_qkv", "pat": "stream"}, {"t": "W_z", "pat": "stream"}, {"t": "W_b", "pat": "stream"}, {"t": "W_a", "pat": "stream"}], "hbm_write": [{"t": "qkv", "pat": "small"}, {"t": "z", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "a", "pat": "small"}]}, {"id": "K2", "label": "짧은 합성곱", "plain": "최근 4토큰을 채널마다 섞고 conv state 갱신", "impl": "causal_conv1d_update — conv state 3칸 + 새 값으로 4탭 depthwise 합성곱 · SiLU, state를 한 칸 밀어 다시 씀", "steps": ["l2", "l3"], "notes": ["conv state {B:2*B*C*(d_conv-1)}를 읽고 한 칸 밀어 전부 다시 씀 — 작지만 매 스텝 왕복", "채널 10,240개가 서로 독립 → 단순 원소별 연산이라 메모리 근처 처리에 맞는 일"], "hbm_read": [{"t": "qkv", "pat": "small"}, {"t": "conv_state", "pat": "stream"}, {"t": "w_conv", "pat": "stream"}], "hbm_write": [{"t": "qkv_c", "pat": "small"}, {"t": "conv_state", "pat": "overwrite"}], "on_chip": [{"t": "conv_win", "mem": "reg", "how": "state 3칸 + 새 값 = 창 4칸을 레지스터에 모아 채널마다 가중합"}]}, {"id": "K3", "label": "state 갱신 커널", "plain": "state를 읽어 감쇠 · 읽기 · 기록 · 출력 후 다시 쓰기", "impl": "fla fused_recurrent_gated_delta_rule (SGLang fused_sigmoid_gating_delta_rule_update) — head마다 state 블록을 레지스터에 올려 l2norm · gate · 감쇠 · 기억 읽기 · rank-1 갱신 · 출력까지 한 번에 하고 state를 다시 씀", "steps": ["l4", "l5", "l6", "l7", "l8"], "notes": ["요청마다 state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 씀 — T와 무관한 고정 비용", "연산은 head마다 행렬 × 벡터 2번 + rank-1 갱신 → state 1 B당 1 FLOP 미만. Tensor core가 아니라 대역폭이 시간을 정함", "state를 HBM 밖으로 꺼내지 않고 메모리 안에서 갱신하면(PIM) 이 왕복이 사라짐 — Pimba 등 (보고서 2.4)", "동시 요청 {N:B}개 state 합 {B:state_b*B*n_v*d_k*d_v}를 칩 안 SRAM에 두려면 이 크기가 기준 — 요청이 늘면 금방 넘침"], "hbm_read": [{"t": "qkv_c", "pat": "small"}, {"t": "a", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "A_log", "pat": "small"}, {"t": "dt_bias", "pat": "small"}, {"t": "ssm_state", "pat": "stream"}], "hbm_write": [{"t": "o", "pat": "small"}, {"t": "ssm_state", "via": "S_new", "pat": "overwrite"}], "on_chip": [{"t": "ssm_state", "mem": "reg", "stage": true, "label": "state 블록", "how": "head마다 [128 × 블록] 단위로 state를 HBM에서 레지스터로 올림"}, {"t": "S_dec", "mem": "reg", "how": "감쇠한 state — 레지스터에서 바로 다음 계산에 사용"}, {"t": "kv_mem", "mem": "reg", "how": "지금 k로 읽은 기억 값 (head마다 128개)"}, {"t": "S_new", "mem": "reg", "how": "갱신한 state — 출력 읽기에 쓰고 HBM에 다시 씀"}]}, {"id": "K4", "label": "gate 정규화", "plain": "head마다 RMSNorm 후 SiLU(z) 곱하기", "impl": "FusedRMSNormGated — head마다 RMSNorm 후 SiLU(z)를 곱함", "steps": ["l9"], "notes": ["작은 원소별 연산 — K3 끝이나 K5 앞에 붙이면 o · z의 HBM 왕복이 사라짐"], "hbm_read": [{"t": "o", "pat": "small"}, {"t": "z", "pat": "small"}, {"t": "w_norm", "pat": "small"}], "hbm_write": [{"t": "o_n", "pat": "small"}]}, {"id": "K5", "label": "출력 투영 GEMM", "plain": "head 출력 6,144폭을 hidden 5,120으로 투영", "impl": "out_proj GEMM", "steps": ["l10"], "notes": ["W_out {B:2*n_v*d_v*d} — 요청별 데이터와 무관하므로 동시 요청 수(B)로 분할 상환"], "hbm_read": [{"t": "o_n", "pat": "small"}, {"t": "W_out", "pat": "stream"}], "hbm_write": [{"t": "y", "pat": "small"}]}]}, "checks": {"n": 39, "fail": 0}, "pages": "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/", "model": {"model": "Qwen3.6-27B", "layer_label": "linear attention 층 1개", "deploy": {"n_gpu": 1, "desc": "H200 1장 — BF16 가중치 약 54 GB"}, "dims": {"L_full": {"value": 16, "desc": "full attention 층 수 (4층마다 1층)"}, "n_q": {"value": 24, "desc": "full 층 q head 수"}, "d_ff": {"value": 17408, "desc": "FFN 폭"}, "V": {"value": 248320, "desc": "어휘 수"}}, "data": [{"id": "w_lin", "label": "가중치 · linear attention", "short": "linear attention", "group": "attention 가중치", "block": {"kind": "weight"}, "layers": "n_lin"}, {"id": "w_full", "label": "가중치 · full attention", "short": "full attention", "group": "attention 가중치", "color": "gray", "share": "공유", "layers": "L_full", "store": "L_full*(2*d*(2*n_q*d_hf + 2*n_kv_f*d_hf) + 2*n_q*d_hf*d)", "read": "L_full*(2*d*(2*n_q*d_hf + 2*n_kv_f*d_hf) + 2*n_q*d_hf*d)", "note": "q는 출력 gate까지 2배"}, {"id": "w_ffn", "label": "가중치 · FFN", "short": "FFN", "group": "FFN 가중치", "color": "gray-l", "share": "공유", "layers": "n_layer", "store": "n_layer*3*d*d_ff*2", "read": "n_layer*3*d*d_ff*2"}, {"id": "w_head", "label": "가중치 · LM head", "short": "LM head", "group": "LM head · 임베딩", "color": "gray-ll", "share": "공유", "layers": 1, "store": "2*V*d", "read": "2*V*d"}, {"id": "w_emb", "label": "가중치 · 임베딩", "short": "임베딩", "group": "LM head · 임베딩", "color": "gray-ll", "share": "공유", "layers": 1, "store": "2*V*d", "read": "2*B*d", "note": "토큰 B개의 행만 읽음"}, {"id": "kv_full", "label": "KV cache · full 16층", "short": "KV cache (full 16층)", "group": "KV cache (full 16층)", "color": "blue", "share": "요청별", "layers": "L_full", "store": "L_full*B*T*2*n_kv_f*d_hf*2", "read": "L_full*B*T*2*n_kv_f*d_hf*2", "write": "L_full*B*2*n_kv_f*d_hf*2", "note": "GQA KV head 4 · BF16 · 토큰당 4,096 B/층"}, {"id": "state", "label": "recurrent state", "short": "recurrent state", "group": "recurrent state", "block": {"t": ["ssm_state"]}, "layers": "n_lin"}, {"id": "conv", "label": "conv state", "short": "conv state", "group": "conv state", "block": {"t": ["conv_state"]}, "layers": "n_lin"}, {"id": "temp", "label": "커널 사이 중간값", "short": "q · k · v · gate 등 토큰 벡터", "group": "커널 사이 중간값", "color": "yellow", "block": {"rest": true}, "layers": "n_lin", "note": "linear 층만 — full 층 중간값은 뺌"}]}};
 (function () {
 "use strict";
 const A = DATA.algo, M = DATA.map, P = A.page, LITE = P.lite || {};
@@ -377,7 +399,7 @@ function dimLabel(x, d) {
   return info ? `<span><b>${esc(x)}</b>${esc(info.short || "")} ${fmtN(d[x])}</span>` : "";
 }
 
-/* ── HBM 목록 (자세한 버전과 같은 묶음) ── */
+/* ── HBM 목록: 가중치는 한 줄로 묶고, 작은 토큰 벡터는 '앞 단계 결과'로 묶음 ── */
 function hbmGroups(k, d) {
   const reads = [];
   const wts = k.hbm_read.filter(e => TENS[e.t].kind === "weight");
@@ -438,15 +460,17 @@ function renderSummary() {
   let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="단계별 HBM 읽기 · 쓰기: ${ag.map(a => `${a.p.label} 읽기 ${fmtB(a.rd)} 쓰기 ${fmtB(a.wr)}`).join(", ")}">`;
   s += `<rect class="lane" x="6" y="${yH0}" width="${W - 12}" height="${yH1 - yH0}" rx="14"/>`;
   s += `<rect class="lane" x="6" y="${yC0}" width="${W - 12}" height="${yC1 - yC0}" rx="14"/>`;
-  s += `<text x="26" y="${yH0 + 36}" font-size="19" font-weight="800">HBM</text><text x="26" y="${yH0 + 58}" font-size="13" class="t-muted">읽기 · 쓰기</text><text x="26" y="${yH0 + 78}" font-size="12" class="t-muted">${M.hw.hbm_bw / 1e12} TB/s</text>`;
-  s += `<text x="26" y="${yC0 + 36}" font-size="19" font-weight="800">칩</text><text x="26" y="${yC0 + 58}" font-size="13" class="t-muted">커널 실행</text>`;
+  const lanePill = (y, t) => `<rect x="22" y="${y + 14}" width="${textW(t, 16) + 26}" height="30" rx="8" style="fill:var(--navy)"/><text x="35" y="${y + 35}" font-size="16" font-weight="800" class="t-white">${t}</text>`;
+  s += lanePill(yH0, "HBM") + `<text x="24" y="${yH0 + 66}" font-size="13" class="t-muted">읽기 · 쓰기</text><text x="24" y="${yH0 + 85}" font-size="12" class="t-muted">${M.hw.hbm_bw / 1e12} TB/s</text>`;
+  s += lanePill(yC0, "칩") + `<text x="24" y="${yC0 + 66}" font-size="13" class="t-muted">커널 실행</text>`;
   ag.forEach((a, i) => {
     const cx = LW + colW * (i + 0.5), xr = cx - 46, xw = cx + 46, bw = 54;
     const ttl = `${CIRC[i]} ${a.p.label}`;
     s += `<text x="${cx}" y="28" font-size="16" font-weight="800" text-anchor="middle">${esc(ttl)}</text>`;
-    const tw = textW(a.p.tag, 11) + 16, cls = tagCls(a.p);
-    s += `<rect x="${cx - tw / 2}" y="38" width="${tw}" height="19" rx="9.5" style="fill:${cls === "strong" ? "var(--ink2)" : "var(--surface)"};stroke:${cls ? "var(--ink2)" : "var(--line)"}"/>`;
-    s += `<text x="${cx}" y="51.5" font-size="11" font-weight="700" text-anchor="middle" class="${cls === "strong" ? "t-inv" : "t-muted"}">${esc(a.p.tag)}</text>`;
+    const tw = textW(a.p.tag, 11.5) + 20, cls = tagCls(a.p);   // 태그: DSA 추가 = 보라 · DSA로 변경 = 연보라 · 기존 = 회청
+    const tf = { strong: "var(--purple)", outline: "var(--purple-t)" }[cls] || "var(--slate-t)", tc = { strong: "t-white", outline: "t-purple" }[cls] || "t-navy";
+    s += `<rect x="${cx - tw / 2}" y="37" width="${tw}" height="21" rx="10.5" style="fill:${tf}"/>`;
+    s += `<text x="${cx}" y="51.5" font-size="11.5" font-weight="700" text-anchor="middle" class="${tc}">${esc(a.p.tag)}</text>`;
     const hr = hOf(a.rd), hw = hOf(a.wr);
     s += stackRects(xr - bw / 2, bw, yb, hr, parts(a.rk), a.rd, false);
     s += stackRects(xw - bw / 2, bw, yb, hw, parts(a.wk), a.wr, true);
@@ -458,15 +482,15 @@ function renderSummary() {
     if (a.topW) s += vArrow(xw, boxY - 3, yb + 4, kc(a.topW.kind));
     s += `<text x="${xr}" y="${yb + 36}" font-size="11" text-anchor="end" dx="-8" class="t-muted">읽기</text><text x="${xw}" y="${yb + 36}" font-size="11" dx="8" class="t-muted">쓰기</text>`;
     const bx = cx - colW / 2 + 12, bwid = colW - 24;
-    s += `<g class="boxhit" data-ph="${esc(a.p.id)}" tabindex="0" role="button" aria-label="${esc(ttl)} 커널로 이동"><rect class="box" x="${bx}" y="${boxY}" width="${bwid}" height="${boxH}" rx="10"/>`;
+    s += `<g class="boxhit" data-ph="${esc(a.p.id)}" tabindex="0" role="button" aria-label="${esc(ttl)} 커널로 이동"><rect class="box" x="${bx}" y="${boxY}" width="${bwid}" height="${boxH}" rx="12"/>`;
     const ids = a.kn.map(x => x.k.id), cw = ids.map(id => id.length * 7.6 + 12), tot = cw.reduce((p, c) => p + c, 0) + (ids.length - 1) * 5;
     let kx = cx - tot / 2;
     ids.forEach((id, j) => {
-      s += `<rect x="${kx}" y="${boxY + 13}" width="${cw[j]}" height="20" rx="5" style="fill:var(--ink2)"/><text x="${kx + cw[j] / 2}" y="${boxY + 27.5}" font-size="12" font-weight="700" text-anchor="middle" class="t-inv t-mono">${esc(id)}</text>`;
+      s += `<rect x="${kx}" y="${boxY + 13}" width="${cw[j]}" height="20" rx="6" style="fill:var(--navy-chip)"/><text x="${kx + cw[j] / 2}" y="${boxY + 27.5}" font-size="12" font-weight="700" text-anchor="middle" class="t-white t-mono">${esc(id)}</text>`;
       kx += cw[j] + 5;
     });
     const units = [...new Set(a.kn.flatMap(x => x.k.steps.map(sid => UNIT[STEP[sid].unit])))].join(" · ");
-    s += `<text x="${cx}" y="${boxY + 52}" font-size="12" text-anchor="middle" class="t-muted t-mono">${esc(units)}</text></g>`;
+    s += `<text x="${cx}" y="${boxY + 52}" font-size="12" text-anchor="middle" class="t-onnavy t-mono">${esc(units)}</text></g>`;
     if (i < n - 1) {
       const x1 = bx + bwid + 3, x2 = bx + bwid + 21, y = boxY + boxH / 2;
       s += `<line x1="${x1}" x2="${x2 - 7}" y1="${y}" y2="${y}" style="stroke:var(--ink2)" stroke-width="2.5"/><path d="M${x2 - 8} ${y - 6} L${x2} ${y} L${x2 - 8} ${y + 6} Z" style="fill:var(--ink2)"/>`;
@@ -717,7 +741,8 @@ const CHAR_C = {
   rmw: ["매 스텝 전부 다시 씀", "--c-green", false], tmp: ["임시 (커널 사이)", "--c-yellow", true],
 };
 const colOf = c => `var(--c-${c})`;
-const colL = c => c.endsWith("-l") ? colOf(c) : `var(--c-${c}-l)`;
+const isPale = c => /-l+$/.test(c);   // gray-l · gray-ll 처럼 이미 옅은 색
+const colL = c => isPale(c) ? colOf(c) : `var(--c-${c}-l)`;
 function mdItems(d, scope) {
   const out = [];
   for (const it of MD.data) {
@@ -765,10 +790,11 @@ function renderTraits() {
     host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { state[key] = b.dataset.v; renderTraits(); }));
   };
   const vw = state.view;
-  segBtns("dpscope", [["model", "모델 전체"], ["layer", "attention 층 1개"]], sc, "scope");
+  const layerLabel = MD.layer_label || "attention 층 1개";
+  segBtns("dpscope", [["model", "모델 전체"], ["layer", layerLabel]], sc, "scope");
   segBtns("dpview", [["kind", "데이터 종류"], ["life", "수명"], ["char", "데이터 성격"]], vw, "view");
   document.getElementById("dpwhat").textContent =
-    `${sc === "model" ? MD.model + " 모델 전체" : "attention 층 1개"} · decode 1스텝 · 요청 ${d.B}개 · ${fmtTok(d.T)}` + (vw === "kind" ? " · 진한 칸 = 읽기 · 옅은 칸 = 쓰기" : "");
+    `${sc === "model" ? MD.model + " 모델 전체" : layerLabel} · decode 1스텝 · 요청 ${d.B}개 · ${fmtTok(d.T)}` + (vw === "kind" ? " · 진한 칸 = 읽기 · 옅은 칸 = 쓰기" : "");
   const ref = Object.fromEntries(mdItems(mdDimsAt(1, 131072), sc).map(x => [x.id, x]));
   items.forEach(x => {   // 수명 · 성격 판정
     const r = ref[x.id], sel = r && r.rd < 0.9 * r.store;
@@ -798,7 +824,7 @@ function renderTraits() {
         .filter(s => s[0] > 0)
         .map(([v, w, x, what]) => {
           const c = x.color, bg = col ? `var(${col})` : (w ? colL(c) : colOf(c));
-          const pale = col ? cp : (w || c.endsWith("-l") || c === "yellow");   // 옅은 칸 · 노랑은 진한 글자
+          const pale = col ? cp : (w || isPale(c) || c === "yellow");   // 옅은 칸 · 노랑은 진한 글자
           const lab = v / tot >= 0.1 ? `<span style="color:var(${pale ? "--ink" : "--surface"})">${esc(x.name)}${w ? " 쓰기" : ""}<b>${fmtB(v)}</b></span>` : "";
           return `<div class="dp-seg" style="flex:${(1000 * v / gv).toFixed(4)} 1 0;background:${bg}" title="${esc(`${x.name} · ${what} ${fmtB(v)} · ${pct(v, tot)}`)}">${lab}</div>`;
         }).join("");
@@ -822,13 +848,13 @@ function renderTraits() {
   const sw = x => `<span title="${esc(x.note)}"><i style="background:${colOf(x.color)}"></i>${esc(x.name)}</span>`;
   const rows = groups.map(({ g, its }) => {
     const s = sum(its, x => x.store), r = sum(its, x => x.rd), w = sum(its, x => x.wr);
-    return `<tr><td><b>${GRP[g].label}</b><span class="sm">${GRP[g].sub}</span></td>
+    return `<tr><td><span class="gchip g-${g}">${GRP[g].label}</span><span class="sm">${GRP[g].sub}</span></td>
       <td><div class="dp-items">${its.map(sw).join("")}</div></td>
       <td class="nw">${GRP[g].life}</td><td>${reread[g][0]}<span class="sm">${esc(reread[g][1])}</span></td><td class="nw">${GRP[g].write}</td>
       <td class="num">${g === "tmp" ? "—" : `<b>${fmtB(s)}</b><span class="sm">${pct(s, totS)}</span>`}</td>
       <td class="num"><b>${fmtB(r + w)}</b><span class="sm">${pct(r + w, totM)}${w > 0 ? ` · 그중 쓰기 ${fmtB(w)}` : ""}</span></td></tr>`;
   });
-  rows.push(`<tr class="chip"><td><b>${GRP.chip.label}</b><span class="sm">${GRP.chip.sub}</span></td>
+  rows.push(`<tr class="chip"><td><span class="gchip g-chip">${GRP.chip.label}</span><span class="sm">${GRP.chip.sub}</span></td>
     <td><div class="dp-items">${chip.top.map(l => `<span><i class="dash"></i>${esc(l)}</span>`).join("")}</div></td>
     <td class="nw">${GRP.chip.life}</td><td>${reread.chip[0]}<span class="sm">${reread.chip[1]}</span></td><td class="nw">${GRP.chip.write}</td>
     <td class="num">—</td><td class="num"><b>0</b><span class="sm">칩 안에서 생기는 양 ${fmtB(chip.b)}</span></td></tr>`);
@@ -846,10 +872,11 @@ function update() { renderControls(); renderTraits(); renderSummary(); renderFlo
   document.getElementById("crumbs").innerHTML = (P.crumbs || []).map(c => `<span class="crumb">${esc(c)}</span>`).join("");
   document.getElementById("h1").textContent = LITE.doc_title || P.doc_title;
   document.getElementById("subtext").textContent = LITE.sub || "";
-  const links = [`<a class="main" href="${esc(base + P.file + ".html")}" target="_blank" rel="noopener">자세한 버전 →</a>`];
-  if (LITE.sibling) links.push(`<a href="${esc(base + LITE.sibling.file + "-lite.html")}" target="_blank" rel="noopener">${esc(LITE.sibling.label)} →</a>`);
-  document.getElementById("links").innerHTML = links.join("");
-  document.getElementById("foot").innerHTML = `${esc(M.name)} · 이론 하한 = max(바이트 ÷ ${M.hw.hbm_bw / 1e12} TB/s, FLOP ÷ 피크). 가정 · 검증 · 단계별 설명은 <a href="${esc(base + P.file + ".html")}" target="_blank" rel="noopener">자세한 버전</a>에 있다.`;
+  document.getElementById("links").innerHTML = LITE.sibling
+    ? `<a class="main" href="${esc(base + LITE.sibling.file + "-lite.html")}" target="_blank" rel="noopener">${esc(LITE.sibling.label)} →</a>` : "";
+  const chk = DATA.checks ? `(${DATA.checks.n}개 중 실패 ${DATA.checks.fail}개)` : "";
+  document.getElementById("assume").innerHTML = [...(P.scope || []), ...(P.verify || [])].map(s => `<li>${esc(s.replace("{checks}", chk))}</li>`).join("");
+  document.getElementById("foot").textContent = `${M.name} · 이론 하한 = max(바이트 ÷ ${M.hw.hbm_bw / 1e12} TB/s, FLOP ÷ 피크) · 해석과 결론은 보고서(report/)에 있음`;
   renderLegend();
   update();
 })();

@@ -197,9 +197,8 @@ def write_outputs(here, algo, mp, checks, bad, numbers_md):
     with open(os.path.join(here, "dataflow.json"), "w", encoding="utf-8") as f:
         f.write(js)
     page = algo["page"]
-    _emit("template.html", page["doc_title"], js, page["file"])                    # 자세한 버전
     lite = page.get("lite", {})
-    _emit("template-lite.html", lite.get("doc_title", page["doc_title"]), js, page["file"] + "-lite")   # 약식
+    _emit("template-lite.html", lite.get("doc_title", page["doc_title"]), js, page["file"] + "-lite")   # 약식 화면 (유일한 뷰어)
 
 
 def check_flops_expected(step, dims):

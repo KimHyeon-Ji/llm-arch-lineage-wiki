@@ -5,7 +5,7 @@
 1. 검증 : ref_decode.py를 실제 차원(T = 131,072)의 meta device로 실행해
            yaml의 텐서 shape 식과 GEMM FLOP 식이 실행 결과와 같은지 확인한다.
 2. 수치 : 커널별 HBM 읽기 · 쓰기 바이트, FLOP, 이론 하한 시간 → numbers.md
-3. 데이터: dataflow.json, ../../viewer/dsa-v32.html (공유용) · ../../viewer/artifact/dsa-v32.html
+3. 데이터: dataflow.json, ../../viewer/dsa-v32-lite.html (공유용) · ../../viewer/artifact/dsa-v32-lite.html
 """
 import os
 import sys

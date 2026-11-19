@@ -2,7 +2,7 @@
 
 Hybrid 모델의 linear attention 층. KV cache 대신 요청마다 고정 크기 state(head 48개 × 128 × 128)를 두고, 매 스텝 전부 읽고 다시 쓴다. 층 1개 · decode 1스텝.
 
-- 뷰어: [../../viewer/gdn-qwen36.html](../../viewer/gdn-qwen36.html) · [GitHub Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/gdn-qwen36.html) · [claude.ai](https://claude.ai/artifact/W2dGw8hpqSRW7Aj5JKPtz5)
+- 뷰어(약식): [../../viewer/gdn-qwen36-lite.html](../../viewer/gdn-qwen36-lite.html) · [GitHub Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/gdn-qwen36-lite.html) · [claude.ai](https://claude.ai/artifact/G5BhyqZ3qwNwHtNEAGHZ1f)
 - 수치: [numbers.md](numbers.md)
 
 ## 왜 Qwen3.6-27B 차원인가

@@ -4,7 +4,7 @@
 
 1. 검증 : ref_decode.py를 실제 차원의 meta device로 실행해 텐서 shape · GEMM FLOP 식을 확인한다.
 2. 수치 : 커널별 HBM 읽기 · 쓰기 · FLOP · 이론 하한 → numbers.md
-3. 데이터: dataflow.json, ../../viewer/gdn-qwen36.html (공유용) · ../../viewer/artifact/gdn-qwen36.html
+3. 데이터: dataflow.json, ../../viewer/gdn-qwen36-lite.html (공유용) · ../../viewer/artifact/gdn-qwen36-lite.html
 """
 import os
 import sys

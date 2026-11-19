@@ -172,31 +172,21 @@ phases:
   - {id: P4, focus: l8, label: "출력 읽기",   tag: "KV 대신 state", tag_style: outline, steps: [l8, l9], plain: "갱신한 state에 q를 곱해 출력을 읽고 gate로 정규화"}
   - {id: P5, focus: l10, label: "출력 투영",  tag: "공통 투영",    tag_style: plain,   steps: [l10], plain: "head 출력을 hidden 폭으로 되돌린다"}
 
+# 약식 화면 문구 (viewer/template-lite.html이 읽는다). scope · verify = 화면 맨 아래 '가정 · 검증' ({checks} = meta 실행 검사 결과)
 page:
   file: gdn-qwen36
-  start: l7
-  doc_title: Gated DeltaNet 데이터 플로우
-  lite:   # 약식 페이지 (viewer/template-lite.html)
+  doc_title: Gated DeltaNet 데이터 이동
+  lite:
     doc_title: Gated DeltaNet 데이터 이동
     sub: "Qwen3.6-27B · linear attention 층 1개 · 새 토큰 1개 생성(decode) · H200"
     sibling: {label: "DSA 약식", file: dsa-v32}
-  title: "Gated DeltaNet 데이터 플로우 — KV cache 대신 고정 크기 state를 읽고 다시 쓴다"
   crumbs: [Hybrid attention · linear 층, Qwen3.6-27B · Gated DeltaNet, 층 1개 · decode 1스텝]
-  sub: "Hybrid 모델의 linear attention 층 하나가 새 토큰 1개를 처리할 때 데이터가 HBM과 칩 사이를 어떻게 오가는지 커널 단위로 보여 준다. KV cache가 없고, 요청마다 고정 크기 state(head 48개 × 128 × 128)를 매 스텝 전부 읽고 다시 쓴다."
-  t_hint: linear 층은 T와 무관하다 — 길어져도 이동량이 그대로다
-  flow_note: "KV를 읽는 대신 ② 짧은 합성곱 ③ state 갱신 ④ state에서 출력 읽기 · 카드 위 색 막대 = 그 단계가 주로 읽는 데이터 · 누르면 아래 그림의 해당 단계로"
-  hl2: "같은 자리가 full attention 층이었다면 KV {B:B*T*n_kv_f*d_hf*2*2}를 {per}매 스텝 읽어야 한다(T = {N:T}{sum}). linear 층은 대신 {sw:state}<b>state {B:state_b*B*n_v*d_k*d_v}를 읽고 같은 양을 다시 쓴다</b> — T와 무관하다."
-  store: {expr: "B*n_lin*(state_b*n_v*d_k*d_v+2*C*(d_conv-1))", label: "48개 linear 층 state 보관"}
-  sweep_cap: "막대 = 층 1개의 HBM 읽기 + 쓰기. linear 층에는 T에 비례하는 데이터가 없어 막대가 모두 같다 — Hybrid가 긴 문맥에서 이득을 보는 이유다. 점선 오른쪽은 지원 길이 밖."
-  links:
-    - {label: "DSA (DeepSeek-V3.2)", url: "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32.html"}
   scope:
     - "Qwen3.6-27B 차원(value head 48 · key head 16 · 128 × 128, hidden 5,120)의 Gated DeltaNet 층 1개 · decode 1스텝. 잔차 · FFN · full attention 층 제외"
     - "기준 보고서의 Qwen3.8-Flash-Next와 state 크기(48 × 128 × 128 FP32 ≈ 층당 3.2 MB)가 같다. Qwen3.8 config는 로컬에 없어 hidden 폭 등은 Qwen3.6-27B 값"
     - "커널 묶음은 SGLang · vLLM의 Qwen3-Next / Qwen3.5 경로(in_proj GEMM → causal_conv1d_update → fused recurrent gated delta rule → gated RMSNorm → out_proj)를 대표로 단순화"
     - "가중치 BF16(배포 config dtype). state는 FP32(mamba_ssm_dtype) — BF16 버튼은 가정"
     - "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). state 감쇠 · 갱신 같은 원소별 · 행렬 × 벡터 연산은 CUDA core FP32 피크 67 TFLOPS 적용"
-    - "보관량 경고는 48개 linear 층의 state + conv state만 셈. 가중치 · full 층 KV는 빼서 실제 여유는 더 작다"
   verify:
     - "참조 구현 ref_decode.py(1스텝 recurrent · conv state 3칸) = HF Qwen3_5GatedDeltaNet(전체 시퀀스 chunk 방식) 출력 일치, 상대 오차 4e-6 수준"
     - "실제 차원 meta 실행으로 텐서 shape · GEMM FLOP 식 검사 {checks}"
