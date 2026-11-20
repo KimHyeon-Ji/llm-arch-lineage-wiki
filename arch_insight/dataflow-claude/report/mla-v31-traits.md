@@ -2,7 +2,7 @@
 
 모델별 보고서 ⓪ 기준선 · 2026.11 · 약식 화면 "데이터 성격 한눈에"를 요청 수 · 문맥 길이로 펼쳐 본 것
 
-<sub>기준: H200 (HBM 4.8 TB/s · L2 50 MB) · decode 1스텝 · FP8 가중치 · KV cache 1줄 656 B(V3.2와 같은 형식으로 맞춤) · 이론 하한. V3.2와 MoE · FFN · 차원이 같고 색인만 없는 비교 기준. **참조 구현 검증 없음** — config 값으로 세운 식(MLA 부분은 dsa-v32에서 검증한 식과 같음). 화면: [MLA 약식](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/mla-v31-lite.html) · 수치: [tools/traits.py](../tools/traits.py) · 그림: [make_traits_report.py](make_traits_report.py) · HW 대응: [기준 보고서](../../sparse-hybrid-hw-report-v2-refined.md) Ⅱ장</sub>
+<sub>기준: H200 (HBM 4.8 TB/s · L2 50 MB) · decode 1스텝 · FP8 가중치 · KV cache 1줄 656 B(V3.2와 같은 형식으로 맞춘 대조 조건 — 배포가 BF16 1,152 B면 요청 256개 · 128K에서 보관 · 읽기가 각각 약 1 TB 늘어남) · 이론 하한. 요청 256개 · 128K는 보관 2.02 TB로 H200 8장(1.13 TB)을 넘음 — 이동량은 같은 조건의 바이트 비교로만 읽음. V3.2와 MoE · FFN · 차원이 같고 색인만 없는 비교 기준. **참조 구현 검증 없음** — config 값으로 세운 식(MLA 부분은 dsa-v32에서 검증한 식과 같음). 화면: [MLA 약식](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/mla-v31-lite.html) · 수치: [tools/traits.py](../tools/traits.py) · 그림: [make_traits_report.py](make_traits_report.py) · HW 대응: [기준 보고서](../../sparse-hybrid-hw-report-v2-refined.md) Ⅱ장</sub>
 
 ---
 
@@ -16,10 +16,10 @@
 | **요청이 많을 때** | 가중치, 그다음 KV cache | MoE 가중치, 그다음 KV cache | KV cache |
 | **요청 · 문맥이 모두 클 때** | KV cache가 가중치보다 많아짐 | KV cache가 가중치보다 많아짐 | KV cache (거의 전부) |
 
-- **요청이 늘수록:** MoE 가중치와 함께 KV cache 읽기도 요청 수에 비례해 커짐 → 문맥 128K에서는 요청 128개부터 요청별 이동이 가중치 이동을 넘음
+- **요청이 늘수록:** MoE 가중치와 함께 KV cache 읽기도 요청 수에 비례해 커짐 → 문맥 128K에서는 요청 126개부터 요청별 이동이 가중치 이동을 넘음
 - **문맥이 길수록:** KV cache 보관과 읽기가 같은 비율로 커짐 — 보관한 만큼 매 스텝 읽음
 - **KV cache는 용량형이면서 대역폭형:** 보관 비중과 이동 비중이 거의 같음 → 한쪽만 늘려서는 해결되지 않음
-- **칩 안 값:** head 128개의 attention 점수를 칩 안에서 바로 줄이는 양이 attention 층 HBM 이동만큼 큼
+- **칩 안 값:** head 128개의 attention 점수를 칩 안에서 바로 줄이는 양(커널별 논리 크기 합)이 attention 층 HBM 이동만큼 큼
 - **비교 기준으로서:** 이 보고서의 KV 이동이 V3.2(DSA)에서 2,048줄 고정 읽기로 바뀌는 몫. 모델 간 비교는 종합 보고서에서
 - **HW 방향:** HBM 용량 · 대역폭과 KV 저정밀이 바로 효과. 계층형 KV는 매 스텝 전부 읽어 효과가 제한적 (각 절 끝 'HW로 발전시킬 포인트')
 
@@ -75,9 +75,9 @@
 
 ![DeepSeek-V3.1 수명별 보관 · 이동 — 모델 전체](figures/mla-t3-life-model.png)
 
-- **서비스 내내 가중치가 이동의 대부분이지만**, 문맥 128K · 요청 128개부터 요청 동안 남는 KV가 넘어섬
+- **서비스 내내 가중치가 이동의 대부분이지만**, 문맥 128K · 요청 126개부터 요청 동안 남는 KV가 넘어섬
 - **스텝 안 임시값은 작음:** 모델 전체 이동의 1.5% 이하
-- **칩 안에서만 생기는 값이 요청 · 문맥과 함께 커짐:** 요청 256개 · 128K에서 이동의 약 4분의 3 크기
+- **칩 안에서만 생기는 값이 요청 · 문맥과 함께 커짐:** 요청 256개 · 128K에서 이동의 약 4분의 3 크기 (커널별 논리 크기 합 — 타일로 나눠 계산하므로 동시 점유량은 이보다 훨씬 작음)
 
 ### 2.2 MLA 층 1개 — 칩 안 값이 HBM 이동만큼 커짐
 
@@ -87,8 +87,8 @@
 - **칩 안 값 ≈ HBM 이동:** 요청 32개 · 128K 1.1배, 요청 256개 · 128K 1.15배 — head 128개 점수를 블록마다 online softmax로 바로 줄임
 
 **HW로 발전시킬 포인트**
-- **한 스텝 뒤 재사용 데이터가 거의 전부:** SRAM을 늘려도 이동이 줄지 않음 → 대역폭으로 대응 — 이종 가속기 · PD 분리 (2.5: decode는 고대역 메모리 장치)
-- **MLA attention은 연산도 큼:** head 128개가 KV 1줄을 공유해 KV 1 B당 연산이 많음(약 420 FLOP/B) → 요청 1개에서도 연산 한계. attention을 메모리 근처로 옮기는 방향은 메모리 쪽 연산 성능 요구가 커서 맞지 않음
+- **한 스텝 뒤 재사용 데이터가 거의 전부:** 이 계산 범위에서는 SRAM을 늘려 줄일 수 있는 HBM 이동이 작음 → 대역폭으로 대응 — 이종 가속기 · PD 분리 (2.5: decode는 고대역 메모리 장치)
+- **MLA attention은 연산도 큼:** head 128개가 KV 1줄을 공유해 KV 1 B당 연산이 많음(약 420 FLOP/B) → 요청 1개에서도 연산 한계. attention을 메모리 근처로 옮기는 방향은 메모리 쪽 연산 성능 요구가 커서 불리함
 
 ---
 
@@ -96,11 +96,11 @@
 
 > **읽는 법:** 골라 읽는 데이터는 대부분 쉬고 있음 → 큰 용량에 두고 고른 것만 빠르게 가져오는 구조가 맞음. 매번 전부 읽는 데이터는 대역폭이 시간을 정함 → 대역폭을 늘리거나 메모리 근처에서 처리. 매 스텝 다시 쓰는 데이터는 쓰기 대역폭이나 메모리 안 갱신이 필요. read-only는 압축 · 복제 · 저정밀의 자유도가 큼
 
-### 3.1 모델 전체 — 골라 읽는 데이터는 MoE뿐, KV cache는 전부 읽는 요청별 데이터
+### 3.1 모델 전체 — 골라 읽는 데이터는 MoE와 임베딩 행뿐, KV cache는 전부 읽는 요청별 데이터
 
 ![DeepSeek-V3.1 데이터 성격별 보관 · 이동 — 모델 전체](figures/mla-t5-char-model.png)
 
-- **골라 읽는 데이터는 MoE expert뿐:** 요청이 늘면 이것도 사실상 전부 읽음
+- **골라 읽는 데이터는 MoE expert · 임베딩 행뿐:** MoE는 요청이 늘면 사실상 전부 읽음 (요청 256개에서 expert 기댓값 256개 중 255.9개). 임베딩은 토큰 B개의 행만 읽어 이동이 거의 없음
 - **KV cache는 '끝에 추가 · 전부 읽음':** 보관이 늘면 이동도 같은 만큼 늘어남
 - **매 스텝 전부 다시 쓰는 데이터는 없음**
 
@@ -124,4 +124,7 @@
 - **attention 블록:** [mla-v31/algo.yaml](../models/mla-v31/algo.yaml) · [map-gpu.yaml](../models/mla-v31/map-gpu.yaml). 흡수형 MLA + FlashMLA dense decode. split-KV 부분 출력은 넣지 않음
 - **모델 전체:** [model.yaml](../models/mla-v31/model.yaml). 61층 = dense FFN 3층 + MoE 58층(expert 256개 중 8개 + 공유 1개), FP8, LM head · 임베딩 BF16
 - **수명 · 성격 판정:** [dsa-v32-traits.md](dsa-v32-traits.md) 부록과 같은 규칙 · [tools/traits.py](../tools/traits.py)
+- **용량:** 요청 256개 · 128K 보관 2.02 TB → H200 141 GB 기준 최소 15장 (배치 가정 8장 초과). 화면의 시간은 전체 바이트 ÷ 합산 대역폭의 이상적 환산
+- **MoE 읽기:** 균등 · 독립 라우팅 기댓값 — 요청 32개에서 expert 163/256개 (쏠리면 8개까지 줄고, 겹치지 않으면 256개). EP · DP 복제는 반영 안 함
+- **형식:** KV 656 B는 V3.2와 맞춘 대조 조건. FP8 가중치의 블록 scale(가중치의 0.01% 미만)은 뺌
 - **제외:** MTP 층 · 잔차 · 정규화 값 · GPU 간 통신 · 가중치 복제

@@ -2,7 +2,7 @@
 
 모델별 보고서 ③ Hybrid (linear + full) · 2026.11 · 약식 화면 "데이터 성격 한눈에"를 요청 수 · 문맥 길이로 펼쳐 본 것
 
-<sub>기준: H200 (HBM 4.8 TB/s · L2 50 MB) · decode 1스텝 · 93층 = KDA 69 + MLA 24 · attention 가중치 BF16 · routed expert MXFP4 · KDA state FP32(가정) · MLA KV BF16 1,024 B/토큰/층 · 이론 하한. **참조 구현 검증 없음** — HuggingFace config 값 + 위키 02-linear-attention 2.3(KDA)으로 세운 식. 화면: [KDA 약식](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/kda-k3-lite.html) · 수치: [tools/traits.py](../tools/traits.py) · 그림: [make_traits_report.py](make_traits_report.py) · HW 대응: [기준 보고서](../../sparse-hybrid-hw-report-v2-refined.md) Ⅱ장</sub>
+<sub>기준: H200 (HBM 4.8 TB/s · L2 50 MB) · decode 1스텝 · 93층 = KDA 69 + MLA 24 · attention 가중치 BF16 · routed expert MXFP4 · KDA state FP32(가정 — vLLM은 BF16 경로도 있음) · MLA KV BF16 1,152 B/토큰/층(latent 512 + k_pe 64) · 이론 하한. **참조 구현 검증 없음** — HuggingFace config · 체크포인트 shape + 위키 02-linear-attention 2.3(KDA)으로 세운 식. 요청 256개 · 128K는 보관 2.60 TB로 H200 16장(2.26 TB)을 넘음 — 이동량은 같은 조건의 바이트 비교로만 읽음. 화면: [KDA 약식](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/kda-k3-lite.html) · 수치: [tools/traits.py](../tools/traits.py) · 그림: [make_traits_report.py](make_traits_report.py) · HW 대응: [기준 보고서](../../sparse-hybrid-hw-report-v2-refined.md) Ⅱ장</sub>
 
 ---
 
@@ -14,13 +14,13 @@
 |---|---|---|---|
 | **요청이 적을 때** | 가중치 (대부분 MXFP4 MoE expert) | attention 가중치(BF16)가 MoE보다 큼 | attention 가중치 |
 | **요청이 많을 때** | 가중치 | MoE 가중치, 그다음 MLA KV · attention 가중치 | attention 가중치, 그다음 state |
-| **요청 · 문맥이 모두 클 때** | 가중치, MLA KV가 3분의 1 | MoE 가중치, 그다음 MLA KV · KDA state | KDA state |
+| **요청 · 문맥이 모두 클 때** | 가중치, MLA KV가 3분의 1 이상 | MoE 가중치, 그다음 MLA KV · KDA state | KDA state |
 
 - **요청이 적을 때:** BF16 attention 가중치(약 72 GB)가 이동의 절반 — MoE는 MXFP4 expert 16개만 읽음
 - **요청이 늘수록:** MoE 읽기가 커지고, 요청 수에 비례하는 KDA state 읽기 · 쓰기가 붙음. state는 문맥 길이와 무관
 - **문맥이 길수록:** MLA 24층의 KV만 커짐 — KDA 층은 문맥이 길어져도 그대로
 - **KDA state는 다시 쓰는 데이터:** 보관은 작지만 매 스텝 전부 읽고 다시 써 이동 비중이 보관 비중의 약 2배
-- **칩 안 값 · 임시값은 작음:** state 갱신을 레지스터에서 한 번에 끝냄
+- **칩 안 값 · 임시값은 작음:** state 갱신을 레지스터에서 한 번에 끝냄 (KDA 층만 센 값)
 - **HW 방향:** attention 가중치 저정밀, state 갱신 PIM, MLA KV는 기준선과 같은 대응 (각 절 끝 'HW로 발전시킬 포인트')
 
 ---
@@ -37,7 +37,7 @@
 
 - **그래프 막대:** 왼쪽 = 보관(용량 요구), 오른쪽 = 스텝당 이동(대역폭 요구). 보관에서 크고 이동에서 작으면 용량형, 반대면 대역폭형
 - **조건:** 요청 1 · 32 · 256개 × 문맥 8K · 32K · 128K. 범위는 모델 전체(93층 + MoE · LM head) / KDA 층 1개
-- **골라 읽음:** 요청 1개 · 128K에서 스텝당 읽기가 보관의 90% 미만인 데이터 — MoE expert · 임베딩뿐. 요청별 데이터는 모두 전부 읽음
+- **골라 읽음:** 요청 1개 · 128K에서 스텝당 읽기가 보관의 90% 미만인 데이터 — MoE expert · 임베딩뿐. 요청별 데이터는 모두 전부 읽음. 기준 조건의 라벨이라 요청이 많으면 MoE도 대부분을 읽음 (화면 표에 지금 조건의 읽는 비율)
 
 ---
 
@@ -49,7 +49,7 @@
 
 - **요청 1개:** attention 가중치가 MoE보다 많이 옮겨짐 — attention은 BF16, routed expert는 MXFP4라서
 - **요청이 늘수록:** MoE가 이동의 대부분 (요청 32개 · 8K 86%)
-- **문맥 128K · 요청 256개:** MLA KV가 보관의 3분의 1 · 이동의 3분의 1, KDA state가 이동의 8.5%
+- **문맥 128K · 요청 256개:** MLA KV가 보관의 36% · 이동의 34%, KDA state가 이동의 8.2%
 - **KDA state 비중은 문맥이 짧을 때 가장 큼:** 요청 256개 · 8K에서 이동의 12% — KV가 작아 state가 상대적으로 커짐
 
 ### 1.2 KDA 층 1개 — 문맥과 무관하고, 요청이 늘수록 state가 층 이동을 차지
@@ -57,8 +57,8 @@
 ![Kimi K3 데이터 종류별 보관 · 이동 — KDA 층 1개](figures/k3-t2-kind-layer.png)
 
 - **KDA 층은 문맥과 무관:** 같은 요청 수의 막대 3개가 모두 같음
-- **요청이 늘수록 state가 층 이동을 차지:** 요청 1개 1% → 32개 31% → 256개 74%
-- **층 가중치가 커서(약 0.9 GB) state가 가중치를 넘는 시점이 늦음:** 요청 128개부터
+- **요청이 늘수록 state가 층 이동을 차지:** 요청 1개 1.4% → 32개 31% → 256개 74%
+- **층 가중치가 커서(약 0.9 GB) state가 가중치를 넘는 시점이 늦음:** 요청 69개부터
 
 **HW로 발전시킬 포인트**
 - **요청이 적을 때는 attention 가중치:** BF16 attention이 이동의 절반 → attention 가중치 저정밀이 바로 효과 (지금은 routed expert만 MXFP4)
@@ -75,19 +75,19 @@
 
 ![Kimi K3 수명별 보관 · 이동 — 모델 전체](figures/k3-t3-life-model.png)
 
-- **서비스 내내 가중치가 이동의 대부분:** 요청 256개 · 128K에서도 60% 안팎
+- **서비스 내내 가중치가 이동의 대부분:** 요청 256개 · 128K에서도 57%
 - **요청 동안 남는 데이터가 두 종류:** MLA KV는 문맥에 비례해 커지고, KDA state는 요청 수에만 비례
-- **칩 안 값은 작음:** 모델 전체 이동의 0.06배 이하
+- **칩 안 값은 작음:** 모델 전체 이동의 0.07배 이하 (커널별 논리 크기 합 · KDA 층만)
 
 ### 2.2 KDA 층 1개 — 요청이 늘면 이동이 서비스 내내 가중치에서 요청 동안 state로 넘어감
 
 ![Kimi K3 수명별 보관 · 이동 — KDA 층 1개](figures/k3-t4-life-layer.png)
 
 - **요청이 적을 때는 가중치, 많을 때는 state:** 요청 256개에서 state가 층 이동의 4분의 3
-- **스텝 안 임시값(3% 이하) · 칩 안 값 모두 작음:** state 블록을 레지스터에 올려 감쇠 · 읽기 · 기록 · 출력을 한 커널에서 끝냄
+- **스텝 안 임시값(3% 안팎) · 칩 안 값 모두 작음:** state 블록을 레지스터에 올려 감쇠 · 읽기 · 기록 · 출력을 한 커널에서 끝냄
 
 **HW로 발전시킬 포인트**
-- **state는 한 스텝 뒤에 다시 읽힘:** 칩 안 SRAM에 두려면 요청 수 × 층당 6.3 MB가 들어가야 함 — 요청 8개만 돼도 층 1개에 50 MB(L2 전체) → SRAM 상주는 어렵고 PIM이 현실적 (2.4의 선택 기준)
+- **state는 한 스텝 뒤에 다시 읽힘:** 칩 안 SRAM에 두려면 요청 수 × 층당 6.3 MB(FP32)가 들어가야 함 — 요청 8개면 층 1개에 50 MB(L2 전체), 69층이면 그 69배 → SRAM 상주는 요청 · 층 수에 비례해 어려워짐. 메모리 안 갱신(PIM)이 후보 (2.4의 선택 기준) — 이득은 감쇠 · rank-1 갱신을 메모리 쪽에서 감당할 수 있는지에 달림
 - **요청이 적을 때는 가중치 대역폭:** 이종 가속기 · PD 분리 (2.5)
 
 ---
@@ -101,15 +101,15 @@
 ![Kimi K3 데이터 성격별 보관 · 이동 — 모델 전체](figures/k3-t5-char-model.png)
 
 - **read-only · 골라 읽는 MoE가 보관 · 이동의 대부분**
-- **매 스텝 전부 다시 쓰는 데이터(KDA state · conv):** 보관은 1% 안팎인데 이동은 3 ~ 12%
+- **매 스텝 전부 다시 쓰는 데이터(KDA state · conv):** 요청 1개에서는 보관 · 이동 모두 1% 미만, 요청 256개에서는 보관 4 ~ 7% · 이동 8 ~ 13% — 이동 비중이 보관 비중의 약 2배
 - **MLA KV는 끝에 추가 · 전부 읽음:** 용량과 대역폭을 함께 씀
 - **골라 읽는 요청별 데이터는 없음**
 
-### 3.2 KDA 층 1개 — read-only 가중치와 매 스텝 다시 쓰는 state 두 종류뿐
+### 3.2 KDA 층 1개 — read-only 가중치와 매 스텝 다시 쓰는 state가 거의 전부
 
 ![Kimi K3 데이터 성격별 보관 · 이동 — KDA 층 1개](figures/k3-t6-char-layer.png)
 
-- **두 종류뿐:** read-only 가중치와 매 스텝 전부 다시 쓰는 state · conv
+- **거의 두 종류:** read-only 가중치와 매 스텝 전부 다시 쓰는 state · conv. 나머지는 커널 사이 임시값(3% 안팎)
 - **요청이 늘수록 다시 쓰는 데이터가 이동을 차지:** 요청 32개 32%, 256개 77%
 
 **HW로 발전시킬 포인트**
@@ -122,8 +122,10 @@
 
 ## 부록 — 계산 기준
 
-- **KDA 층:** [kda-k3/algo.yaml](../models/kda-k3/algo.yaml) · [map-gpu.yaml](../models/kda-k3/map-gpu.yaml). Gated DeltaNet 커널 구조에 채널별 감쇠(full-rank gate)를 넣음. 출력 gate low-rank · state FP32는 가정
-- **모델 전체:** [model.yaml](../models/kda-k3/model.yaml). MLA 24층(NoPE · 출력 gate · BF16)은 식. MoE 92층 = routed 896개 중 16개(latent 3,584 · 폭 3,072 · MXFP4) + shared 2개(BF16) + latent 투영, 첫 1층 dense FFN
+- **KDA 층:** [kda-k3/algo.yaml](../models/kda-k3/algo.yaml) · [map-gpu.yaml](../models/kda-k3/map-gpu.yaml). Gated DeltaNet 커널 구조에 채널별 감쇠를 넣음. 체크포인트 shape대로 감쇠 low-rank(f_a [128 × 7168] → f_b [12288 × 128]) · 출력 gate full-rank(g_proj [12288 × 7168]), conv · o_norm · 감쇠 파라미터 FP32. state FP32는 가정
+- **모델 전체:** [model.yaml](../models/kda-k3/model.yaml). MLA 24층(NoPE · 출력 gate · BF16)은 식 — 체크포인트에 64차원 k_pe 분기(q_b [18432 × 1536] · kv_a [576 × 7168])가 있어 KV도 576차원으로 셈. MoE 92층 = routed 896개 중 16개(latent 3,584 · 폭 3,072 · MXFP4) + shared 2개(BF16) + latent 투영, 첫 1층 dense FFN
 - **수명 · 성격 판정:** [dsa-v32-traits.md](dsa-v32-traits.md) 부록과 같은 규칙
 - **칩 안 값 · 임시값:** KDA 층만 셈 (MLA 층은 식이라 빠짐)
+- **용량:** 요청 256개 · 128K 보관 2.60 TB → H200 141 GB 기준 최소 19장 (배치 가정 16장 초과). 화면의 시간은 전체 바이트 ÷ 합산 대역폭의 이상적 환산
+- **MoE 읽기:** 균등 · 독립 라우팅 기댓값 — 요청 32개에서 expert 393/896개 (쏠리면 16개까지 줄고, 겹치지 않으면 512개). EP · DP 복제는 반영 안 함
 - **제외:** AttnRes(블록 residual) · MTP · 잔차 · 정규화 값 · GPU 간 통신
