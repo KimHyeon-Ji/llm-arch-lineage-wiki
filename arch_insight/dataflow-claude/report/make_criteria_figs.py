@@ -112,21 +112,77 @@ def box(f, x, y, w, h, head, tag=None, accent=NAVY):
         f.text(x + w - tw / 2 - 18, y + 38, tag, 14, "middle", 700, "#5b47b0")
 
 
-# ------------------------------------------------------------------ 기준 그림 — 분류만 눈에 띄게 (설명은 보고서 본문)
+# ------------------------------------------------------------------ 기준 그림 — 세 장 같은 양식: 분류 | 데이터 | HW 대응
 MCOL = {"mla-v31": "#4a5573", "dsa-v32": "#2a78d6", "csa-v4flash": "#6250d6", "kda-k3": "#1baf7a", "qsa-qwen38": "#eb6834"}
-KIND_COLS = [("공유 가중치", "요청 · 문맥과 무관", mr.GRAY),
-             ("요청별 · 크기 고정", "요청 수에 비례", mr.GREEN),
-             ("요청별 · 문맥에 비례", "요청 수 × 문맥 길이에 비례", mr.BLUE)]
+KIND_ROWS = [("w", "공유 가중치", "요청 · 문맥과 무관", mr.GRAY),
+             ("fx", "요청별 · 크기 고정", "요청 수에 비례", mr.GREEN),
+             ("ctx", "요청별 · 문맥에 비례", "요청 수 × 문맥 길이에 비례", mr.BLUE)]
 LIFE = [("svc", "서비스 내내"), ("req", "요청 동안"), ("step", "스텝 안"), ("kern", "커널 안")]
-CROWS = [("ro", "read-only", mr.GRAY), ("app", "끝에 추가", mr.BLUE), ("ring", "고정 크기 · 덮어씀", "#6250d6"),
-         ("rmw", "매 스텝 전부 다시 씀", mr.GREEN), ("tmp", "임시 (커널 사이)", mr.YELLOW)]
-TINT = {"ro_all": "#eeede9", "ro_sel": "#f6f6f3", "app_all": "#dde9fa", "app_sel": "#eef4fd",
-        "ring_all": "#e8e5f9", "rmw_all": "#dcf2ea", "tmp": "#fcf1d6"}
+LIFE_RULE = {"svc": "모든 요청이 공유", "req": "한 스텝 뒤에 다시 읽힘", "step": "다음 커널이 읽음", "kern": "같은 커널 안에서 끝남"}
+CHAR_ROWS = [("ro_all", "read-only", "전부 읽음"), ("ro_sel", "read-only", "골라 읽음"),
+             ("app_all", "끝에 추가", "전부 읽음"), ("app_sel", "끝에 추가", "골라 읽음"),
+             ("ring_all", "고정 크기 · 덮어씀", "전부 읽음"), ("rmw_all", "매 스텝 전부 다시 씀", "전부 읽음"),
+             ("tmp", "임시", "커널 사이")]
 LH = 34
+
+# 분류마다 대응되는 HW (제목, 보조, 기준 보고서 Ⅱ장 절) — 모델별로 다른 곳만 OVR
+HW = {
+    ("kind", "w"): ("가중치 대역폭 · 저정밀", "요청이 적을 때 이동의 대부분 · 요청이 많을수록 여러 요청이 나눠 읽음", None),
+    ("kind", "fx"): ("요청 수만큼 용량 · 쓰기 대역폭", "문맥과 무관 → 짧은 문맥 · 많은 요청에서 비중이 가장 큼", "2.4"),
+    ("kind", "ctx"): ("용량 — 큰 메모리 계층 · KV 압축", "요청 · 문맥이 함께 크면 가장 먼저 용량을 채움", "2.1"),
+    ("life", "svc"): ("HBM 상주 · GPU 여러 장에 나눠 둠", "쓰기 없음 → 저정밀 · 복제가 자유로움", None),
+    ("life", "req"): ("HBM 또는 그 아래 큰 메모리", "한 스텝 사이 모델 전체가 지나가 칩 안(L2 50 MiB)에 못 남음", "2.1"),
+    ("life", "step"): ("L2 · 커널 합치기", "HBM 왕복을 없앨 수 있는 몫", None),
+    ("life", "kern"): ("SMEM · 레지스터 — 이미 칩 안", "처리를 메모리 쪽으로 옮기면 이 값도 그쪽에서 만들고 줄여야 함", "2.3"),
+    ("char", "ro_all"): ("읽기 대역폭 · 저정밀", "쓰기가 없어 압축 · 복제 · 배치가 자유로움", None),
+    ("char", "ro_sel"): ("요청 수에 맞춘 배치", "요청이 적으면 일부 · 많으면 거의 전부 읽음", None),
+    ("char", "app_all"): ("읽기 대역폭 — 메모리 근처 처리", "보관이 작아도 매 스텝 전부 읽음 (대역폭형)", "2.2"),
+    ("char", "app_sel"): ("용량 — 큰 메모리 + 고른 것만 HBM", "보관은 크고 이동은 작음 (용량형)", "2.1"),
+    ("char", "ring_all"): ("작은 고정 버퍼 — 별도 대응 불필요", "문맥과 무관 · 크기 작음", None),
+    ("char", "rmw_all"): ("쓰기 대역폭 — 메모리 안 갱신", "읽은 만큼 다시 씀 · 문맥과 무관", "2.4"),
+    ("char", "tmp"): ("L2 · 커널 합치기", "다음 커널이 바로 읽음", None),
+}
+OVR = {
+    "mla-v31": {
+        ("kind", "ctx"): ("용량 + 대역폭 함께 — HBM · KV 저정밀", "보관한 만큼 매 스텝 읽음 → 아래 계층 메모리는 읽기 대역폭이 모자람", "2.5"),
+        ("life", "kern"): ("SMEM · 레지스터 — 이미 칩 안", "attention 점수 · 확률 — 연산 장치 안에서 끝냄", None),
+        ("char", "app_all"): ("용량 + 대역폭 함께 — HBM · KV 저정밀",
+                              "KV가 크고 매 스텝 전부 읽음 · attention 연산도 커서(KV 1 B당 약 420 FLOP) 메모리 근처로 옮기기 불리", "2.5"),
+    },
+    "dsa-v32": {
+        ("life", "kern"): ("SMEM · 레지스터 — 이미 칩 안", "색인 head별 점수 · 색인 처리를 옮기면 head 합 · top-k까지 함께 옮겨야 함", "2.3"),
+        ("char", "app_all"): ("읽기 대역폭 — 메모리 근처 선택", "색인 K cache: 보관은 작아도 매 스텝 전부 읽음 · 키 1 B당 약 124 FLOP", "2.2"),
+    },
+    "csa-v4flash": {
+        ("kind", "fx"): ("작은 고정 버퍼 — 별도 대응 불필요", "압축 때문에 생긴 최근 창 · 압축기 state", None),
+        ("kind", "ctx"): ("압축이 용량 문제를 먼저 줄임", "토큰당 바이트가 작아 큰 메모리 계층은 후순위", "2.1"),
+        ("char", "app_all"): ("읽기 대역폭 — 메모리 근처 선택", "색인 K는 형식에 민감 (FP8 132 B / MXFP4 68 B)", "2.2"),
+    },
+    "kda-k3": {
+        ("kind", "ctx"): ("용량 + 대역폭 함께 — 기준선과 같은 대응", "MLA KV(24층)를 매 스텝 전부 읽음", "2.5"),
+        ("life", "req"): ("HBM — 또는 메모리 안 갱신", "state는 한 스텝 뒤에 다시 읽고 다시 씀 → 칩 안에 못 남음", "2.4"),
+        ("char", "app_all"): ("용량 + 대역폭 함께 — 기준선과 같은 대응", "MLA KV를 매 스텝 전부 읽음", "2.5"),
+        ("char", "rmw_all"): ("쓰기 대역폭 — 메모리 안 갱신", "이득은 감쇠 · rank-1 갱신을 메모리 쪽이 감당하는지에 달림", "2.4"),
+    },
+    "qsa-qwen38": {
+        ("char", "app_all"): ("읽기 대역폭 — 메모리 근처 선택", "블록 키: 키 1 B당 약 4 FLOP — 메모리 쪽 연산 요구가 작음", "2.2"),
+        ("char", "app_sel"): ("용량 — 큰 메모리 + 고른 블록만 HBM", "블록(4줄 연속) 단위라 전송이 덜 흩어짐", "2.1"),
+    },
+}
+# 이 모델에서 중요한 분류 (보고서 '이걸로 알 수 있는 것'이 짚는 칸) — HW 칸을 보라로 강조
+HL = {
+    "mla-v31": {"kind": {"ctx"}, "life": {"svc", "req"}, "char": {"app_all"}},
+    "dsa-v32": {"kind": {"ctx"}, "life": {"kern"}, "char": {"app_all", "app_sel"}},
+    "csa-v4flash": {"kind": {"ctx", "fx"}, "life": {"svc"}, "char": {"app_all", "app_sel", "ring_all"}},
+    "kda-k3": {"kind": {"fx", "ctx"}, "life": {"req"}, "char": {"rmw_all", "app_all"}},
+    "qsa-qwen38": {"kind": {"ctx"}, "life": {"step", "kern"}, "char": {"app_sel", "app_all", "rmw_all"}},
+    "_synth": {"kind": {"fx", "ctx"}, "life": {"req"}, "char": {"app_all", "app_sel", "rmw_all"}},
+}
+HL_FILL, HL_LINE, PILL = "#f3f1fc", "#7b61c9", "#7b61c9"
 
 
 def cell_of(ch):
-    """traits 성격 키 → 격자 칸 키 (덮어씀 · 다시 씀은 '전부 읽음' 칸)."""
+    """traits 성격 키 → 행 키 (덮어씀 · 다시 씀은 '전부 읽음' 행)."""
     return {"ring": "ring_all", "rmw": "rmw_all"}.get(ch, ch)
 
 
@@ -142,89 +198,91 @@ def head(f, ttl):
     f.text(40, 56, ttl, 28, weight=800)
 
 
-def kind_fig(name, ttl, cols):
-    GAP = 28
-    CW = (W - 80 - 2 * GAP) / 3
-    BH = 140 + max(fh(c, CW - 56) for c in cols) + 34
-    TOP = 100
-    f = mr.Fig(name, W, TOP + BH + 40)
-    head(f, ttl)
-    for i, (t, tag, acc) in enumerate(KIND_COLS):
-        x = 40 + i * (CW + GAP)
-        f.rect(x, TOP, CW, BH, BOXF, LINE, 16, 1.2)
-        f.rect(x, TOP, CW, 12, acc, "none", 6)
-        f.text(x + 28, TOP + 62, t, 26, weight=800)
-        f.text(x + 28, TOP + 96, tag, 16, weight=700, color=acc if acc != mr.GRAY else MUTED)
-        if cols[i]:
-            flow(f, x + 28, TOP + 146, CW - 56, cols[i], LH)
-        else:
-            f.text(x + 28, TOP + 146, "없음", 16, color=IDLE, weight=700)
-    mr.save(f)
+XL, WL = 40, 330
+XD, WD = 386, 600
+XH = 1030
+WH = W - 40 - XH
 
 
-def life_fig(name, ttl, lanes):
-    LW, GAPX = 300, 20
-    X2 = 40 + LW + GAPX
-    DW = W - 40 - X2 - 56
-    RH = {k: max(78, fh(lanes.get(k), DW) + 50) for k, _ in LIFE}
-    TOP = 104
-    H = TOP + 2 * 50 + sum(RH[k] + 12 for k, _ in LIFE) + 30
-    f = mr.Fig(name, W, H)
-    head(f, ttl)
-    y = TOP
-    for gi, (keys, g) in enumerate(((("svc", "req"), "HBM에 남음 — 한 스텝 뒤에 다시 읽힘"),
-                                    (("step", "kern"), "칩 안에서 끝남 — 같은 스텝 · 같은 커널 안에서 다시 읽힘"))):
-        f.text(40, y + 32, g, 19, weight=800, color=NAVY if gi == 0 else "#1b8a62")
-        y += 50
-        for k, nm in LIFE:
-            if k not in keys:
-                continue
-            h = RH[k]
-            dark = k in ("svc", "req")
-            f.rect(40, y, LW, h, mt.LIFE_COL[k], LINE if k == "kern" else "none", 12, 1)
-            f.text(40 + 26, y + h / 2 + 9, nm, 24, weight=800, color="#ffffff" if dark else INK)
-            f.rect(X2, y, W - 40 - X2, h, "#ffffff", LINE, 12, 1.2)
-            ch = lanes.get(k)
-            if ch:
-                flow(f, X2 + 28, y + (h - fh(ch, DW)) / 2 + 6, DW, ch, LH)
-            else:
-                f.text(X2 + 28, y + h / 2 + 6, "없음", 16, color=IDLE, weight=700)
-            y += h + 12
-    mr.save(f)
+def hw_of(mid, crit, k):
+    return OVR.get(mid, {}).get((crit, k), HW[(crit, k)])
 
 
-def char_fig(name, ttl, cells):
-    LW, G = 330, 16
-    CW = (W - 80 - LW - 2 * G) / 2
-    xs = [40 + LW + G, 40 + LW + G + CW + G]
-    rows = [r for r in CROWS if any(cells.get(k) for k in ([r[0]] if r[0] == "tmp" else [f"{r[0]}_all", f"{r[0]}_sel"]))]
+def crit_fig(name, ttl, rows, dhead="이 모델의 데이터"):
+    """행 = 분류 하나: [분류 · 규칙] [데이터 칩] → [HW 대응 · Ⅱ장 절]. 빈 분류도 흐리게 남겨 모델끼리 같은 줄에 맞춤."""
+    def hw_lines(r):
+        h1, h2, sec = r["hw"]
+        tw = WH - 52 - (mr.text_w(SECS[sec], 13) + 44 if sec else 0)
+        return wrap(h1, 17, tw), wrap(h2, 14, tw) if h2 else []
     def rh(r):
-        if r[0] == "tmp":
-            return max(78, fh(cells.get("tmp"), W - 40 - xs[0] - 56) + 50)
-        return max(78, max(fh(cells.get(f"{r[0]}_{c}"), CW - 56) for c in ("all", "sel")) + 50)
-    TOP = 160
+        if not r["chips"]:
+            return 72
+        a, b = hw_lines(r)
+        return max(88, fh(r["chips"], WD - 56) + 54, 26 * len(a) + 21 * len(b) + 40)
+    TOP = 150
     f = mr.Fig(name, W, TOP + sum(rh(r) + 12 for r in rows) + 30)
     head(f, ttl)
-    for x, t in zip(xs, ("전부 읽음", "골라 읽음")):
-        f.text(x + 4, TOP - 26, t, 24, weight=800)
-    f.text(40, TOP - 26, "쓰기 방식 ↓   읽기 방식 →", 15, weight=700, color=MUTED)
+    for x, t in ((XL, "분류"), (XD, dhead), (XH, "HW 대응")):
+        f.text(x + 4, TOP - 22, t, 17, weight=800, color=MUTED)
+    who = "이 모델에서" if dhead == "이 모델의 데이터" else "모델 비교에서"
+    f.text(W - 40, TOP - 22, f"보라 칸 = {who} 짚는 분류 · 오른쪽 끝 = 기준 보고서 Ⅱ장 절" if any(r.get("hl") for r in rows)
+           else "오른쪽 끝 = 기준 보고서 Ⅱ장 절", 14, "end", 600, MUTED)
     y = TOP
-    for wk, wn, acc in rows:
-        h = rh((wk,))
-        f.rect(40, y, LW, h, "#ffffff", LINE, 12, 1.2)
-        f.rect(40, y, 10, h, acc, "none", 4)
-        f.text(40 + 30, y + h / 2 + 8, wn, 21, weight=800)
-        keys = ["tmp"] if wk == "tmp" else [f"{wk}_all", f"{wk}_sel"]
-        widths = [W - 40 - xs[0]] if wk == "tmp" else [CW, CW]
-        for k, x, w in zip(keys, xs, widths):
-            ch = cells.get(k)
-            if k in ("ring_sel", "rmw_sel"):
-                continue
-            f.rect(x, y, w, h, TINT[k] if ch else "#fbfbfc", LINE if ch else "#eef0f5", 12, 1.2)
-            if ch:
-                flow(f, x + 28, y + (h - fh(ch, w - 56)) / 2 + 6, w - 56, ch, LH)
+    for r in rows:
+        h = rh(r)
+        on = bool(r["chips"])
+        hl = on and r.get("hl")
+        # 분류
+        f.rect(XL, y, WL, h, "#ffffff", LINE, 12, 1.2)
+        f.rect(XL, y, 10, h, r["acc"] if on else "#eceef3", LINE if r["acc"] in ("#e1e7f5", mr.LMH) else "none", 4, 1)
+        f.text(XL + 30, y + h / 2 - 3, r["label"], 21, weight=800, color=INK if on else IDLE)
+        f.text(XL + 30, y + h / 2 + 23, r["rule"], 15, weight=700, color=MUTED if on else IDLE)
+        # 데이터
+        f.rect(XD, y, WD, h, BOXF if on else "#fbfbfc", LINE if on else "#eef0f5", 12, 1.2)
+        if on:
+            flow(f, XD + 28, y + (h - fh(r["chips"], WD - 56)) / 2 + 6, WD - 56, r["chips"], LH)
+        else:
+            f.text(XD + 28, y + h / 2 + 6, "없음", 16, color=IDLE, weight=700)
+        # HW
+        a, b = hw_lines(r)
+        f.rect(XH, y, WH, h, HL_FILL if hl else ("#ffffff" if on else "#fbfbfc"),
+               HL_LINE if hl else (LINE if on else "#eef0f5"), 12, 2 if hl else 1.2)
+        if on:
+            arrow(f, XD + WD + 8, XH - 8, y + h / 2, HL_LINE if hl else IDLE)
+        yy = y + (h - (26 * len(a) + 21 * len(b))) / 2 + 18
+        for ln in a:
+            f.text(XH + 26, yy, ln, 17, weight=800 if hl else 700, color=INK if on else IDLE)
+            yy += 26
+        for ln in b:
+            f.text(XH + 26, yy - 3, ln, 14, color=MUTED if on else IDLE)
+            yy += 21
+        sec = r["hw"][2]
+        if sec:
+            tag = SECS[sec]
+            pw = mr.text_w(tag, 13) + 20
+            px = XH + WH - 22 - pw
+            f.rect(px, y + h / 2 - 13, pw, 26, (PILL if hl else "#a99bd8") if on else "#e4e5ea", "none", 13)
+            f.text(px + pw / 2, y + h / 2 + 5, tag, 13, "middle", 700, "#ffffff")
         y += h + 12
     mr.save(f)
+
+
+def kind_fig(name, ttl, cols, mid=None, dhead="이 모델의 데이터"):
+    hl = HL.get(mid, {}).get("kind", set())
+    crit_fig(name, ttl, [dict(label=lab, rule=rule, acc=acc, chips=ch, hw=hw_of(mid, "kind", k), hl=k in hl)
+                         for (k, lab, rule, acc), ch in zip(KIND_ROWS, cols)], dhead)
+
+
+def life_fig(name, ttl, lanes, mid=None, dhead="이 모델의 데이터"):
+    hl = HL.get(mid, {}).get("life", set())
+    crit_fig(name, ttl, [dict(label=nm, rule=LIFE_RULE[k], acc=mt.LIFE_COL[k], chips=lanes.get(k), hw=hw_of(mid, "life", k),
+                              hl=k in hl) for k, nm in LIFE], dhead)
+
+
+def char_fig(name, ttl, cells, mid=None, dhead="이 모델의 데이터"):
+    hl = HL.get(mid, {}).get("char", set())
+    crit_fig(name, ttl, [dict(label=wn, rule=rn, acc=char_col(k), chips=cells.get(k), hw=hw_of(mid, "char", k), hl=k in hl)
+                         for k, wn, rn in CHAR_ROWS], dhead)
 
 
 def fig_kind(mid):
@@ -236,7 +294,7 @@ def fig_kind(mid):
     kind_fig(f"{mt.PREFIX[mid]}-c1-kind", f"{M['model']['model']} — 데이터 종류",
              [[(col(r["color"]), r["name"], fsize(r["store"])) for r in ws],
               [(col(r["color"]), r["name"], f"요청당 {fsize(r['req'])}") for r in fx],
-              [(col(r["color"]), r["name"], f"토큰당 {fsize(r['tok'])}") for r in tk]])
+              [(col(r["color"]), r["name"], f"토큰당 {fsize(r['tok'])}") for r in tk]], mid)
 
 
 def fig_life(mid):
@@ -246,7 +304,7 @@ def fig_life(mid):
     for r in sorted(rows, key=lambda r: -r["store"]):
         lanes.setdefault(r["life"], []).append((col(r["color"]), r["name"], None))
     lanes["kern"] = [(None, x[0], None, True) for x in tr.chip(M, *REF, "layer")["top"][:5]]
-    life_fig(f"{mt.PREFIX[mid]}-c2-life", f"{M['model']['model']} — 데이터 수명", lanes)
+    life_fig(f"{mt.PREFIX[mid]}-c2-life", f"{M['model']['model']} — 데이터 수명", lanes, mid)
 
 
 def fig_char(mid):
@@ -254,11 +312,11 @@ def fig_char(mid):
     cells = {}
     for r in sorted(items_of(M), key=lambda r: -r["store"]):
         cells.setdefault(cell_of(r["char"]), []).append((col(r["color"]), r["name"], None))
-    char_fig(f"{mt.PREFIX[mid]}-c3-char", f"{M['model']['model']} — 데이터 성격", cells)
+    char_fig(f"{mt.PREFIX[mid]}-c3-char", f"{M['model']['model']} — 데이터 성격", cells, mid)
 
 
 def fig_char_map():
-    """전체 모델 성격 지도 — 칸마다 어느 모델의 어떤 데이터가 있나. 가중치 칸은 전 모델 공통으로 한 줄."""
+    """전체 모델 성격 지도 — 행마다 어느 모델의 어떤 데이터가 있나. 가중치 행은 전 모델 공통으로 한 줄."""
     cells = {"ro_all": [(mr.GRAY, "전 모델", "attention · LM head 가중치")],
              "ro_sel": [(mr.GRAY_L, "전 모델", "MoE expert · 임베딩")],
              "tmp": [(mr.YELLOW, "전 모델", "q · 점수 · 선택 위치 등")]}
@@ -269,7 +327,7 @@ def fig_char_map():
                 per.setdefault(cell_of(r["char"]), []).append(r["group"])
         for k, gs in per.items():
             cells.setdefault(k, []).append((MCOL[mid], TAG[mid], " · ".join(dict.fromkeys(gs))))
-    char_fig("synth-c3-char-map", "모델 5개 — 데이터 성격", cells)
+    char_fig("synth-c3-char-map", "모델 5개 — 데이터 성격", cells, "_synth", "모델별 데이터")
 
 
 # ------------------------------------------------------------------ 정리 — 특성 → 인사이트 → HW
@@ -355,9 +413,9 @@ def tb(f, x, y, w, t1, t2, s1=17, s2=14):
     return y
 
 
-def arrow(f, x1, x2, y):
-    f.line(x1, y, x2 - 8, y, NAVY, 2.4)
-    f.raw(f'<path d="M{x2 - 10:.1f},{y - 7:.1f} L{x2:.1f},{y:.1f} L{x2 - 10:.1f},{y + 7:.1f} Z" fill="{NAVY}"/>')
+def arrow(f, x1, x2, y, c=NAVY):
+    f.line(x1, y, x2 - 8, y, c, 2.4)
+    f.raw(f'<path d="M{x2 - 10:.1f},{y - 7:.1f} L{x2:.1f},{y:.1f} L{x2 - 10:.1f},{y + 7:.1f} Z" fill="{c}"/>')
 
 
 def fig_summary(mid):

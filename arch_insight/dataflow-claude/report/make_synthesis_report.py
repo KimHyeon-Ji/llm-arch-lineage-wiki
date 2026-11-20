@@ -108,7 +108,7 @@ def fig_kind_map():
             cols[1].append((MCOL[mid], TAG[mid], f"{' · '.join(dict.fromkeys(r['group'] for r in fx))} · 요청당 {cf.fsize(sum(r['req'] for r in fx))}"))
         if tk:
             cols[2].append((MCOL[mid], TAG[mid], f"{' · '.join(dict.fromkeys(r['group'] for r in tk))} · 토큰당 {cf.fsize(sum(r['tok'] for r in tk))}"))
-    cf.kind_fig("synth-c1-kind-map", "모델 5개 — 데이터 종류", cols)
+    cf.kind_fig("synth-c1-kind-map", "모델 5개 — 데이터 종류", cols, "_synth", "모델별 데이터")
 
 
 def fig_life_map():
@@ -120,7 +120,7 @@ def fig_life_map():
         rows = cf.items_of(M_(mid))
         gs = [r["group"] for r in sorted(rows, key=lambda r: -r["store"]) if r["life"] == "req"]
         lanes["req"].append((MCOL[mid], TAG[mid], " · ".join(dict.fromkeys(gs))))
-    cf.life_fig("synth-c2-life-map", "모델 5개 — 데이터 수명", lanes)
+    cf.life_fig("synth-c2-life-map", "모델 5개 — 데이터 수명", lanes, "_synth", "모델별 데이터")
 
 
 # ------------------------------------------------------------------ s1 요청 1개: 보관 vs 이동
