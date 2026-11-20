@@ -3,6 +3,7 @@
   python report/make_synthesis_report.py            그림 생성
   python report/make_synthesis_report.py print      본문 수치 출력
 
+synth-h1-heat       한눈에 — 기준선(V3.1) 대비 변화 히트맵 (지표 7개 × 모델 5개)
 synth-c1-kind-map   기준 1 — 요청별 데이터가 무엇에 비례해 커지나 (모델별)
 synth-c2-life-map   기준 2 — 수명별로 모델의 데이터가 어디에 있나
 (synth-c3-char-map  기준 3 — make_criteria_figs.py)
@@ -314,6 +315,116 @@ def fig_cross():
     mr.save(f)
 
 
+# ------------------------------------------------------------------ h1 한눈에 — 기준선(V3.1) 대비 변화
+KTYPE = {"mla-v31": "full · MLA (기준선)", "dsa-v32": "sparse · DSA", "csa-v4flash": "sparse + 압축 · CSA · HCA",
+         "kda-k3": "hybrid · KDA + MLA", "qsa-qwen38": "hybrid · GDN + QSA"}
+DOWN = ["#e6eaf3", "#c8d1e6", "#a3b2d6"]   # 기준선보다 부담이 줄어듦 (옅음 → 진함)
+UP = ["#f8e4e6", "#f0c4ca", "#e59ca6"]     # 기준선보다 부담이 늘어남
+NEU = "#f2f3f6"
+
+
+def gname(mid, k):
+    return {"kv": "MLA KV" if mid == "kda-k3" else "KV", "idx": "블록 키" if mid == "qsa-qwen38" else "색인 키",
+            "state": "state", "ring": "창 · 압축기"}[k]
+
+
+def heat_data():
+    out = {}
+    for mid in MODELS:
+        g, g8 = per_req(mid, 131072), per_req(mid, 8192)
+        S, R, Wr = (sum(v[i] for v in g.values()) for i in range(3))
+        mv, mv8 = R + Wr, sum(v[1] + v[2] for v in g8.values())
+        d32 = life_move(mid, 32, 131072)
+        comp = sorted(((k, (v[1] + v[2]) / mv) for k, v in g.items()), key=lambda x: -x[1])
+        out[mid] = dict(S=S, mv=mv, rr=R / S, gr=mv / mv8, sh=d32.get("req", 0) / sum(d32.values()),
+                        cs=cross_store(mid), cm=cross_move(mid), comp=comp, rmw=Wr > 0.01 * mv)
+    return out
+
+
+def lvl(r):
+    a = abs(math.log10(r))
+    n = 0 if a < 0.04 else 1 if a < 0.3 else 2 if a < 0.8 else 3
+    return n if r > 1 else -n
+
+
+def fig_heat():
+    D, b = heat_data(), heat_data()["mla-v31"]
+    def mult(v, v0):
+        r = v / v0
+        return f"×{r:.2f}" if r >= 0.1 else f"×{r:.3f}"
+    def cross_sub(d):
+        q = d["cm"] / d["cs"]
+        return "보관 · 이동 함께 역전" if 0.8 < q < 1.25 else f"보관이 {q:.1f}배 먼저"
+    def comp_txt(mid, d):
+        return " · ".join(f"{gname(mid, k)} {p:.0%}" for k, p in d["comp"] if p >= 0.15)
+    ROWS = [
+        ("요청당 보관", "128K · 요청 1개 · 전 층 합 (용량)",
+         lambda m, d: (cf.fsize(d["S"]), "") if m == "mla-v31" else (mult(d["S"], b["S"]), cf.fsize(d["S"])),
+         lambda m, d: lvl(d["S"] / b["S"])),
+        ("요청당 이동", "128K · 스텝당 읽기 + 쓰기 (대역폭)",
+         lambda m, d: (cf.fsize(d["mv"]), "") if m == "mla-v31" else (mult(d["mv"], b["mv"]), cf.fsize(d["mv"])),
+         lambda m, d: lvl(d["mv"] / b["mv"])),
+        ("읽는 비율", "스텝당 읽기 ÷ 보관 — 선택의 효과",
+         lambda m, d: (f"{d['rr']:.0%}", "+ state 다시 쓰기" if d["rmw"] else ""),
+         lambda m, d: lvl(d["rr"] / b["rr"])),
+        ("문맥 8K → 128K 이동 증가", "16배 = 문맥에 그대로 비례",
+         lambda m, d: (f"{d['gr']:.1f}배", ""), lambda m, d: lvl(d["gr"] / b["gr"])),
+        ("요청별 이동의 몫", "요청 32개 · 128K 모델 전체 이동 중",
+         lambda m, d: (f"{d['sh']:.1%}" if d["sh"] < 0.1 else f"{d['sh']:.0%}", ""), lambda m, d: lvl(d["sh"] / b["sh"])),
+        ("역전점 — 보관 / 이동", "128K · 요청별 데이터 > 가중치가 되는 요청 수",
+         lambda m, d: (f"{d['cs']:,} / {d['cm']:,}", cross_sub(d)), lambda m, d: lvl(b["cs"] / d["cs"])),
+        ("남는 요청별 이동의 주성분", "128K · 요청 1개 이동의 구성",
+         lambda m, d: (comp_txt(m, d), ""), lambda m, d: 0),
+    ]
+    LX, X0, TOP, RH = 40, 560, 236, 92
+    CW = (W - 40 - X0) / len(MODELS)
+    f = mr.Fig("synth-h1-heat", W, TOP + len(ROWS) * RH + 190)
+    mr.title(f, "한눈에 — 기준선(V3.1 · full) 대비 sparse · hybrid의 변화",
+             "decode 1스텝 · 요청별 데이터 = KV · 색인 키 · state 등 요청 동안 남는 것 · ×는 V3.1을 1로 놓은 배수")
+    # 범례
+    x = 40
+    f.text(x, 132, "칸 색 = 기준선 대비", 15, weight=700, color=mr.MUTED)
+    x += 170
+    for lab, cs in (("부담이 줄어듦", DOWN), ("부담이 늘어남", UP)):
+        for c in cs:
+            f.rect(x, 117, 22, 20, c, "none", 4)
+            x += 26
+        f.text(x + 6, 132, lab, 15, color=mr.MUTED)
+        x += 6 + mr.text_w(lab, 15) + 36
+    f.text(x, 132, "진할수록 차이가 큼 · 역전점은 보관 역전 기준 (장미색 = 용량이 더 일찍 막힘)", 14, color=mr.MUTED)
+    # 머리 — 모델
+    for i, mid in enumerate(MODELS):
+        cx = X0 + CW * i
+        f.rect(cx + 6, TOP - 64, CW - 12, 52, "#ffffff", mr.GRID, 10, 1.2)
+        f.rect(cx + 6, TOP - 64, CW - 12, 6, MCOL[mid], "none", 3)
+        f.text(cx + CW / 2, TOP - 34, TAG[mid], 19, "middle", 800, MCOL[mid])
+        f.text(cx + CW / 2, TOP - 16, KTYPE[mid], 12.5, "middle", color=mr.MUTED)
+    y = TOP
+    for ti, (t1, t2, val, lev) in enumerate(ROWS):
+        f.text(LX, y + RH / 2 - 4, t1, 18, weight=800)
+        f.text(LX, y + RH / 2 + 20, t2, 13.5, color=mr.MUTED)
+        for i, mid in enumerate(MODELS):
+            cx, d = X0 + CW * i, D[mid]
+            n = 0 if mid == "mla-v31" else lev(mid, d)
+            fill = NEU if n == 0 else (UP if n > 0 else DOWN)[abs(n) - 1]
+            f.rect(cx + 6, y + 6, CW - 12, RH - 12, fill, "#ffffff" if mid != "mla-v31" else mr.GRID, 10, 1.2)
+            main, sub = val(mid, d)
+            if ti == len(ROWS) - 1:   # 주성분 — 글자 줄바꿈
+                ls = cf.wrap(main, 15, CW - 36)
+                y0 = y + RH / 2 - (len(ls) - 1) * 11 + 5
+                for j, l in enumerate(ls):
+                    f.text(cx + CW / 2, y0 + j * 22, l, 15, "middle", 700)
+            else:
+                f.text(cx + CW / 2, y + RH / 2 + (2 if not sub else -4), main, 21, "middle", 800)
+                if sub:
+                    f.text(cx + CW / 2, y + RH / 2 + 22, sub, 13, "middle", color=mr.MUTED)
+        y += RH
+    f.line(X0 + CW - 2, TOP - 70, X0 + CW - 2, y, mr.AXIS, 1.4)
+    mr.takeaway(f, y + 60, "요청당 이동은 sparse에서 5 ~ 45분의 1로 줄지만 보관은 그대로이거나 늘어남 — 줄어든 자리에 색인 키(sparse)와 state(hybrid)가 남음",
+                "압축(V4)만 보관 · 이동이 함께 10분의 1 아래 · K3는 MLA KV를 전부 읽어 기준선에 가까움 · 모델 크기가 달라 배수에는 층 수 · 폭 차이도 섞임 (아래 정규화 표)")
+    mr.save(f)
+
+
 # ------------------------------------------------------------------ 정리
 SUM_ROWS = [
     ("full KV (V3.1)", "blue", "app_all", "끝에 추가 · 전부 읽음 — 토큰당 40 KB, 요청 × 문맥에 비례",
@@ -394,7 +505,10 @@ def show():
 if __name__ == "__main__":
     if sys.argv[1:] == ["print"]:
         show()
+    elif sys.argv[1:] == ["heat"]:
+        fig_heat()
     else:
+        fig_heat()
         fig_kind_map()
         fig_life_map()
         fig_per_req()
