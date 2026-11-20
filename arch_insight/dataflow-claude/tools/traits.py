@@ -7,9 +7,12 @@
 판정 규칙 (값에서 판정, 손으로 적지 않음)
 - 수명: 커널 사이 나머지 = 스텝 안 · 스텝당 쓰기 0 = 서비스 내내(가중치) · 그 밖 = 요청 동안(cache · state)
         on_chip 중 HBM 이동이 아닌 값 = 커널 안 (HBM 밖 — 따로 셈)
-- 성격: 쓰기 0 = read-only · 보관만큼 쓰면 전부 다시 씀 · 그 밖 = 끝에 추가 · 커널 사이 = 임시
+- 성격: 쓰기 0 = read-only · 보관만큼 쓰면 전부 다시 씀 · model.yaml mode: ring = 고정 크기 · 덮어씀(ring buffer)
+        · 그 밖 = 끝에 추가 · 커널 사이 = 임시
         read-only · 끝에 추가는 다시 '전부 읽음 / 골라 읽음'으로 나눔:
-        요청 1개 · 128K에서 스텝당 읽기 < 보관 × 0.9 이면 골라 읽음 (MoE expert · sparse KV · 임베딩)
+        요청 1개 · 128K에서 스텝당 읽기 < 보관 × 0.9 이면 골라 읽음 (MoE expert · sparse KV · 임베딩) — 기준 조건의 라벨
+- 쓰기는 여러 스텝 평균 (압축 엔트리 · 블록 키는 m토큰마다 1줄 → 스텝당 1/m줄)
+- 커널 안 값은 커널별 논리 크기의 합 — 동시에 칩에 올라가는 양(점유량)이 아님
 """
 import os
 
@@ -31,6 +34,7 @@ CHAR = {   # 성격
     "ro_sel":  "read-only · 골라 읽음",
     "app_all": "끝에 추가 · 전부 읽음",
     "app_sel": "끝에 추가 · 골라 읽음",
+    "ring":    "고정 크기 · 덮어씀",
     "rmw":     "매 스텝 전부 다시 씀",
     "tmp":     "임시 (커널 사이)",
 }
@@ -57,8 +61,10 @@ def _matchers(M):
             else (lambda ts: lambda t: t in ts)(set(b["t"]))
         named.append(m[it["id"]])
     for it in M["model"]["data"]:
-        if it.get("block", {}).get("rest"):
-            m[it["id"]] = lambda t: not any(f(t) for f in named)
+        b = it.get("block", {})
+        if b.get("rest"):
+            ex = set(b.get("exclude", []))
+            m[it["id"]] = lambda t, ex=ex: t not in ex and not any(f(t) for f in named)
     return m
 
 
@@ -97,6 +103,8 @@ def items(M, B, T, scope="model"):
         store, rd, wr, color, tmp = _raw(M, it, B, T, scope)
         if tmp:
             life, char = "step", "tmp"
+        elif it.get("mode") == "ring":
+            life, char = "req", "ring"
         elif wr == 0 or wr < 0.99 * store:
             s0, r0, _, _, _ = _raw(M, it, REF_B, REF_T, scope)
             sel = r0 < SEL_FRAC * s0
@@ -111,7 +119,8 @@ def items(M, B, T, scope="model"):
 
 
 def chip(M, B, T, scope="model"):
-    """칩 안에서만 생겼다 사라지는 값 (on_chip 중 HBM 이동 · 타일 단계가 아닌 것) — 바이트 합, 큰 값 이름."""
+    """칩 안에서만 생겼다 사라지는 값 (on_chip 중 HBM 이동 · 타일 단계가 아닌 것) — 커널별 논리 크기 합, 큰 값 이름.
+    타일로 나눠 계산하므로 동시 점유량이 아니다."""
     d = dims(M, B, T)
     per = {}
     for k in M["map"]["kernels"]:

@@ -38,4 +38,5 @@ data:
      store: "2*V*d", read: "2*B*d", note: "BF16 · 토큰 B개의 행만 읽음"}
   - {id: kv,     label: KV cache,     short: KV cache,     group: KV cache,     block: {t: [kv_cache]},  layers: n_layer}
   - {id: idxk,   label: 색인 K cache, short: 색인 K cache, group: 색인 K cache, block: {t: [idx_cache]}, layers: n_layer}
-  - {id: temp,   label: 커널 사이 중간값, short: "q · 점수 · 선택 위치 · split 부분 출력", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: n_layer}
+  - {id: temp,   label: 커널 사이 중간값, short: "q · 점수 · 선택 위치 등", group: 커널 사이 중간값, color: yellow, block: {rest: true, exclude: [o_acc]}, layers: n_layer,
+     note: "split-KV 부분 출력(o_acc)은 뺌 — SM100 스케줄을 H200에 대입한 가정이라 모델 비교에서 제외, 커널별 표에만 남김"}

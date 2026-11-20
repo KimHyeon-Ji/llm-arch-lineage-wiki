@@ -202,8 +202,10 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-h b { font-size: 14px; font-weight: 800; }
 .dp-h span { font-size: 12px; color: var(--muted); }
 .dp-h .dp-tot { font-family: var(--font-mono); font-size: 19px; font-weight: 700; margin-top: 2px; }
-.dp-bar { display: flex; gap: 4px; min-width: 0; padding-top: 4px; }
-.dp-g { display: flex; flex-direction: column; gap: 6px; min-width: 4px; }
+.dp-h .dp-capn { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dp-h .dp-capn.warn { color: var(--c-orange); font-weight: 700; }
+.dp-bar { display: flex; gap: 2px; min-width: 0; padding-top: 4px; }
+.dp-g { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .dp-strip { display: flex; gap: 1px; height: 38px; border-radius: 9px; overflow: hidden; background: var(--line2); }
 .dp-seg { min-width: 0; display: flex; align-items: center; overflow: hidden; }
 .dp-seg span { font-size: 12px; font-weight: 700; padding: 0 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -217,7 +219,7 @@ code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; back
 .dp-tab th:last-child { border-radius: 0 8px 8px 0; }
 /* 성격 표의 묶음 이름 = 데이터 색의 옅은 칩 */
 .gchip { display: inline-block; font-size: 13px; font-weight: 800; color: var(--ink); border-radius: 7px; padding: 2px 10px; }
-.g-ro { background: var(--c-gray-l); } .g-app { background: var(--c-blue-l); } .g-rmw { background: var(--c-green-l); }
+.g-ro { background: var(--c-gray-l); } .g-app { background: var(--c-blue-l); } .g-ring { background: var(--c-violet-l); } .g-rmw { background: var(--c-green-l); }
 .g-tmp { background: var(--c-yellow-l); } .g-chip { border: 1.5px dashed var(--axis); padding: 1px 9px; }
 .dp-tab th.num, .dp-tab td.num { text-align: right; }
 .dp-tab td { padding: 11px 12px; border-bottom: 1px solid var(--line2); vertical-align: top; }
@@ -417,7 +419,7 @@ function hbmGroups(k, d) {
 /* L2 표시: 상주 데이터(가중치 · cache · state)가 아니고 L2 절반 이하인 값 = 앞뒤 커널이 주고받는 작은 전달값 */
 const L2_B = M.hw.onchip && M.hw.onchip.l2 ? M.hw.onchip.l2.total : 0;
 const isHandoff = x => L2_B > 0 && x.b > 0 && !(A.kinds[x.kind] || {}).persistent && x.b <= L2_B / 2;
-const L2_TIP = `앞뒤 커널이 주고받는 작은 값 — 실제로는 L2 캐시(${Math.round(L2_B / 1048576)} MB)에서 처리돼 HBM까지 안 갈 수 있다`;
+const L2_TIP = `앞뒤 커널이 주고받는 작은 값 — 실제로는 L2 캐시(${Math.round(L2_B / 1048576)} MiB)에서 처리돼 HBM까지 안 갈 수 있다`;
 
 /* ── 흐름 한눈에: 단계별 HBM 읽기 · 쓰기 막대 → 칩 레인 ── */
 function phaseAgg(d, ks) {
@@ -705,16 +707,18 @@ function renderLegend() {
     (L2_B ? `<span title="${esc(L2_TIP)}"><em class="l2">L2</em>L2 캐시에서 끝날 수 있는 작은 전달값</span>` : "");
 }
 /* ── 데이터 성격 한눈에 (model.yaml) ──
-   성격은 값에서 판정: 커널 사이 나머지 = 임시값 · 쓰기 0 = read-only · 보관만큼 쓰면 전부 다시 씀 · 그 밖 = 끝에 추가 */
+   성격은 값에서 판정: 커널 사이 나머지 = 임시값 · 쓰기 0 = read-only · 보관만큼 쓰면 전부 다시 씀
+   · model.yaml mode: ring = 고정 크기 · 덮어씀 · 그 밖 = 끝에 추가. 쓰기는 여러 스텝 평균 */
 const MD = DATA.model || null;
 const GRP = {
   ro:   { label: "가중치",         sub: "read-only · 모든 요청이 같이 씀", life: "서비스 내내",       write: "없음" },
-  app:  { label: "요청별 cache",   sub: "토큰마다 1줄씩 자람",             life: "요청이 끝날 때까지", write: "끝에 1줄 추가" },
+  app:  { label: "요청별 cache",   sub: "토큰마다 1줄씩 자람 (압축 cache는 m토큰마다)", life: "요청이 끝날 때까지", write: "끝에 1줄 추가 (스텝 평균)" },
+  ring: { label: "요청별 창 · 버퍼", sub: "크기 고정 · 오래된 줄을 덮어씀", life: "요청이 끝날 때까지", write: "매 스텝 1줄 덮어씀" },
   rmw:  { label: "요청별 state",   sub: "크기 고정",                       life: "요청이 끝날 때까지", write: "매 스텝 전부 다시 씀" },
-  tmp:  { label: "스텝 안 임시값", sub: "앞 커널이 쓰고 다음 커널이 읽음", life: "한 스텝 안",         write: "매번 새로 씀" },
-  chip: { label: "커널 안 값",     sub: "칩 안에서 생겼다 사라짐",         life: "커널 하나 안",       write: "HBM에 안 씀" },
+  tmp:  { label: "스텝 안 임시값", sub: "앞 커널이 쓰고 다음 커널이 읽음 · 그린 층만", life: "한 스텝 안", write: "매번 새로 씀" },
+  chip: { label: "커널 안 값",     sub: "칩 안에서 생겼다 사라짐 · 커널별 논리 크기 합 (동시 점유량 아님)", life: "커널 하나 안", write: "HBM에 안 씀" },
 };
-const GRP_ORDER = ["ro", "app", "rmw", "tmp"];
+const GRP_ORDER = ["ro", "app", "ring", "rmw", "tmp"];
 const MATCH = (() => {   // model.yaml block 항목 → 텐서 판정
   const m = {}, named = [];
   if (!MD) return m;
@@ -724,7 +728,7 @@ const MATCH = (() => {   // model.yaml block 항목 → 텐서 판정
     m[it.id] = b.kind ? (t => TENS[t].kind === b.kind) : (s => t => s.has(t))(new Set(b.t));
     named.push(m[it.id]);
   }
-  for (const it of MD.data) if (it.block && it.block.rest) m[it.id] = t => !named.some(f => f(t));
+  for (const it of MD.data) if (it.block && it.block.rest) { const ex = new Set(it.block.exclude || []); m[it.id] = t => !ex.has(t) && !named.some(f => f(t)); }
   return m;
 })();
 function mdDimsAt(B, T) {   // B · T를 바꾼 차원 (null = 지금 조건). 성격의 '골라 읽음' 판정 기준 조건에 씀
@@ -740,7 +744,7 @@ const LIFE_C = { svc: ["서비스 내내", "--l-svc", false], req: ["요청 동�
 const CHAR_C = {
   ro_all: ["read-only · 전부 읽음", "--c-gray", false], ro_sel: ["read-only · 골라 읽음", "--c-gray-l", true],
   app_all: ["끝에 추가 · 전부 읽음", "--c-blue", false], app_sel: ["끝에 추가 · 골라 읽음", "--c-blue-l", true],
-  rmw: ["매 스텝 전부 다시 씀", "--c-green", false], tmp: ["임시 (커널 사이)", "--c-yellow", true],
+  ring: ["고정 크기 · 덮어씀", "--c-violet", false], rmw: ["매 스텝 전부 다시 씀", "--c-green", false], tmp: ["임시 (커널 사이)", "--c-yellow", true],
 };
 const colOf = c => `var(--c-${c})`;
 const isPale = c => /-l+$/.test(c);   // gray-l · gray-ll 처럼 이미 옅은 색
@@ -766,7 +770,7 @@ function mdItems(d, scope) {
     } else {
       store = ev(it.store, d); rd = ev(it.read || 0, d); wr = ev(it.write || 0, d); color = it.color || "gray";
     }
-    const g = tmp ? "tmp" : wr === 0 ? "ro" : wr >= 0.99 * store ? "rmw" : "app";
+    const g = tmp ? "tmp" : it.mode === "ring" ? "ring" : wr === 0 ? "ro" : wr >= 0.99 * store ? "rmw" : "app";
     out.push({ id: it.id, name: it.short || it.label, group: it.group || it.short || it.label, note: it.note || "", store, rd, wr, color, g });
   }
   return out;
@@ -801,7 +805,7 @@ function renderTraits() {
   items.forEach(x => {   // 수명 · 성격 판정
     const r = ref[x.id], sel = r && r.rd < 0.9 * r.store;
     x.life = x.g === "tmp" ? "step" : x.g === "ro" ? "svc" : "req";
-    x.char = x.g === "tmp" || x.g === "rmw" ? x.g : (x.g === "ro" ? "ro" : "app") + (sel ? "_sel" : "_all");
+    x.char = ["tmp", "rmw", "ring"].includes(x.g) ? x.g : (x.g === "ro" ? "ro" : "app") + (sel ? "_sel" : "_all");
   });
   let cats;   // 막대의 둥근 띠 = 고른 기준의 묶음 하나
   if (vw === "kind") {
@@ -826,8 +830,7 @@ function renderTraits() {
         .filter(s => s[0] > 0)
         .map(([v, w, x, what]) => {
           const c = x.color, bg = col ? `var(${col})` : (w ? colL(c) : colOf(c));
-          const pale = col ? cp : (w || isPale(c) || c === "yellow");   // 옅은 칸 · 노랑은 진한 글자
-          const lab = v / tot >= 0.1 ? `<span style="color:var(${pale ? "--ink" : "--surface"})">${esc(x.name)}${w ? " 쓰기" : ""}<b>${fmtB(v)}</b></span>` : "";
+          const lab = v / tot >= 0.1 ? `<span style="color:${inkOn(bg)}">${esc(x.name)}${w ? " 쓰기" : ""}<b>${fmtB(v)}</b></span>` : "";
           return `<div class="dp-seg" style="flex:${(1000 * v / gv).toFixed(4)} 1 0;background:${bg}" title="${esc(`${x.name} · ${what} ${fmtB(v)} · ${pct(v, tot)}`)}">${lab}</div>`;
         }).join("");
       const sh = gv / tot;
@@ -835,38 +838,58 @@ function renderTraits() {
         `<div class="dp-cap">${sh >= 0.12 ? `${esc(glab)} <b>${pct(gv, tot)}</b>` : sh >= 0.03 ? `<b>${pct(gv, tot)}</b>` : ""}</div></div>`;
     }).join("");
   };
-  const row = (t, s, v, inner) => `<div class="dp-row"><div class="dp-h"><b>${t}</b><span>${s}</span><span class="dp-tot">${fmtB(v)}</span></div><div class="dp-bar">${inner}</div></div>`;
+  const nG = (MD.deploy || {}).n_gpu || 1, cap = M.hw.hbm_cap || 141e9;
+  const allS = sc === "model" ? totS : sum(mdItems(d, "model"), x => x.store);
+  const minG = Math.max(1, Math.ceil(allS / cap)), over = minG > nG, nUse = Math.max(nG, minG);
+  const capLine = sc !== "model" ? "" : `<span class="dp-capn${over ? " warn" : ""}">${M.hw.label} ${fmtB(cap)} 기준 최소 ${minG}장${over ? ` · 배치 ${nG}장 용량 초과` : ` · 배치 ${nG}장 안에 들어감`}</span>`;
+  const row = (t, s, v, inner, ex = "") => `<div class="dp-row"><div class="dp-h"><b>${t}</b><span>${s}</span><span class="dp-tot">${fmtB(v)}</span>${ex}</div><div class="dp-bar">${inner}</div></div>`;
   document.getElementById("dpbars").innerHTML =
-    row("보관", "HBM에 들고 있는 양", totS, bar("store")) + row("스텝당 이동", "HBM 읽기 + 쓰기", totM, bar("move"));
+    row("보관", "HBM에 들고 있는 양", totS, bar("store"), capLine) + row("스텝당 이동", "HBM 읽기 + 쓰기", totM, bar("move"));
   document.getElementById("dplegend").innerHTML =
     cats.map(c => `<span><i style="background:${c.col ? `var(${c.col})` : colOf(c.its[0].color)}"></i>${esc(c.label)}</span>`).join("") +
-    (vw === "char" ? `<span>골라 읽음 = 요청 1개 · 128K에서 스텝당 읽기가 보관의 90% 미만</span>` : vw === "life" ? `<span>커널 안 값은 HBM 밖 — 아래 표 맨 아래 줄</span>` : "");
+    (vw === "char" ? `<span>골라 읽음 = 요청 1개 · 128K 기준 라벨 (스텝당 읽기 < 보관의 90%). 지금 조건의 읽는 비율은 아래 표</span>` : vw === "life" ? `<span>커널 안 값은 HBM 밖 — 아래 표 맨 아래 줄</span>` : "");
 
-  const nG = (MD.deploy || {}).n_gpu || 1;
   const allM = sc === "model" ? totM : sum(mdItems(d, "model"), x => x.rd + x.wr);
-  const stepT = allM / (nG * M.hw.hbm_bw), layerT = kernelNums(d).reduce((s, x) => s + x.t, 0);
-  const later = ["한 스텝 뒤", `그사이 모델 전체가 지나감 · ${M.hw.label} ${nG}장 하한 ${fmtT(stepT)}`];
-  const reread = { ro: later, app: later, rmw: later, tmp: ["바로 다음 커널", `층 1개 전체가 하한 ${fmtT(layerT)}`], chip: ["같은 커널 안", "만든 자리(SMEM · 레지스터)에서 바로 씀"] };
-  const sw = x => `<span title="${esc(x.note)}"><i style="background:${colOf(x.color)}"></i>${esc(x.name)}</span>`;
+  const stepT = allM / (nUse * M.hw.hbm_bw), layerT = kernelNums(d).reduce((s, x) => s + x.t, 0);
+  const later = ["한 스텝 뒤", `그사이 모델 전체가 지나감 · 이상적 환산 ${fmtT(stepT)} (모델 전체 바이트 ÷ ${M.hw.label} ${nUse}장 합산 대역폭${over ? ", 용량 기준 장수" : ""})`];
+  const reread = { ro: later, app: later, ring: later, rmw: later, tmp: ["바로 다음 커널", `층 1개 전체가 하한 ${fmtT(layerT)}`], chip: ["같은 커널 안", "만든 자리(SMEM · 레지스터)에서 바로 씀"] };
+  const rr = (r, s) => s > 0 ? `읽기 = 보관의 ${pct(r, s)}` : "";
+  const sw = x => `<span title="${esc([x.note, rr(x.rd, x.store)].filter(Boolean).join(" · "))}"><i style="background:${colOf(x.color)}"></i>${esc(x.name)}</span>`;
   const rows = groups.map(({ g, its }) => {
     const s = sum(its, x => x.store), r = sum(its, x => x.rd), w = sum(its, x => x.wr);
     return `<tr><td><span class="gchip g-${g}">${GRP[g].label}</span><span class="sm">${GRP[g].sub}</span></td>
       <td><div class="dp-items">${its.map(sw).join("")}</div></td>
       <td class="nw">${GRP[g].life}</td><td>${reread[g][0]}<span class="sm">${esc(reread[g][1])}</span></td><td class="nw">${GRP[g].write}</td>
       <td class="num">${g === "tmp" ? "—" : `<b>${fmtB(s)}</b><span class="sm">${pct(s, totS)}</span>`}</td>
-      <td class="num"><b>${fmtB(r + w)}</b><span class="sm">${pct(r + w, totM)}${w > 0 ? ` · 그중 쓰기 ${fmtB(w)}` : ""}</span></td></tr>`;
+      <td class="num"><b>${fmtB(r + w)}</b><span class="sm">${pct(r + w, totM)}${w > 0 ? ` · 그중 쓰기 ${fmtB(w)}` : ""}</span>${g === "tmp" ? "" : `<span class="sm">${rr(r, s)}</span>`}</td></tr>`;
   });
   rows.push(`<tr class="chip"><td><span class="gchip g-chip">${GRP.chip.label}</span><span class="sm">${GRP.chip.sub}</span></td>
     <td><div class="dp-items">${chip.top.map(l => `<span><i class="dash"></i>${esc(l)}</span>`).join("")}</div></td>
     <td class="nw">${GRP.chip.life}</td><td>${reread.chip[0]}<span class="sm">${reread.chip[1]}</span></td><td class="nw">${GRP.chip.write}</td>
-    <td class="num">—</td><td class="num"><b>0</b><span class="sm">칩 안에서 생기는 양 ${fmtB(chip.b)}</span></td></tr>`);
+    <td class="num">—</td><td class="num"><b>0</b><span class="sm">커널별 논리 크기 합 ${fmtB(chip.b)}</span></td></tr>`);
   document.getElementById("dptab").innerHTML =
     `<thead><tr><th>성격</th><th>데이터</th><th>수명</th><th>다시 읽히기까지</th><th>쓰기</th><th class="num">보관</th><th class="num">스텝당 이동</th></tr></thead><tbody>${rows.join("")}</tbody>`;
   document.getElementById("dpnote").textContent =
-    `다시 읽히기까지가 짧은 값(임시값 · 커널 안 값)은 칩 안(L2 ${Math.round(L2_B / 1048576)} MB · SMEM)에 남길 수 있음. 한 스텝 뒤에 다시 읽히는 값은 그사이 모델 전체가 지나가 칩 안에 남지 않음 → HBM에 둠` +
-    (sc === "model" && MD.derived && MD.derived.E_hit ? " · MoE expert 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)" : "");
+    `다시 읽히기까지가 짧은 값(임시값 · 커널 안 값)은 칩 안(L2 ${Math.round(L2_B / 1048576)} MiB · SMEM)에 남길 수 있음. 한 스텝 뒤에 다시 읽히는 값은 그사이 모델 전체가 지나가 칩 안에 남지 않음 → HBM에 둠` +
+    (sc === "model" && MD.derived && MD.derived.E_hit ? ` · MoE expert 읽기 = 균등 라우팅 기댓값 ${Math.round(d.E_hit)}/${d.E}개 (라우팅이 쏠리면 ${d.E_k}개까지 줄고, 요청마다 다 다르면 ${Math.min(d.E, d.B * d.E_k)}개)` : "") +
+    (sc === "model" && MD.offchip ? MD.offchip.map(o => ` · HBM 밖(${o.where}): ${o.label} ${fmtB(ev(o.store, d))}, 스텝당 ${fmtB(ev(o.move, d))} 전송 — 합계에 안 넣음`).join("") : "") +
+    (sc === "model" ? " · 시간은 바이트 ÷ 합산 대역폭의 이상적 환산 — GPU별 배치(TP · EP · DP)와 가장 바쁜 GPU는 따로 따져야 함" : "");
 }
 
+function inkOn(bg) {   // 칸 배경에 맞춰 대비가 큰 글자색 (진한 글자 / 흰 글자)
+  const probe = document.createElement("i");
+  probe.style.cssText = `display:none;background:${bg}`;
+  document.body.appendChild(probe);
+  const m = getComputedStyle(probe).backgroundColor.match(/[\d.]+/g) || [0, 0, 0];
+  probe.remove();
+  const lin = c => { c /= 255; return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+  const L = 0.2126 * lin(+m[0]) + 0.7152 * lin(+m[1]) + 0.0722 * lin(+m[2]);
+  return (L + 0.05) / 0.0593 >= 1.05 / (L + 0.05) ? "#16181d" : "#ffffff";
+}
+try {   // 테마가 바뀌면 칸 글자색 다시 고름
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => renderTraits());
+  new MutationObserver(() => renderTraits()).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+} catch (e) {}
 function update() { renderControls(); renderTraits(); renderSummary(); renderFlow(); }
 
 (function init() {

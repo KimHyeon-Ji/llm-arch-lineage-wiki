@@ -20,12 +20,19 @@ hw:
 kernels:
   - id: K1
     label: 입력 투영 GEMM
-    plain: "x로 q·k·v · 채널별 감쇠 · β · gate latent 만들기"
-    impl: "q · k · v · f · b · g_a 투영을 묶은 GEMM"
+    plain: "x로 q·k·v · 감쇠 latent · β · 출력 gate 만들기"
+    impl: "q · k · v · f_a · b · g 투영을 묶은 GEMM"
     steps: [l1]
-    hbm_read:  [{t: x, pat: small}, {t: W_qkv, pat: stream}, {t: W_f, pat: stream}, {t: W_b, pat: stream}, {t: W_ga, pat: stream}]
-    hbm_write: [{t: qkv, pat: small}, {t: f, pat: small}, {t: b, pat: small}, {t: g_lat, pat: small}]
+    hbm_read:  [{t: x, pat: small}, {t: W_qkv, pat: stream}, {t: W_fa, pat: stream}, {t: W_b, pat: stream}, {t: W_g, pat: stream}]
+    hbm_write: [{t: qkv, pat: small}, {t: f_lat, pat: small}, {t: b, pat: small}, {t: g, pat: small}]
   - id: K2
+    label: 감쇠 업투영 GEMM
+    plain: "감쇠 latent 128을 채널 12,288개로 펼치기"
+    impl: "f_b_proj GEMM"
+    steps: [l1b]
+    hbm_read:  [{t: f_lat, pat: small}, {t: W_fb, pat: stream}]
+    hbm_write: [{t: f, pat: small}]
+  - id: K3
     label: 짧은 합성곱
     plain: "최근 4토큰을 채널마다 섞고 conv state 갱신"
     impl: "causal_conv1d_update"
@@ -34,12 +41,12 @@ kernels:
     hbm_write: [{t: qkv_c, pat: small}, {t: conv_state, pat: overwrite}]
     on_chip:
       - {t: conv_win, mem: reg, how: "state 3칸 + 새 값 = 창 4칸을 레지스터에 모아 가중합"}
-  - id: K3
+  - id: K4
     label: KDA state 갱신 커널
     plain: "state를 읽어 채널별 감쇠 · 읽기 · 기록 · 출력 후 다시 쓰기"
     impl: "fla fused recurrent KDA — head마다 state 블록을 레지스터에 올려 감쇠 · 기억 읽기 · rank-1 갱신 · 출력까지 한 번에"
     steps: [l4, l5, l6, l7, l8]
-    hbm_read:  [{t: qkv_c, pat: small}, {t: f, pat: small}, {t: b, pat: small}, {t: ssm_state, pat: stream}]
+    hbm_read:  [{t: qkv_c, pat: small}, {t: f, pat: small}, {t: b, pat: small}, {t: w_dec, pat: small}, {t: ssm_state, pat: stream}]
     hbm_write: [{t: o, pat: small}, {t: ssm_state, via: S_new, pat: overwrite}]
     on_chip:
       - {t: ssm_state, mem: reg, stage: true, label: state 블록, how: "head마다 [128 × 블록] 단위로 state를 레지스터로 올림"}
@@ -47,14 +54,14 @@ kernels:
       - {t: S_dec, mem: reg, how: "감쇠한 state"}
       - {t: kv_mem, mem: reg, how: "지금 k로 읽은 기억 값"}
       - {t: S_new, mem: reg, how: "갱신한 state — 출력 읽기에 쓰고 HBM에 다시 씀"}
-  - id: K4
-    label: gate 정규화
-    plain: "gate latent를 head별로 펼쳐 RMSNorm 후 곱하기"
-    impl: "low-rank gate b GEMV + FusedRMSNormGated (가정)"
-    steps: [l9]
-    hbm_read:  [{t: o, pat: small}, {t: g_lat, pat: small}, {t: W_gb, pat: stream}, {t: w_norm, pat: small}]
-    hbm_write: [{t: o_n, pat: small}]
   - id: K5
+    label: gate 정규화
+    plain: "o를 head별 RMSNorm 후 출력 gate 곱하기"
+    impl: "FusedRMSNormGated"
+    steps: [l9]
+    hbm_read:  [{t: o, pat: small}, {t: g, pat: small}, {t: w_norm, pat: small}]
+    hbm_write: [{t: o_n, pat: small}]
+  - id: K6
     label: 출력 투영 GEMM
     plain: "head 출력 12,288폭을 hidden 7,168로"
     impl: "o_proj GEMM"

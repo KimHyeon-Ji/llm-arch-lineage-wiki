@@ -3,12 +3,12 @@
 # 48층 = GDN 36 + QSA 12 (3:1). block = QSA 층 1개(algo · map) × 12.
 # GDN 층(식): linear key head 16 · value head 48 · 128 × 128, conv 4, state FP32 (Qwen3.6과 같은 층 구조, hidden만 2,560)
 # MoE: 48층 모두, expert 512개 중 10개 + shared 1개, 폭 640, BF16
-# n-gram 임베딩 · PLE · hyper-connection · MTP는 뺌
+# hyper-connection(층마다 attention · MLP 앞 2개, BF16) · PLE 투영(1층) 포함. n-gram 표(BF16 102.4 GB)는 host 메모리(offchip). MTP는 뺌
 # config: reports/llm-memory-requirements/data/raw/cfg_Qwen_Qwen3.8-Flash-Next.json
 
 model: Qwen3.8-Flash-Next
 layer_label: QSA 층 1개
-deploy: {n_gpu: 2, desc: "H200 2장 — BF16 가중치 약 250 GB"}
+deploy: {n_gpu: 2, desc: "H200 2장 — BF16 가중치 약 250 GB (n-gram 표 제외). 긴 문맥 · 많은 요청은 용량 초과 (뷰어에 최소 장수 표시)"}
 
 dims:
   L_gdn:   {value: 36,     desc: GDN 층 수}
@@ -33,6 +33,12 @@ data:
   - {id: w_moe,  label: "가중치 · MoE expert", short: MoE expert, group: MoE 가중치, color: gray-l, share: 공유, layers: n_layer,
      store: "n_layer*((E+E_s)*3*d*d_moe*2 + 2*d*E)", read: "n_layer*((E_hit+E_s)*3*d*d_moe*2 + 2*d*E)",
      note: "BF16 · router 포함. 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)"}
+  - {id: w_hc,   label: "가중치 · hyper-connection", short: hyper-connection, group: "HC · PLE 가중치", color: gray-ll, share: 공유, layers: n_layer,
+     store: "n_layer*2*2*(2*320*4*d + 4*4*d + 4*d)", read: "n_layer*2*2*(2*320*4*d + 4*4*d + 4*d)",
+     note: "층마다 attention · MLP 앞 2개 — 혼합 down [320 × 10240] · up [10240 × 320] · inject · norm, BF16"}
+  - {id: w_ple,  label: "가중치 · PLE 투영", short: PLE 투영, group: "HC · PLE 가중치", color: gray-ll, share: 공유, layers: 1,
+     store: "2*(4*d*d + d*d + 4*d*4 + 3*4*d)", read: "2*(4*d*d + d*d + 4*d*4 + 3*4*d)",
+     note: "1층 — n-gram 표에서 가져온 행을 키 [10240 × 2560] · 값으로 투영 (값 투영 크기는 확인 필요)"}
   - {id: w_head, label: "가중치 · LM head", short: LM head, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*V*d"}
   - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*B*d", note: "토큰 B개의 행만 읽음"}
   - {id: kv,     label: "KV cache · QSA 12층", short: KV cache (QSA 12층), group: KV cache, block: {t: [kv_cache]}, layers: n_qsa}
@@ -42,3 +48,8 @@ data:
   - {id: conv,   label: "conv state · GDN 36층", short: conv state, group: conv state, color: pink, share: 요청별, layers: L_gdn,
      store: "L_gdn*B*g_C*3*2", read: "L_gdn*B*g_C*3*2", write: "L_gdn*B*g_C*3*2", note: "최근 3토큰 · BF16"}
   - {id: temp,   label: 커널 사이 중간값, short: "q · 점수 · 선택 블록 등", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: n_qsa, note: "QSA 층만 — GDN 층 중간값은 뺌"}
+
+# HBM 밖 데이터 — 뷰어 메모에만 표시 (보관 · 이동 합계에는 안 넣음)
+offchip:
+  - {label: "n-gram 임베딩 표", where: host 메모리, store: "128*2500012*160*2", move: "B*128*160*2",
+     note: "PLE 층이 토큰 n-gram으로 표 128개에서 행을 조회 — 표는 host에 두고 행만 GPU로 보냄 (약 51B 파라미터)"}

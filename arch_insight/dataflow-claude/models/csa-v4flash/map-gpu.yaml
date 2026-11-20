@@ -1,5 +1,6 @@
 # 배치 — 현재 GPU 실행 (as-is) · DeepSeek-V4-Flash CSA 층 decode
 # 항목 규칙은 dsa-v32/map-gpu.yaml과 같다. 압축 엔트리 · 색인 키 쓰기는 스텝당 1/4줄 몫(via cmp_new · kI_new).
+# 압축기 state: 매 스텝 1줄 쓰기(via c_new · ic_new), 4토큰마다 8줄 읽기 ÷ 4(via c_rd · ic_rd).
 
 name: GPU 현재 실행 (H200 기준)
 hw:
@@ -20,17 +21,17 @@ hw:
 kernels:
   - id: K1
     label: 입력 투영 GEMM
-    plain: "x로 q latent · 원본 KV · 압축 가중치 만들기"
-    impl: "q_a + kv + 압축 가중치 투영을 묶은 GEMM (가정)"
-    steps: [p1]
-    hbm_read:  [{t: x, pat: small}, {t: W_qa, pat: stream}, {t: W_kv, pat: stream}, {t: W_z, pat: stream}]
-    hbm_write: [{t: q_a, pat: small}, {t: kv_raw, pat: small}, {t: z, pat: small}]
+    plain: "x로 q latent · 원본 KV 만들고, 압축기 state에 kv · score 1줄"
+    impl: "q_a · kv 투영(FP8) + 압축기 wkv · wgate 투영(BF16)을 묶은 GEMM, 결과 1줄을 state에 바로 씀 (가정)"
+    steps: [p1, p1c]
+    hbm_read:  [{t: x, pat: small}, {t: W_qa, pat: stream}, {t: W_kv, pat: stream}, {t: W_cmp, pat: stream}]
+    hbm_write: [{t: q_a, pat: small}, {t: kv_raw, pat: small}, {t: cst, via: c_new, pat: row}]
   - id: K2
     label: 창 쓰기 · 토큰 압축
-    plain: "원본 1줄을 창에 쓰고, 4토큰마다 압축 엔트리 1줄"
-    impl: "RMSNorm + RoPE + FP8 양자화 + 창 쓰기, 4토큰마다 학습된 가중합으로 압축 엔트리 쓰기 (가정)"
+    plain: "원본 1줄을 창에 쓰고, 4토큰마다 압축기 state를 묶어 엔트리 1줄"
+    impl: "RMSNorm + RoPE + FP8 양자화 + 창 쓰기, 4토큰마다 state 8줄을 score softmax로 가중합해 압축 엔트리 쓰기 (가정)"
     steps: [p2, p3]
-    hbm_read:  [{t: kv_raw, pat: small}, {t: z, pat: small}, {t: kv_win, via: cmp_in, pat: stream}]
+    hbm_read:  [{t: kv_raw, pat: small}, {t: cst, via: c_rd, pat: stream}]
     hbm_write: [{t: kv_win, via: kv_new, pat: row}, {t: kv_cmp, via: cmp_new, pat: row}]
   - id: K3
     label: q 업투영 GEMM
@@ -41,11 +42,11 @@ kernels:
     hbm_write: [{t: q, pat: small}]
   - id: K4
     label: 색인 투영
-    plain: "색인 q · 가중치 만들기, 4토큰마다 압축 색인 키 1줄"
-    impl: "색인 q · k · weights GEMM + 색인 키 압축 · FP4 양자화 (가정)"
-    steps: [i1, i2, i3]
-    hbm_read:  [{t: q_a, pat: small}, {t: x, pat: small}, {t: W_Iq, pat: stream}, {t: W_Ik, pat: stream}, {t: W_Iw, pat: stream}]
-    hbm_write: [{t: qI, pat: small}, {t: wI, pat: small}, {t: idx_cache, via: kI_new, pat: row}]
+    plain: "색인 q · 가중치 만들기, 색인 압축기 state에 1줄, 4토큰마다 색인 키 1줄"
+    impl: "색인 q(FP8) · 색인 압축기 wkv · wgate(BF16) · weights GEMM + 4토큰마다 압축 · FP8 양자화 (가정)"
+    steps: [i1, i2, i2b, i3]
+    hbm_read:  [{t: q_a, pat: small}, {t: x, pat: small}, {t: W_Iq, pat: stream}, {t: W_Icmp, pat: stream}, {t: W_Iw, pat: stream}, {t: ist, via: ic_rd, pat: stream}]
+    hbm_write: [{t: qI, pat: small}, {t: wI, pat: small}, {t: ist, via: ic_new, pat: row}, {t: idx_cache, via: kI_new, pat: row}]
   - id: K5
     label: 색인 점수 커널
     plain: "새 토큰 vs 압축 색인 키 T/4줄 → 엔트리별 점수"

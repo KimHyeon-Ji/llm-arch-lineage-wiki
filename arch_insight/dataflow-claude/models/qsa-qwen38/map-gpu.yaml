@@ -34,21 +34,21 @@ kernels:
     hbm_write: [{t: kv_cache, via: kv_new, pat: row}]
   - id: K3
     label: 색인 투영 · 블록 키
-    plain: "색인 q · w 만들기, 4토큰마다 블록 키 1줄"
-    impl: "indexer q · k · weights GEMM + 4토큰 색인 키 묶기 (가정)"
+    plain: "색인 q · k 만들기, 4토큰마다 블록 키 1줄"
+    impl: "index_qk_proj GEMM + Q/K RMSNorm · 부분 RoPE + 4토큰 색인 k 평균 · 정규화 (가정)"
     steps: [i1, i2]
-    hbm_read:  [{t: x, pat: small}, {t: W_Iq, pat: stream}, {t: W_Ik, pat: stream}, {t: W_Iw, pat: stream}]
-    hbm_write: [{t: qI, pat: small}, {t: wI, pat: small}, {t: blk_cache, via: kI_new, pat: row}]
+    hbm_read:  [{t: x, pat: small}, {t: W_Iqk, pat: stream}]
+    hbm_write: [{t: qI, pat: small}, {t: blk_cache, via: kI_new, pat: row}]
   - id: K4
     label: 블록 점수 커널
     plain: "새 토큰 vs 블록 키 T/4줄 → 블록별 점수"
-    impl: "블록 키 타일을 SMEM에 올려 head 4개 점수 계산 · 가중합해 [T/4]만 기록"
+    impl: "블록 키 타일을 SMEM에 올려 head 4개 점수 계산 · ReLU 합해 [T/4]만 기록"
     steps: [i3, i4]
-    hbm_read:  [{t: qI, pat: small}, {t: wI, pat: small}, {t: blk_cache, pat: stream}]
+    hbm_read:  [{t: qI, pat: small}, {t: blk_cache, pat: stream}]
     hbm_write: [{t: s, pat: stream}]
     on_chip:
       - {t: blk_cache, mem: smem, stage: true, label: 블록 키 타일, how: "블록 키를 타일 단위로 SMEM에 올림"}
-      - {t: logits, mem: reg, how: "head 4개 점수를 레지스터에서 가중합 후 바로 버림"}
+      - {t: logits, mem: reg, how: "head 4개 점수를 레지스터에서 ReLU 합 후 바로 버림"}
   - id: K5
     label: top-k 커널
     plain: "점수 상위 512블록 고르기"
@@ -58,19 +58,20 @@ kernels:
     hbm_write: [{t: idx, pat: small}]
   - id: K6
     label: 블록 attention 커널
-    plain: "고른 블록 안 토큰 2,048줄로 GQA attention"
-    impl: "블록 단위(4줄 연속)로 K · V를 SMEM에 모아 QK · online softmax · PV"
-    steps: [a1, a2, a3, a4]
+    plain: "고른 블록 안 토큰 2,048줄로 GQA attention, 출력 gate까지"
+    impl: "블록 단위(4줄 연속)로 K · V를 SMEM에 모아 QK · online softmax · PV, 끝에서 sigmoid gate 곱하기 (가정)"
+    steps: [a1, a2, a3, a4, a5]
     hbm_read:  [{t: q, pat: small}, {t: idx, pat: small}, {t: kv_cache, via: kv_sel, pat: gather}]
     hbm_write: [{t: o, pat: small}]
     on_chip:
       - {t: kv_sel, mem: smem, how: "고른 블록을 HBM에서 SMEM으로 모음 (4줄씩 연속이라 DSA보다 덜 흩어짐)"}
       - {t: sc, mem: reg, how: "QK 누산값. 블록마다 online softmax"}
       - {t: p, mem: reg, how: "확률을 레지스터에 둔 채 PV에 사용"}
+      - {t: o_u, mem: reg, how: "gate 전 출력 누산값 — gate를 곱해 o로 씀"}
   - id: K7
-    label: gate · 출력 투영 GEMM
-    plain: "출력 gate를 곱하고 6,144폭을 hidden 2,560으로"
-    impl: "sigmoid gate + o_proj GEMM"
+    label: 출력 투영 GEMM
+    plain: "6,144폭을 hidden 2,560으로"
+    impl: "o_proj GEMM"
     steps: [o1]
     hbm_read:  [{t: o, pat: small}, {t: W_o, pat: stream}]
     hbm_write: [{t: y, pat: small}]
