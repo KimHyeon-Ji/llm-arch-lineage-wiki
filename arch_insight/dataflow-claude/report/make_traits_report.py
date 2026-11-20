@@ -25,7 +25,7 @@ LIFE_COL = {"svc": "#2f4b8c", "req": "#5b74b8", "step": "#a9b8e2", "kern": "#e1e
 # 성격 = 색 계열이 쓰기 방식, 진하기가 전부 읽음(진함) / 골라 읽음(옅음)
 CHAR_COL = {"ro_all": mr.GRAY, "ro_sel": mr.GRAY_L, "app_all": mr.BLUE, "app_sel": "#b7d3f6",
             "rmw": mr.GREEN, "tmp": mr.YELLOW}
-PREFIX = {"dsa-v32": "dsa", "gdn-qwen36": "gdn"}
+PREFIX = {"dsa-v32": "dsa", "gdn-qwen36": "gdn", "mla-v31": "mla", "csa-v4flash": "v4", "kda-k3": "k3", "qsa-qwen38": "q38"}
 
 
 def fb(v):
@@ -107,7 +107,8 @@ def fig(name, M, scope, key, cats, ttl, sub, take, take_sub, chip_col=False):
             y += RH
         f.line(40, y + GAP / 2 - 2, W - 40, y + GAP / 2 - 2, mr.GRID, 1)
         y += GAP
-    mr.takeaway(f, y + 36, take, take_sub)
+    if take:
+        mr.takeaway(f, y + 36, take, take_sub)
     mr.save(f)
 
 
@@ -115,7 +116,8 @@ def make(mid):
     M = tr.load(mid)
     p, mdl = PREFIX.get(mid, mid), M["model"]["model"]
     base = f"{mdl} · decode 1스텝 · H200 이론 하한 · 저장 형식 = algo.yaml 기본값"
-    T = TAKE[mid]
+    T = TAKE.get(mid, {})
+    T = {k: T.get(k, ("", None)) for k in [(a, s) for a in ("kind", "life", "char") for s in ("model", "layer")]}
     for scope, sname, n0 in (("model", "모델 전체", 1), ("layer", M["model"].get("layer_label", "attention 층 1개"), 2)):
         sub = base + (" · MoE expert 읽기는 균등 라우팅 가정" if scope == "model" and "E_hit" in M["model"].get("derived", {}) else "")
         fig(f"{p}-t{n0}-kind-{scope}", M, scope, "group", kind_cats(M, scope),
@@ -141,6 +143,62 @@ TAKE = {
                             "요청 256개 · 128K: 골라 읽는 데이터 = 보관의 88% · 이동의 68%, 색인 K cache = 보관 12% · 이동 27%"),
         ("char", "layer"): ("attention 층에서는 골라 읽는 KV가 보관을, 전부 읽는 색인 K가 이동을 차지 — 용량형과 대역폭형이 갈림",
                             "요청 256개 · 128K: KV cache 보관 83% · 이동 6% / 색인 K cache 보관 17% · 이동 80%"),
+    },
+    "mla-v31": {
+        ("kind", "model"): ("full attention은 요청 · 문맥이 커지면 KV cache가 보관과 이동을 함께 늘림 — 요청 256개 · 128K에서는 이동의 3분의 2",
+                            "요청 256개 · 128K: 보관 2.02 TB 중 KV cache 67% · 이동 2.03 TB 중 KV cache 66%"),
+        ("kind", "layer"): ("MLA 층은 요청 · 문맥이 커지면 KV cache가 층 보관 · 이동의 거의 전부",
+                            "요청 32개 · 128K: 층 이동 2.98 GB 중 KV cache 92%"),
+        ("life", "model"): ("요청 동안 남는 KV가 이동에서도 커짐 — 문맥 128K는 요청 128개부터 요청별 이동 > 가중치 이동",
+                            "칩 안에서만 생기는 값(attention 점수 · 확률) = 이동의 최대 78% (요청 256개 · 128K)"),
+        ("life", "layer"): ("MLA 층에서는 칩 안 값이 HBM 이동만큼 커짐 — head 128개의 점수를 칩 안에서 바로 줄이기 때문",
+                            "요청 256개 · 128K: 칩 안 값 = 층 HBM 이동의 1.15배"),
+        ("char", "model"): ("골라 읽는 데이터는 MoE뿐 — KV cache는 '끝에 추가 · 전부 읽음'이라 용량과 대역폭을 함께 씀",
+                            "요청 32개 · 128K: KV cache 보관 20% · 이동 28%"),
+        ("char", "layer"): ("층 안에서는 전부 읽는 KV가 보관 · 이동 모두 대부분 — 용량형과 대역폭형이 갈리지 않음",
+                            "요청 32개 · 128K: KV cache 보관 93% · 이동 92%"),
+    },
+    "csa-v4flash": {
+        ("kind", "model"): ("압축으로 KV가 작아져 모델 전체 이동은 거의 MoE 가중치 — 요청이 적을 때는 attention 가중치가 MoE만큼 큼",
+                            "요청 1개: 이동 10.7 GB 중 attention 가중치 47% · MoE 43% / 요청 256개 · 128K: 이동 174 GB 중 MoE 85%"),
+        ("kind", "layer"): ("CSA 층은 보관은 압축 KV, 이동은 요청 · 문맥이 크면 색인 K cache",
+                            "요청 256개 · 128K: 층 보관 5.6 GB 중 압축 KV 88% · 이동 0.90 GB 중 색인 K cache 59%"),
+        ("life", "model"): ("이동의 대부분은 서비스 내내 남는 가중치 — 요청별 cache 이동은 요청 256개 · 128K에서도 작음",
+                            "요청 256개 · 128K: 요청 동안 남는 cache 이동 = 전체의 약 10%"),
+        ("life", "layer"): ("CSA 층은 전체 이동이 작아 스텝 안 임시값 비중이 커짐 · 칩 안 값이 HBM 이동의 2배를 넘음",
+                            "요청 256개 · 128K: 임시값 19% · 칩 안 값 = 층 HBM 이동의 2.5배"),
+        ("char", "model"): ("보관 · 이동 모두 read-only로 골라 읽는 MoE가 대부분 — 압축 KV는 보관만 늘고 이동은 거의 없음",
+                            "요청 32개 · 128K: 골라 읽는 KV 보관 7.7% · 이동 0.2%"),
+        ("char", "layer"): ("CSA 층에서도 골라 읽는 압축 KV는 용량형, 전부 읽는 색인 K는 대역폭형",
+                            "요청 32개 · 128K: 압축 KV 보관 77% · 이동 4% / 색인 K 보관 8% · 이동 31%"),
+    },
+    "kda-k3": {
+        ("kind", "model"): ("요청이 적을 때는 BF16 attention 가중치가 이동의 절반 — 요청 · 문맥이 크면 MLA 24층의 KV와 KDA state가 커짐",
+                            "요청 1개: attention 가중치 51% / 요청 256개 · 128K: KV cache 32% · state 8.5%"),
+        ("kind", "layer"): ("KDA 층은 문맥 길이와 무관 — 요청이 늘수록 state 읽기 · 쓰기가 층 이동의 대부분",
+                            "요청 256개: 층 이동 4.3 GB 중 state 74%"),
+        ("life", "model"): ("요청 동안 남는 데이터가 두 종류 — 문맥에 비례하는 MLA KV와 요청 수에만 비례하는 KDA state",
+                            "요청 256개 · 128K: 요청별 이동 = KV 32% + state 8.5%"),
+        ("life", "layer"): ("KDA 층 이동은 요청 동안 남는 state가 대부분 — 칩 안 값은 작음",
+                            "요청 256개: state 이동 74% · 칩 안 값 = 층 이동의 0.39배"),
+        ("char", "model"): ("'매 스텝 전부 다시 씀'(state)이 처음 등장 — 보관 비중보다 이동 비중이 2배",
+                            "요청 256개 · 8K: state 보관 6% · 이동 12%"),
+        ("char", "layer"): ("KDA 층은 read-only 가중치와 매 스텝 다시 쓰는 state 두 가지 — 요청이 늘면 state가 이동을 차지",
+                            "요청 32개: 다시 쓰는 데이터 보관 19% · 이동 32%"),
+    },
+    "qsa-qwen38": {
+        ("kind", "model"): ("보관은 요청 · 문맥이 크면 KV cache가 가장 크지만, 이동은 MoE 가중치 다음이 GDN state",
+                            "요청 256개 · 128K: 보관 1.13 TB 중 KV 73% · 이동 346 GB 중 MoE 70% · state 17% · KV 4%"),
+        ("kind", "layer"): ("QSA 층은 보관은 KV cache, 이동은 블록 키 — 블록 키는 4토큰을 대표해도 매번 전부 읽힘",
+                            "요청 32개 · 128K: 층 보관 9.0 GB 중 KV 96% · 이동 0.52 GB 중 블록 키 52%"),
+        ("life", "model"): ("요청 동안 남는 데이터 중 보관은 KV, 이동은 state가 큼",
+                            "요청 256개 · 128K: KV 보관 73% · 이동 4% / state 보관 2.6% · 이동 17%"),
+        ("life", "layer"): ("QSA 층은 칩 안 값과 임시값이 작음 — 블록 점수 head가 4개뿐이라 칩 안에서 줄일 값도 작음",
+                            "칩 안 값 = 층 이동의 0.06배 이하"),
+        ("char", "model"): ("골라 읽는 KV는 보관의 대부분, 매 스텝 다시 쓰는 state는 이동의 6 ~ 18%",
+                            "요청 32개 · 128K: KV 보관 29% · 이동 1.2% / state 보관 1% · 이동 5.6%"),
+        ("char", "layer"): ("QSA 층에서 골라 읽는 KV는 용량형, 전부 읽는 블록 키는 대역폭형 — DSA와 같은 구조",
+                            "요청 32개 · 128K: KV 보관 96% · 이동 26% / 블록 키 보관 3% · 이동 52%"),
     },
 }
 

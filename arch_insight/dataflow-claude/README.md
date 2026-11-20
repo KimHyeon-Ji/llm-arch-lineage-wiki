@@ -5,13 +5,14 @@
 
 | 모델 | 상태 | 약식 화면 | 보고서 |
 |---|---|---|---|
-| [DSA · DeepSeek-V3.2](models/dsa-v32/) | 완료 — 참조 구현 검증 · 수치 · 뷰어 (split-KV combine 포함) | [viewer/dsa-v32-lite.html](viewer/dsa-v32-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32-lite.html) · [claude.ai](https://claude.ai/artifact/PbR2Jbzr7ePzxU1KviAFPH) | [report/dsa-v32.md](report/dsa-v32.md) |
+| [기준선 · DeepSeek-V3.1 MLA](models/mla-v31/) | 완료 — config 식 · 뷰어 (참조 구현 검증 없음, MLA 식은 dsa-v32와 같음) | [viewer/mla-v31-lite.html](viewer/mla-v31-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/mla-v31-lite.html) | [report/mla-v31-traits.md](report/mla-v31-traits.md) |
+| [DSA · DeepSeek-V3.2](models/dsa-v32/) | 완료 — 참조 구현 검증 · 수치 · 뷰어 (split-KV combine 포함) | [viewer/dsa-v32-lite.html](viewer/dsa-v32-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/dsa-v32-lite.html) · [claude.ai](https://claude.ai/artifact/PbR2Jbzr7ePzxU1KviAFPH) | [report/dsa-v32-traits.md](report/dsa-v32-traits.md) · 커널별 [dsa-v32.md](report/dsa-v32.md) |
+| [DeepSeek-V4-Flash · CSA](models/csa-v4flash/) | 완료 — config 식 · 뷰어 (참조 구현 검증 없음) · HCA · 창 층은 model.yaml 식 | [viewer/csa-v4flash-lite.html](viewer/csa-v4flash-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/csa-v4flash-lite.html) | [report/csa-v4flash-traits.md](report/csa-v4flash-traits.md) |
+| [Kimi K3 · KDA](models/kda-k3/) | 완료 — config 식 · 뷰어 (참조 구현 검증 없음) · MLA 24층은 model.yaml 식 | [viewer/kda-k3-lite.html](viewer/kda-k3-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/kda-k3-lite.html) | [report/kda-k3-traits.md](report/kda-k3-traits.md) |
+| [Qwen3.8-Flash-Next · QSA](models/qsa-qwen38/) | 완료 — config 식 · 뷰어 (참조 구현 검증 없음) · GDN 36층은 model.yaml 식 | [viewer/qsa-qwen38-lite.html](viewer/qsa-qwen38-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/qsa-qwen38-lite.html) | [report/qsa-qwen38-traits.md](report/qsa-qwen38-traits.md) |
 | [Gated DeltaNet · Qwen3.6-27B](models/gdn-qwen36/) | 완료 — 참조 구현 검증 · 수치 · 뷰어 (Hybrid의 linear 층) | [viewer/gdn-qwen36-lite.html](viewer/gdn-qwen36-lite.html) · [Pages](https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/gdn-qwen36-lite.html) · [claude.ai](https://claude.ai/artifact/G5BhyqZ3qwNwHtNEAGHZ1f) | [report/gdn-qwen36.md](report/gdn-qwen36.md) |
-| QSA 블록 선택 (Qwen3.8) | 예정 | | |
-| 층 조합 (Qwen3.8 · QSA 12 + DeltaNet 36) | 예정 | | |
-| 비교 기준: 전 층 Full (MLA · GQA) | 예정 | | |
 
-보고서 = 모델 전체 decode 1스텝 중 attention 비중 + 요청 수 · 문맥 길이별 '흐름 한눈에' + 약식 화면 커널별 이동 스냅샷 분석 + 커널별 특성(병목 위치 · 접근 모양 · 재사용) → 필요한 HW 특성 + 계산값과 실제의 차이(다시 읽기 · 패딩 · L2) + 아키텍처 아이디어 후보.
+모델별 보고서(`*-traits.md`) = 약식 화면 '데이터 성격 한눈에'를 요청 수 · 문맥 길이로 펼친 그림 6장(종류 · 수명 · 성격 × 모델 전체 · 층 1개) + 그래프 인사이트 + 절마다 HW로 발전시킬 포인트. 커널별 보고서(dsa-v32.md · gdn-qwen36.md) = 모델 전체 decode 1스텝 중 attention 비중 + 요청 수 · 문맥 길이별 '흐름 한눈에' + 약식 화면 커널별 이동 스냅샷 분석 + 커널별 특성(병목 위치 · 접근 모양 · 재사용) → 필요한 HW 특성 + 계산값과 실제의 차이(다시 읽기 · 패딩 · L2) + 아키텍처 아이디어 후보.
 
 ---
 
