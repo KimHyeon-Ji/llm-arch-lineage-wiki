@@ -59,6 +59,7 @@ header.top { display: flex; flex-direction: column; gap: 6px; padding: 2px; }
 .links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .links a { font-size: 13px; color: var(--ink2); font-weight: 700; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
 .links a.main { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
+.links .navcur { font-size: 13px; font-weight: 800; color: var(--white); background: var(--navy); border: 1px solid var(--navy); border-radius: 999px; padding: 3px 12px; }
 .links a:hover { border-color: var(--ink); }
 
 .panel { background: var(--surface); border: 1px solid var(--line2); border-radius: 16px; padding: 18px 22px 20px; min-width: 0; box-shadow: 0 1px 2px rgba(30, 40, 70, 0.04); }
@@ -553,11 +554,12 @@ function dens(i, N) {
 function gridModel(tid, d) {
   let sh = TENS[tid].shape.map(e => ({ e: String(e), v: ev(e, d) }));
   if (sh.length > 1 && (sh[0].e === "B" || (M.derived && M.derived[sh[0].e]))) sh = sh.slice(1);
-  let hi = sh.findIndex(a => a.e === "T" || a.e === "k");
+  const isLongAx = e => /\b(T|k)\b/.test(e);   // 토큰 축: T · k와 그 식(T/m · k/b 등)
+  let hi = sh.findIndex(a => isLongAx(a.e));
   if (hi < 0) hi = sh.length - 1;
   const h = sh[hi], rest = sh.filter((_, i) => i !== hi);
   const v = rest.length ? rest[rest.length - 1] : null, s = rest.length > 1 ? rest[0] : null;
-  const long = h.e === "T" || h.e === "k";
+  const long = isLongAx(h.e);
   return { h, v, s, long, hN: long ? NCELL : Math.max(1, Math.min(h.v, 16)), vN: v ? Math.max(1, Math.min(v.v, 10)) : 1 };
 }
 function splitParts(expr, d) {
@@ -872,8 +874,11 @@ function update() { renderControls(); renderTraits(); renderSummary(); renderFlo
   document.getElementById("crumbs").innerHTML = (P.crumbs || []).map(c => `<span class="crumb">${esc(c)}</span>`).join("");
   document.getElementById("h1").textContent = LITE.doc_title || P.doc_title;
   document.getElementById("subtext").textContent = LITE.sub || "";
-  document.getElementById("links").innerHTML = LITE.sibling
-    ? `<a class="main" href="${esc(base + LITE.sibling.file + "-lite.html")}" target="_blank" rel="noopener">${esc(LITE.sibling.label)} →</a>` : "";
+  const nav = DATA.nav || [];   // 모델 이동 줄 — 지금 모델은 남색 칩
+  document.getElementById("links").innerHTML = nav.length > 1
+    ? nav.map(n => n.file === P.file ? `<span class="navcur">${esc(n.label)}</span>`
+        : `<a href="${esc(base + n.file + "-lite.html")}" target="_blank" rel="noopener">${esc(n.label)}</a>`).join("")
+    : (LITE.sibling ? `<a class="main" href="${esc(base + LITE.sibling.file + "-lite.html")}" target="_blank" rel="noopener">${esc(LITE.sibling.label)} →</a>` : "");
   const chk = DATA.checks ? `(${DATA.checks.n}개 중 실패 ${DATA.checks.fail}개)` : "";
   document.getElementById("assume").innerHTML = [...(P.scope || []), ...(P.verify || [])].map(s => `<li>${esc(s.replace("{checks}", chk))}</li>`).join("");
   document.getElementById("foot").textContent = `${M.name} · 이론 하한 = max(바이트 ÷ ${M.hw.hbm_bw / 1e12} TB/s, FLOP ÷ 피크) · 해석과 결론은 보고서(report/)에 있음`;

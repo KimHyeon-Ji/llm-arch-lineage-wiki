@@ -1,0 +1,85 @@
+# 배치 — 현재 GPU 실행 (as-is) · DeepSeek-V4-Flash CSA 층 decode
+# 항목 규칙은 dsa-v32/map-gpu.yaml과 같다. 압축 엔트리 · 색인 키 쓰기는 스텝당 1/4줄 몫(via cmp_new · kI_new).
+
+name: GPU 현재 실행 (H200 기준)
+hw:
+  label: H200
+  hbm_bw: 4.8e12
+  hbm_cap: 141000000000
+  peak:
+    fp8:  1979e12
+    bf16: 989e12
+    vec:  67e12
+  n_sm: 132
+  onchip:
+    l2:   {label: L2 캐시,     short: L2,   total: 52428800, desc: "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}
+    smem: {label: 공유 메모리, short: SMEM, per_sm: 233472,  desc: "SM마다 있는 SRAM. 커널이 직접 타일을 올려 두고 쓴다"}
+    reg:  {label: 레지스터,    short: REG,  per_sm: 262144,  desc: "SM마다 256 KB. 행렬곱 누산값 · 원소별 계산 값"}
+  note: "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"
+
+kernels:
+  - id: K1
+    label: 입력 투영 GEMM
+    plain: "x로 q latent · 원본 KV · 압축 가중치 만들기"
+    impl: "q_a + kv + 압축 가중치 투영을 묶은 GEMM (가정)"
+    steps: [p1]
+    hbm_read:  [{t: x, pat: small}, {t: W_qa, pat: stream}, {t: W_kv, pat: stream}, {t: W_z, pat: stream}]
+    hbm_write: [{t: q_a, pat: small}, {t: kv_raw, pat: small}, {t: z, pat: small}]
+  - id: K2
+    label: 창 쓰기 · 토큰 압축
+    plain: "원본 1줄을 창에 쓰고, 4토큰마다 압축 엔트리 1줄"
+    impl: "RMSNorm + RoPE + FP8 양자화 + 창 쓰기, 4토큰마다 학습된 가중합으로 압축 엔트리 쓰기 (가정)"
+    steps: [p2, p3]
+    hbm_read:  [{t: kv_raw, pat: small}, {t: z, pat: small}, {t: kv_win, via: cmp_in, pat: stream}]
+    hbm_write: [{t: kv_win, via: kv_new, pat: row}, {t: kv_cmp, via: cmp_new, pat: row}]
+  - id: K3
+    label: q 업투영 GEMM
+    plain: "q latent를 head 64개 × 512로 펼치기"
+    impl: "RMSNorm → q_b GEMM + RoPE"
+    steps: [p4]
+    hbm_read:  [{t: q_a, pat: small}, {t: W_qb, pat: stream}]
+    hbm_write: [{t: q, pat: small}]
+  - id: K4
+    label: 색인 투영
+    plain: "색인 q · 가중치 만들기, 4토큰마다 압축 색인 키 1줄"
+    impl: "색인 q · k · weights GEMM + 색인 키 압축 · FP4 양자화 (가정)"
+    steps: [i1, i2, i3]
+    hbm_read:  [{t: q_a, pat: small}, {t: x, pat: small}, {t: W_Iq, pat: stream}, {t: W_Ik, pat: stream}, {t: W_Iw, pat: stream}]
+    hbm_write: [{t: qI, pat: small}, {t: wI, pat: small}, {t: idx_cache, via: kI_new, pat: row}]
+  - id: K5
+    label: 색인 점수 커널
+    plain: "새 토큰 vs 압축 색인 키 T/4줄 → 엔트리별 점수"
+    impl: "DeepGEMM 계열 — 색인 키 타일을 SMEM에 올려 MMA, head 점수를 레지스터에서 가중합해 [T/4]만 기록"
+    steps: [i4, i5]
+    hbm_read:  [{t: qI, pat: small}, {t: wI, pat: small}, {t: idx_cache, pat: stream}]
+    hbm_write: [{t: s, pat: stream}]
+    on_chip:
+      - {t: idx_cache, mem: smem, stage: true, label: 색인 키 타일, how: "압축 색인 키를 타일 단위로 SMEM에 올림"}
+      - {t: logits, mem: reg, how: "head 64개 점수를 레지스터에서 가중합 후 바로 버림"}
+  - id: K6
+    label: top-k 커널
+    plain: "점수 상위 512개 엔트리 고르기"
+    impl: "T/4개 점수에서 상위 512개 선택"
+    steps: [s1]
+    hbm_read:  [{t: s, pat: stream}]
+    hbm_write: [{t: idx, pat: small}]
+  - id: K7
+    label: Sparse attention 커널
+    plain: "고른 압축 엔트리 512줄 + 최근 창 128줄로 attention"
+    impl: "FlashMLA sparse 계열 — idx로 엔트리를 SMEM에 모으고 창과 함께 QK · online softmax · PV"
+    steps: [a1, a2, a3, a4]
+    hbm_read:  [{t: q, pat: small}, {t: idx, pat: small}, {t: kv_cmp, via: kv_sel, pat: gather}, {t: kv_win, pat: stream}]
+    hbm_write: [{t: o, pat: small}]
+    on_chip:
+      - {t: kv_sel, mem: smem, how: "고른 엔트리를 HBM에서 SMEM으로 모음"}
+      - {t: sc, mem: reg, how: "QK 누산값. 블록마다 online softmax"}
+      - {t: p, mem: reg, how: "확률을 레지스터에 둔 채 PV에 사용"}
+  - id: K8
+    label: 출력 투영 (그룹 LoRA)
+    plain: "head 출력을 그룹 LoRA로 hidden 4,096으로"
+    impl: "grouped o_a GEMM → o_b GEMM (가정: 한 커널로 묶음)"
+    steps: [o1, o2]
+    hbm_read:  [{t: o, pat: small}, {t: W_oa, pat: stream}, {t: W_ob, pat: stream}]
+    hbm_write: [{t: y, pat: small}]
+    on_chip:
+      - {t: o_g, mem: smem, how: "그룹 출력 latent를 칩 안에서 바로 o_b에 사용 (가정)"}

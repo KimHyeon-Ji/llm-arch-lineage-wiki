@@ -1,0 +1,48 @@
+# Kimi K3 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/traits.py(보고서 그림)가 읽음
+#
+# 93층 = KDA 69 + MLA 24 (3:1 반복 + 마지막 MLA). block = KDA 층 1개(algo · map) × 69.
+# MLA 층(식): NoPE · 출력 gate · head 96, KV latent 512 BF16 = 1,024 B/토큰/층, 전부 읽음. attention 가중치 BF16
+# MoE: Stable LatentMoE — routed expert 896개 중 16개, latent 폭 3,584 · expert 폭 3,072, MXFP4(+ scale → 0.53 B/값).
+#      shared expert 2개(BF16, hidden 7,168) · latent down/up 투영(BF16 가정) · 첫 1층 dense FFN(33,792, BF16)
+# AttnRes(블록 residual) · MTP는 뺌
+# config: HuggingFace moonshotai/Kimi-K3 config.json (text_config)
+
+model: Kimi K3
+layer_label: KDA 층 1개
+deploy: {n_gpu: 16, desc: "H200 16장 — MXFP4 expert 기준 가중치 약 1.6 TB"}
+
+dims:
+  L_mla:   {value: 24,     desc: MLA 층 수}
+  L_moe:   {value: 92,     desc: MoE 층 수 (첫 1층은 dense)}
+  c_q:     {value: 1536,   desc: MLA q_lora_rank}
+  c_kv:    {value: 512,    desc: MLA kv_lora_rank}
+  d_ffd:   {value: 33792,  desc: dense FFN 폭}
+  d_lat:   {value: 3584,   desc: routed expert latent 폭}
+  d_moe:   {value: 3072,   desc: expert FFN 폭}
+  E:       {value: 896,    desc: routed expert 수}
+  E_k:     {value: 16,     desc: 토큰당 고르는 expert 수}
+  E_s:     {value: 2,      desc: shared expert 수}
+  fp4:     {value: 0.53125, desc: "MXFP4 + scale(32값마다 1 B) 바이트/값"}
+  V:       {value: 163840, desc: 어휘 수}
+
+derived:
+  E_hit: {expr: "E*(1-(1-E_k/E)**B)", desc: "요청 B개가 건드리는 expert 수 기댓값 — 균등 라우팅 가정"}
+
+data:
+  - {id: w_kda,  label: "가중치 · KDA attention", short: KDA attention, group: attention 가중치, block: {kind: weight}, layers: n_kda}
+  - {id: w_mla,  label: "가중치 · MLA attention", short: MLA attention, group: attention 가중치, color: gray, share: 공유, layers: L_mla,
+     store: "L_mla*2*(d*c_q + c_q*n_h*d_k + d*c_kv + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v)",
+     read:  "L_mla*2*(d*c_q + c_q*n_h*d_k + d*c_kv + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v)", note: "BF16 · NoPE · 출력 gate 포함"}
+  - {id: w_ffn,  label: "가중치 · dense FFN", short: dense FFN, group: "MoE · FFN 가중치", color: gray-l, share: 공유, layers: 1,
+     store: "3*d*d_ffd*2", read: "3*d*d_ffd*2", note: "첫 1층 · BF16"}
+  - {id: w_moe,  label: "가중치 · MoE expert", short: MoE expert, group: "MoE · FFN 가중치", color: gray-l, share: 공유, layers: L_moe,
+     store: "L_moe*(E*3*d_lat*d_moe*fp4 + E_s*3*d*d_moe*2 + 2*d*d_lat*2 + 2*d*E)",
+     read:  "L_moe*(E_hit*3*d_lat*d_moe*fp4 + E_s*3*d*d_moe*2 + 2*d*d_lat*2 + 2*d*E)",
+     note: "routed MXFP4 · shared BF16 · latent 투영 BF16 · router. 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)"}
+  - {id: w_head, label: "가중치 · LM head", short: LM head, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*V*d"}
+  - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*B*d", note: "토큰 B개의 행만 읽음"}
+  - {id: kv_mla, label: "KV cache · MLA 24층", short: KV cache (MLA 24층), group: KV cache (MLA 24층), color: blue, share: 요청별, layers: L_mla,
+     store: "L_mla*B*T*2*c_kv", read: "L_mla*B*T*2*c_kv", write: "L_mla*B*2*c_kv", note: "NoPE latent 512 · BF16 · 토큰당 1,024 B/층. 전부 읽음"}
+  - {id: state,  label: recurrent state, short: KDA state, group: recurrent state, block: {t: [ssm_state]}, layers: n_kda}
+  - {id: conv,   label: conv state, short: conv state, group: conv state, block: {t: [conv_state]}, layers: n_kda}
+  - {id: temp,   label: 커널 사이 중간값, short: "q · k · v · gate 등 토큰 벡터", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: n_kda, note: "KDA 층만 — MLA 층 중간값은 뺌"}

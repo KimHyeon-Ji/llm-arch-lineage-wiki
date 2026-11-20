@@ -1,0 +1,76 @@
+# 배치 — 현재 GPU 실행 (as-is) · Qwen3.8-Flash-Next QSA 층 decode
+# 항목 규칙은 dsa-v32/map-gpu.yaml과 같다. 블록 키 쓰기는 스텝당 1/4줄 몫(via kI_new).
+
+name: GPU 현재 실행 (H200 기준)
+hw:
+  label: H200
+  hbm_bw: 4.8e12
+  hbm_cap: 141000000000
+  peak:
+    fp8:  1979e12
+    bf16: 989e12
+    vec:  67e12
+  n_sm: 132
+  onchip:
+    l2:   {label: L2 캐시,     short: L2,   total: 52428800, desc: "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}
+    smem: {label: 공유 메모리, short: SMEM, per_sm: 233472,  desc: "SM마다 있는 SRAM"}
+    reg:  {label: 레지스터,    short: REG,  per_sm: 262144,  desc: "SM마다 256 KB. 계산 중인 값"}
+  note: "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"
+
+kernels:
+  - id: K1
+    label: 입력 투영 GEMM
+    plain: "x로 q · 출력 gate · K · V 만들기"
+    impl: "q(+gate) · k · v 투영 GEMM"
+    steps: [p1]
+    hbm_read:  [{t: x, pat: small}, {t: W_q, pat: stream}, {t: W_kv, pat: stream}]
+    hbm_write: [{t: q, pat: small}, {t: kv_new, pat: small}]
+  - id: K2
+    label: KV 캐시 쓰기
+    plain: "K · V 1줄을 KV cache 끝에 붙이기"
+    impl: "q · k norm + RoPE(부분 25%) + paged KV 쓰기"
+    steps: [p2]
+    hbm_read:  [{t: kv_new, pat: small}]
+    hbm_write: [{t: kv_cache, via: kv_new, pat: row}]
+  - id: K3
+    label: 색인 투영 · 블록 키
+    plain: "색인 q · w 만들기, 4토큰마다 블록 키 1줄"
+    impl: "indexer q · k · weights GEMM + 4토큰 색인 키 묶기 (가정)"
+    steps: [i1, i2]
+    hbm_read:  [{t: x, pat: small}, {t: W_Iq, pat: stream}, {t: W_Ik, pat: stream}, {t: W_Iw, pat: stream}]
+    hbm_write: [{t: qI, pat: small}, {t: wI, pat: small}, {t: blk_cache, via: kI_new, pat: row}]
+  - id: K4
+    label: 블록 점수 커널
+    plain: "새 토큰 vs 블록 키 T/4줄 → 블록별 점수"
+    impl: "블록 키 타일을 SMEM에 올려 head 4개 점수 계산 · 가중합해 [T/4]만 기록"
+    steps: [i3, i4]
+    hbm_read:  [{t: qI, pat: small}, {t: wI, pat: small}, {t: blk_cache, pat: stream}]
+    hbm_write: [{t: s, pat: stream}]
+    on_chip:
+      - {t: blk_cache, mem: smem, stage: true, label: 블록 키 타일, how: "블록 키를 타일 단위로 SMEM에 올림"}
+      - {t: logits, mem: reg, how: "head 4개 점수를 레지스터에서 가중합 후 바로 버림"}
+  - id: K5
+    label: top-k 커널
+    plain: "점수 상위 512블록 고르기"
+    impl: "T/4개 블록 점수에서 상위 512개 선택"
+    steps: [s1]
+    hbm_read:  [{t: s, pat: stream}]
+    hbm_write: [{t: idx, pat: small}]
+  - id: K6
+    label: 블록 attention 커널
+    plain: "고른 블록 안 토큰 2,048줄로 GQA attention"
+    impl: "블록 단위(4줄 연속)로 K · V를 SMEM에 모아 QK · online softmax · PV"
+    steps: [a1, a2, a3, a4]
+    hbm_read:  [{t: q, pat: small}, {t: idx, pat: small}, {t: kv_cache, via: kv_sel, pat: gather}]
+    hbm_write: [{t: o, pat: small}]
+    on_chip:
+      - {t: kv_sel, mem: smem, how: "고른 블록을 HBM에서 SMEM으로 모음 (4줄씩 연속이라 DSA보다 덜 흩어짐)"}
+      - {t: sc, mem: reg, how: "QK 누산값. 블록마다 online softmax"}
+      - {t: p, mem: reg, how: "확률을 레지스터에 둔 채 PV에 사용"}
+  - id: K7
+    label: gate · 출력 투영 GEMM
+    plain: "출력 gate를 곱하고 6,144폭을 hidden 2,560으로"
+    impl: "sigmoid gate + o_proj GEMM"
+    steps: [o1]
+    hbm_read:  [{t: o, pat: small}, {t: W_o, pat: stream}]
+    hbm_write: [{t: y, pat: small}]

@@ -1,0 +1,130 @@
+# DeepSeek-V4-Flash CSA 층 — 층 1개 · decode 1스텝 연산 그래프 (HW와 무관)
+#
+# CSA = 토큰 m(=4)개를 학습된 가중합으로 압축한 엔트리 위에서 DSA 색인으로 top-k(=512)를 고르고,
+#       최근 원본 W(=128)줄 창과 함께 attention. 단일 KV head(512폭)를 head 64개가 공유.
+# - 압축 엔트리 · 색인 키는 m토큰마다 1줄씩 생김 → 스텝당 쓰기 · 압축 읽기는 1/m로 나눠 셈
+# - 참조 구현 검증 없음: config 값 + V4 논문 구조(위키 01-attention 3.4)로 세운 식. 형식 · 압축 가중치 크기는 가정
+
+model: DeepSeek-V4-Flash (CSA · 압축 + 선택)
+scope: CSA 층 1개 · decode 1스텝 · attention 블록 (MoE 제외)
+
+dims:
+  B:      {value: 1, short: 요청, desc: 동시 요청 수, var: true}
+  T:      {value: 131072, short: 토큰, desc: 컨텍스트 길이, var: true}
+  d:      {value: 4096, short: hidden 폭, desc: hidden 폭}
+  c_q:    {value: 1024, short: q latent 폭, desc: q_lora_rank}
+  n_h:    {value: 64, short: head, desc: attention head 수}
+  d_h:    {value: 512, short: head 폭, desc: "head 폭 = 공유 KV 폭 (RoPE 64 포함)"}
+  c_o:    {value: 1024, short: o latent 폭, desc: o_lora_rank}
+  g_o:    {value: 8, short: 출력 그룹, desc: o_groups — head 8개씩 묶어 출력 LoRA}
+  n_I:    {value: 64, short: 색인 head, desc: index_n_heads}
+  d_I:    {value: 128, short: 색인 폭, desc: index_head_dim}
+  k:      {value: 512, short: 선택 엔트리, desc: index_topk — 압축 엔트리 중 고르는 수}
+  m:      {value: 4, short: 압축률, desc: "CSA 압축률 — 토큰 4개가 엔트리 1개"}
+  W:      {value: 128, short: 창, desc: "sliding_window — 최근 원본 토큰 (압축 전)"}
+  n_layer: {value: 43, short: 층 수, desc: "전체 층 수 = 창 2 + CSA 21 + HCA 20"}
+  T_max:  {value: 1048576, short: 지원 길이, desc: max_position_embeddings}
+
+formats:
+  kv_row:
+    desc: KV 엔트리 1줄 바이트
+    title: KV 엔트리 형식
+    ui: true
+    options:
+      fp8:  {value: 592,  label: "FP8 592 B (가정)", desc: "448 FP8 + RoPE 64 BF16 + scale 4개 — V3.2 배포 형식을 head 512에 맞춘 가정"}
+      bf16: {value: 1024, label: "BF16 1,024 B (비교 기준)", desc: "512값 × BF16"}
+    default: fp8
+  idx_row:
+    desc: 압축 색인 키 1줄 바이트
+    options:
+      fp4: {value: 64, desc: "128값 × FP4 (기준 보고서 가정)"}
+    default: fp4
+
+kinds:
+  weight: {label: 가중치,       share: 공유,   color: gray,   persistent: true, desc: 모든 요청이 같이 쓴다}
+  kv:     {label: KV cache,     share: 요청별, color: blue,   persistent: true, desc: "압축 엔트리 T/4줄 + 최근 원본 128줄"}
+  idxk:   {label: 색인 K cache, share: 요청별, color: orange, persistent: true, desc: "압축 엔트리마다 색인 키 1줄 — 매 스텝 전부 읽음"}
+  inter:  {label: 중간 결과,    share: 요청별, color: yellow, desc: 점수 · 부분합처럼 커널 사이에서 잠깐 쓰는 데이터}
+  sel:    {label: 선택 위치,    share: 요청별, color: pink,   desc: top-k 결과}
+  act:    {label: 토큰 벡터,    share: 요청별, color: violet, desc: 토큰 1개짜리 중간 결과 벡터}
+
+tensors:
+  W_qa:  {label: W_qa,  shape: [d, c_q],         bytes: d*c_q,          kind: weight, desc: x → q latent}
+  W_kv:  {label: W_kv,  shape: [d, d_h],         bytes: d*d_h,          kind: weight, desc: x → 원본 KV 1줄 (512)}
+  W_z:   {label: W_z,   shape: [d, 2*d_h],       bytes: 2*d*d_h,        kind: weight, desc: "x → 압축 가중치 (겹치는 두 계열) — 크기 가정"}
+  W_qb:  {label: W_qb,  shape: [c_q, n_h*d_h],   bytes: c_q*n_h*d_h,    kind: weight, desc: q latent → head 64개 × 512}
+  W_Iq:  {label: W_Iq,  shape: [c_q, n_I*d_I],   bytes: c_q*n_I*d_I,    kind: weight, desc: q latent → 색인 q}
+  W_Ik:  {label: W_Ik,  shape: [d, 2*d_I],       bytes: 2*d*d_I,        kind: weight, desc: "x → 색인 키 압축용 (두 계열) — 크기 가정"}
+  W_Iw:  {label: W_Iw,  shape: [d, n_I],         bytes: 2*d*n_I,        kind: weight, desc: x → 색인 head 가중치 (BF16)}
+  W_oa:  {label: W_oa,  shape: [n_h*d_h, c_o],   bytes: n_h*d_h*c_o,    kind: weight, desc: "출력 LoRA a — head 8개씩 8그룹, 그룹마다 4,096 → 1,024"}
+  W_ob:  {label: W_ob,  shape: [g_o*c_o, d],     bytes: g_o*c_o*d,      kind: weight, desc: 출력 LoRA b — 8,192 → hidden 4,096}
+  kv_cmp:    {label: 압축 KV,      shape: [B, T/m, d_h], bytes: B*(T/m)*kv_row,  kind: kv,   desc: "토큰 4개를 학습된 가중합으로 묶은 엔트리"}
+  kv_win:    {label: 최근 창 KV,   shape: [B, W, d_h],   bytes: B*W*kv_row,      kind: kv,   desc: "압축 전 최근 128토큰 — 오래된 줄을 덮어씀"}
+  idx_cache: {label: 색인 K cache, shape: [B, T/m, d_I], bytes: B*(T/m)*idx_row, kind: idxk, desc: "압축 엔트리마다 색인 키 1줄 (FP4)"}
+  x:       {label: x,        shape: [B, d],          bytes: 2*B*d,           kind: act, desc: input RMSNorm 이후 hidden}
+  q_a:     {label: q_a,      shape: [B, c_q],        bytes: 2*B*c_q,         kind: act}
+  kv_raw:  {label: 원본 KV,  shape: [B, d_h],        bytes: 2*B*d_h,         kind: act}
+  z:       {label: 압축 가중치, shape: [B, 2*d_h],   bytes: 2*B*2*d_h,       kind: act}
+  kv_new:  {label: 창 새 줄, shape: [B, d_h],        bytes: B*kv_row,        kind: kv,  desc: 정규화 + RoPE를 마친 원본 1줄}
+  cmp_in:  {label: 압축 입력, shape: [B, 2*m, d_h],  bytes: B*2*kv_row,      kind: kv,  desc: "창에서 읽는 최근 8줄 ÷ 4스텝 (스텝당 몫)"}
+  cmp_new: {label: 압축 새 엔트리, shape: [B, d_h],  bytes: B*kv_row/m,      kind: kv,  desc: "4토큰마다 1줄 — 스텝당 1/4줄"}
+  q:       {label: q,        shape: [B, n_h, d_h],   bytes: 2*B*n_h*d_h,     kind: act}
+  qI:      {label: 색인 q,   shape: [B, n_I, d_I],   bytes: B*n_I*(d_I+4),   kind: act}
+  kI_new:  {label: 색인 키 새 줄, shape: [B, d_I],   bytes: B*idx_row/m,     kind: idxk, desc: "4토큰마다 1줄 — 스텝당 1/4줄"}
+  wI:      {label: w,        shape: [B, n_I],        bytes: 4*B*n_I,         kind: act}
+  logits:  {label: head별 점수, shape: [B, n_I, T/m], bytes: 4*B*n_I*T/m,    kind: inter, desc: "head 64개 × 압축 엔트리 — 칩 안에서 바로 줄임"}
+  s:       {label: 색인 점수, shape: [B, T/m],       bytes: 4*B*T/m,         kind: inter}
+  idx:     {label: 선택 위치, shape: [B, k],         bytes: 4*B*k,           kind: sel}
+  kv_sel:  {label: 선택 KV,  shape: [B, k, d_h],     bytes: B*k*kv_row,      kind: kv,  desc: 고른 압축 엔트리 512줄}
+  sc:      {label: attention 점수, shape: [B, n_h, k], bytes: 4*B*n_h*(k+W), kind: inter, desc: "선택 512 + 창 128"}
+  p:       {label: 확률,     shape: [B, n_h, k],     bytes: 2*B*n_h*(k+W),   kind: inter}
+  o:       {label: o,        shape: [B, n_h, d_h],   bytes: 2*B*n_h*d_h,     kind: act}
+  o_g:     {label: o latent, shape: [B, g_o, c_o],   bytes: 2*B*g_o*c_o,     kind: act}
+  y:       {label: y,        shape: [B, d],          bytes: 2*B*d,           kind: act}
+
+steps:
+  - {id: p1, group: 투영, label: 입력 투영, unit: gemm, prec: fp8, in: [x, W_qa, W_kv, W_z], out: [q_a, kv_raw, z], flops: 2*B*d*(c_q+3*d_h), desc: "같은 x로 q latent · 원본 KV 1줄 · 압축 가중치를 만든다."}
+  - {id: p2, group: 투영, label: 창 쓰기, unit: mem, viz: append, in: [kv_raw], out: [kv_win], elems: B*d_h, desc: "정규화 · RoPE 후 최근 창에 1줄 쓰기 (가장 오래된 줄을 덮어씀)."}
+  - {id: p3, group: 투영, label: 토큰 압축, unit: vec, in: [kv_win, z], out: [kv_cmp], flops: 2*B*2*d_h*2, desc: "4토큰마다 최근 8줄(겹치는 두 계열)을 학습된 가중치로 묶어 엔트리 1줄을 쓴다."}
+  - {id: p4, group: 투영, label: q 업투영, unit: gemm, prec: fp8, in: [q_a, W_qb], out: [q], flops: 2*B*c_q*n_h*d_h, desc: q latent를 head 64개 × 512로 펼친다.}
+  - {id: i1, group: 색인 투영, label: 색인 q, unit: gemm, prec: fp8, in: [q_a, W_Iq], out: [qI], flops: 2*B*c_q*n_I*d_I, desc: 색인 q(head 64개 × 128).}
+  - {id: i2, group: 색인 투영, label: 색인 키 압축 · 쓰기, unit: gemm, prec: fp8, in: [x, W_Ik], out: [idx_cache], flops: 2*B*d*2*d_I, desc: "색인 키도 4토큰마다 압축해 1줄 (FP4)."}
+  - {id: i3, group: 색인 투영, label: head 가중치 w, unit: gemm, prec: bf16, in: [x, W_Iw], out: [wI], flops: 2*B*d*n_I, desc: 색인 head 64개의 가중치.}
+  - {id: i4, group: 색인 점수, label: 색인 점수 (head별), unit: gemm, prec: fp8, in: [qI, idx_cache], out: [logits], flops: 2*B*n_I*d_I*T/m, desc: "색인 q를 압축 색인 키 T/4줄 전부와 내적한다."}
+  - {id: i5, group: 색인 점수, label: ReLU · head 가중합, unit: vec, viz: reduce, in: [logits, wI], out: [s], flops: 2*B*n_I*T/m, desc: 엔트리마다 점수 1개로 줄인다.}
+  - {id: s1, group: 선택, label: top-k, unit: sel, viz: select, in: [s], out: [idx], elems: B*T/m, desc: "T/4개 점수 중 상위 512개 엔트리."}
+  - {id: a1, group: Sparse attention, label: 엔트리 gather, unit: gather, viz: gather, in: [idx, kv_cmp], out: [kv_sel], elems: B*k*d_h, desc: "선택한 압축 엔트리 512줄을 흩어진 주소에서 모은다."}
+  - {id: a2, group: Sparse attention, label: QK 점수, unit: gemm, prec: bf16, in: [q, kv_sel], out: [sc], flops: 2*B*n_h*d_h*(k+W), desc: "head 64개 × (선택 512 + 창 128). 모든 head가 같은 KV 줄을 쓴다."}
+  - {id: a3, group: Sparse attention, label: softmax, unit: vec, in: [sc], out: [p], elems: B*n_h*(k+W), desc: online softmax.}
+  - {id: a4, group: Sparse attention, label: PV, unit: gemm, prec: bf16, in: [p, kv_sel], out: [o], flops: 2*B*n_h*d_h*(k+W), desc: "같은 512폭 KV를 V로도 쓴다."}
+  - {id: o1, group: 출력, label: 출력 LoRA a (그룹), unit: gemm, prec: fp8, in: [o, W_oa], out: [o_g], flops: 2*B*n_h*d_h*c_o/g_o, desc: "head 8개씩 8그룹, 그룹마다 4,096 → 1,024."}
+  - {id: o2, group: 출력, label: 출력 LoRA b, unit: gemm, prec: fp8, in: [o_g, W_ob], out: [y], flops: 2*B*g_o*c_o*d, desc: 8,192 → hidden 4,096.}
+
+phases:
+  - {id: P1, focus: p1, label: "쿼리 · KV · 압축", tag: "V4 압축", tag_style: strong, steps: [p1, p2, p3, p4], plain: "q와 원본 KV 1줄을 만들고, 4토큰마다 압축 엔트리 1줄을 쓴다"}
+  - {id: P2, focus: i4, label: "압축 엔트리 점수", tag: "DSA 색인", tag_style: outline, steps: [i1, i2, i3, i4, i5], plain: "압축 색인 키 T/4줄 전부와 비교해 점수를 낸다"}
+  - {id: P3, focus: s1, label: "512개 고르기", tag: "DSA 색인", tag_style: outline, steps: [s1], plain: "점수 상위 512개 엔트리 위치만 남긴다"}
+  - {id: P4, focus: a1, label: "고른 엔트리 + 창으로 attention", tag: "V4 압축", tag_style: strong, steps: [a1, a2, a3, a4], plain: "고른 압축 엔트리 512줄과 최근 원본 128줄로 attention"}
+  - {id: P5, focus: o2, label: "출력 투영", tag: "그룹 LoRA", tag_style: plain, steps: [o1, o2], plain: "head 8개씩 묶어 출력 LoRA로 hidden 폭으로"}
+
+page:
+  file: csa-v4flash
+  nav: "Sparse · DeepSeek-V4-Flash"
+  doc_title: CSA 데이터 이동
+  lite:
+    doc_title: CSA 데이터 이동
+    sub: "DeepSeek-V4-Flash · CSA 층 1개 (압축 + 선택) · 새 토큰 1개 생성(decode) · H200"
+  crumbs: [Sparse attention · 압축 + 선택, DeepSeek-V4-Flash · CSA, 층 1개 · decode 1스텝]
+  scope:
+    - "DeepSeek-V4-Flash 차원 · CSA 층 1개 · decode 1스텝 · attention 블록만. HCA 20층 · 창 2층은 데이터 성격 패널의 모델 전체에 식으로 포함"
+    - "압축 엔트리 · 색인 키는 4토큰마다 1줄 → 스텝당 쓰기 · 압축 읽기를 1/4로 나눠 셈. 실제로는 4스텝 중 1번 몰아서 함"
+    - "KV 엔트리 592 B(448 FP8 + RoPE 64 BF16 + scale) · 색인 키 FP4 64 B · 압축 가중치(W_z · W_Ik) 크기는 가정"
+    - "최근 원본 128토큰 창을 CSA · HCA 층에서도 함께 읽는다고 가정 (config sliding_window = 128)"
+    - "커널 묶음은 V3.2 경로(색인 → top-k → sparse attention)를 대표로 단순화. split-KV 부분 출력은 넣지 않음"
+    - "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). 가중치 FP8, routed expert FP4"
+  verify:
+    - "참조 구현 검증 없음 — config 값 + V4 논문 구조(위키 01-attention 3.4)로 세운 식"
+
+sources:
+  - {label: "DeepSeek-V4-Flash config.json", ref: "hidden 4096 · head 64 × 512 · KV head 1 · q_lora 1024 · o_lora 1024 · o_groups 8 · index 64 × 128 · topk 512 · sliding_window 128 · compress_ratios (창 2 · CSA 21 · HCA 20)"}
+  - {label: "DeepSeek-V4 (arXiv:2606.19348) · 위키 01-attention 3.4", ref: "CSA = 학습된 압축(m=4) + DSA 색인, HCA = 고압축(m'=128) + 전부 읽기"}

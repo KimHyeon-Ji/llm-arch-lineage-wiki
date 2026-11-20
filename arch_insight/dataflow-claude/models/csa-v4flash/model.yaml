@@ -1,0 +1,47 @@
+# DeepSeek-V4-Flash 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/traits.py(보고서 그림)가 읽음
+#
+# 43층 = 창(sliding window) 2 + CSA 21 + HCA 20. block = CSA 층 1개(algo · map) × 21.
+# HCA 층: 128토큰을 엔트리 1개로 고압축, 색인 없이 엔트리 전부 + 최근 창 128줄을 읽음. 창 층: 최근 128줄만.
+# 가중치: attention FP8, routed expert FP4(+ scale 1/32 → 0.53 B/값), shared expert FP8, LM head · 임베딩 BF16
+# mHC(hyper-connection) · MTP 층 · hash routing 차이는 뺌
+# config: reports/llm-memory-requirements/data/raw/cfg_deepseek-ai_DeepSeek-V4-Flash.json
+
+model: DeepSeek-V4-Flash
+layer_label: CSA 층 1개
+deploy: {n_gpu: 2, desc: "H200 2장 — FP4 expert 기준 가중치 약 160 GB"}
+
+dims:
+  L_csa:   {value: 21,     desc: CSA 층 수}
+  L_hca:   {value: 20,     desc: HCA 층 수}
+  L_swa:   {value: 2,      desc: 창 층 수 (앞 2층)}
+  m_h:     {value: 128,    desc: HCA 압축률}
+  d_moe:   {value: 2048,   desc: expert FFN 폭}
+  E:       {value: 256,    desc: routed expert 수}
+  E_k:     {value: 6,      desc: 토큰당 고르는 expert 수}
+  E_s:     {value: 1,      desc: shared expert 수}
+  fp4:     {value: 0.53125, desc: "FP4 + scale(32값마다 1 B) 바이트/값"}
+  V:       {value: 129280, desc: 어휘 수}
+
+derived:
+  E_hit: {expr: "E*(1-(1-E_k/E)**B)", desc: "요청 B개가 건드리는 expert 수 기댓값 — 균등 라우팅 가정"}
+
+data:
+  - {id: w_csa,  label: "가중치 · CSA attention", short: CSA attention, group: attention 가중치, block: {kind: weight}, layers: L_csa}
+  - {id: w_hca,  label: "가중치 · HCA · 창 attention", short: HCA · 창 attention, group: attention 가중치, color: gray, share: 공유, layers: L_hca,
+     store: "L_hca*(d*c_q + d*d_h + 2*d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d) + L_swa*(d*c_q + d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d)",
+     read:  "L_hca*(d*c_q + d*d_h + 2*d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d) + L_swa*(d*c_q + d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d)",
+     note: "FP8 · CSA에서 색인 가중치를 뺀 것. 창 층은 압축 가중치도 없음"}
+  - {id: w_moe,  label: "가중치 · MoE expert", short: MoE expert, group: MoE 가중치, color: gray-l, share: 공유, layers: n_layer,
+     store: "n_layer*(E*3*d*d_moe*fp4 + E_s*3*d*d_moe + 2*d*E)", read: "n_layer*(E_hit*3*d*d_moe*fp4 + E_s*3*d*d_moe + 2*d*E)",
+     note: "routed FP4 · shared FP8 · router BF16. 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)"}
+  - {id: w_head, label: "가중치 · LM head", short: LM head, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*V*d"}
+  - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*B*d", note: "토큰 B개의 행만 읽음"}
+  - {id: kv_csa, label: "KV cache · CSA 압축", short: CSA 압축 KV, group: KV cache (압축), block: {t: [kv_cmp]}, layers: L_csa}
+  - {id: kv_hca, label: "KV cache · HCA 고압축", short: HCA 고압축 KV, group: KV cache (압축), color: blue, share: 요청별, layers: L_hca,
+     store: "L_hca*B*(T/m_h)*kv_row", read: "L_hca*B*(T/m_h)*kv_row", write: "L_hca*B*kv_row/m_h",
+     note: "128토큰마다 엔트리 1줄. 색인 없이 전부 읽음"}
+  - {id: kv_win, label: "KV cache · 최근 창", short: 최근 창 KV, group: 최근 창 KV, color: violet, share: 요청별, layers: n_layer,
+     store: "n_layer*B*W*kv_row", read: "n_layer*B*W*kv_row", write: "n_layer*B*kv_row",
+     note: "층마다 최근 원본 128줄 (오래된 줄을 덮어씀). CSA 층의 창도 여기에 셈"}
+  - {id: idxk,   label: 색인 K cache, short: 색인 K cache, group: 색인 K cache, block: {t: [idx_cache]}, layers: L_csa}
+  - {id: temp,   label: 커널 사이 중간값, short: "q · 점수 · 선택 위치 등", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: L_csa, note: "CSA 층만 — HCA · 창 층 중간값은 뺌"}

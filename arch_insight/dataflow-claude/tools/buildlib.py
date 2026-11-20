@@ -185,10 +185,27 @@ def _emit(template, title, js, name):
     print(f"viewer/{name}.html (공유용) · viewer/artifact/{name}.html (artifact용) 생성")
 
 
+NAV_ORDER = ["mla-v31", "dsa-v32", "csa-v4flash", "kda-k3", "qsa-qwen38", "gdn-qwen36"]   # 화면 위 모델 이동 줄 순서
+
+
+def nav_list():
+    """models/*/algo.yaml의 page에서 모델 이동 줄을 만든다 (file · 짧은 이름 · 분류)."""
+    out = []
+    for mid in NAV_ORDER:
+        p = os.path.join(ROOT, "models", mid, "algo.yaml")
+        if os.path.exists(p):
+            with open(p, encoding="utf-8") as f:
+                page = yaml.safe_load(f)["page"]
+            out.append({"file": page["file"], "label": page.get("nav", page["doc_title"]), "group": page.get("nav_group", "")})
+    return out
+
+
 def write_outputs(here, algo, mp, checks, bad, numbers_md):
+    """checks = None 이면 참조 구현 검증 없이 yaml 식만으로 만든 모델."""
     with open(os.path.join(here, "numbers.md"), "w", encoding="utf-8") as f:
         f.write(numbers_md)
-    data = {"algo": algo, "map": mp, "checks": {"n": len(checks), "fail": bad}, "pages": PAGES}
+    data = {"algo": algo, "map": mp, "checks": None if checks is None else {"n": len(checks), "fail": bad},
+            "pages": PAGES, "nav": nav_list()}
     mfile = os.path.join(here, "model.yaml")   # 모델 전체 데이터 (약식 뷰어 "데이터 성격 한눈에")
     if os.path.exists(mfile):
         with open(mfile, encoding="utf-8") as f:
@@ -199,6 +216,18 @@ def write_outputs(here, algo, mp, checks, bad, numbers_md):
     page = algo["page"]
     lite = page.get("lite", {})
     _emit("template-lite.html", lite.get("doc_title", page["doc_title"]), js, page["file"] + "-lite")   # 약식 화면 (유일한 뷰어)
+
+
+def build_noref(here):
+    """참조 구현 없이 yaml 식만으로 수치 · 뷰어를 만든다 (config로만 정한 모델). 반환: 0"""
+    algo, mp = load(here)
+    L = [f"# {algo['model']} — 층 1개 decode 1스텝 수치", "",
+         "build.py가 algo.yaml · map-gpu.yaml에서 계산한다. 손으로 고치지 않는다.", "",
+         "기준: 그린 층 1개만, 요청 1개, H200 이론 하한. **참조 구현 검증 없음** — config 값으로 세운 yaml 식", ""]
+    L += kernel_tables(algo, mp)
+    L += cross_table(algo, mp)
+    write_outputs(here, algo, mp, None, 0, "\n".join(L) + "\n")
+    return 0
 
 
 def check_flops_expected(step, dims):

@@ -1,0 +1,95 @@
+# DeepSeek-V3.1 MLA (full attention 기준선) — 층 1개 · decode 1스텝 연산 그래프 (HW와 무관)
+#
+# - DSA(dsa-v32/algo.yaml)에서 색인 단계(색인 투영 · 점수 · top-k · gather)를 뺀 것. 나머지 차원 · 형식은 같다.
+# - attention은 KV cache T줄을 전부 읽는다 (흡수형 MLA · FlashMLA dense decode 방식).
+# - 참조 구현 검증 없음: config 값으로 세운 식. V3.2와 같은 MLA 블록이라 shape · FLOP 식은 dsa-v32에서 검증된 것과 같다.
+
+model: DeepSeek-V3.1 (MLA · full attention 기준선)
+scope: 층 1개 · decode 1스텝 · attention 블록 (MoE · FFN 제외)
+
+dims:
+  B:      {value: 1, short: 요청,      desc: 동시 요청 수, var: true}
+  T:      {value: 131072, short: 토큰, desc: 컨텍스트 길이 (새 토큰 포함), var: true}
+  d:      {value: 7168, short: hidden 폭,   desc: hidden 폭}
+  c_q:    {value: 1536, short: q latent 폭,   desc: q latent 폭 (q_lora_rank)}
+  c_kv:   {value: 512, short: KV latent,    desc: KV latent 폭 (kv_lora_rank)}
+  n_h:    {value: 128, short: head,    desc: attention head 수}
+  d_nope: {value: 128, short: nope 폭,    desc: head당 RoPE 없는 q·k 폭}
+  d_rope: {value: 64, short: RoPE,     desc: RoPE 폭 (q · k 공통)}
+  d_v:    {value: 128, short: V 폭,    desc: head당 V 폭}
+  n_layer: {value: 61,    short: 층 수,    desc: 전체 층 수}
+  T_max:  {value: 163840, short: 지원 길이, desc: max_position_embeddings}
+
+formats:
+  kv_row:
+    desc: KV cache 1줄 바이트
+    title: KV cache 1줄 형식
+    ui: true
+    options:
+      fp8:  {value: 656,  label: "FP8 656 B (V3.2와 같은 형식)", desc: "c_kv 512 FP8 + scale 4개(FP32) + k_rope 64 BF16"}
+      bf16: {value: 1152, label: "BF16 1,152 B (비교 기준)", desc: "576값 × BF16"}
+    default: fp8
+
+kinds:
+  weight: {label: 가중치,       share: 공유,   color: gray,   persistent: true, desc: 모든 요청이 같이 쓴다 — B가 늘어도 그대로}
+  kv:     {label: KV cache,     share: 요청별, color: blue,   persistent: true, desc: 요청마다 T줄 — 매 스텝 전부 읽음}
+  inter:  {label: 중간 결과,    share: 요청별, color: yellow, desc: 점수 · 부분합처럼 커널 사이에서 잠깐 쓰는 데이터}
+  act:    {label: 토큰 벡터,    share: 요청별, color: violet, desc: 토큰 1개짜리 중간 결과 벡터. 앞 커널이 HBM에 쓰고 다음 커널이 읽음 — 작음}
+
+tensors:
+  W_qa:  {label: W_qa,  shape: [d, c_q],                   bytes: d*c_q,                  kind: weight, desc: x → q latent}
+  W_kva: {label: W_kva, shape: [d, c_kv+d_rope],           bytes: d*(c_kv+d_rope),        kind: weight, desc: x → KV latent + k_rope}
+  W_qb:  {label: W_qb,  shape: [c_q, n_h*(d_nope+d_rope)], bytes: c_q*n_h*(d_nope+d_rope), kind: weight, desc: q latent → head별 q}
+  W_UK:  {label: W_UK,  shape: [n_h, d_nope, c_kv],        bytes: 2*n_h*d_nope*c_kv,      kind: weight, desc: "q_nope를 latent 공간으로 흡수 (BF16 가정)"}
+  W_UV:  {label: W_UV,  shape: [n_h, c_kv, d_v],           bytes: 2*n_h*c_kv*d_v,         kind: weight, desc: "latent 출력 → head별 V 폭 (BF16 가정)"}
+  W_o:   {label: W_o,   shape: [n_h*d_v, d],               bytes: n_h*d_v*d,              kind: weight, desc: 출력 투영}
+  kv_cache: {label: KV cache, shape: [B, T, c_kv+d_rope], bytes: B*T*kv_row, kind: kv, desc: "줄마다 c_kv(512) + k_rope(64). head 128개가 같은 줄을 공유"}
+  x:      {label: x,      shape: [B, d],                 bytes: 2*B*d,                 kind: act,   desc: input RMSNorm 이후 hidden}
+  q_a:    {label: q_a,    shape: [B, c_q],               bytes: 2*B*c_q,               kind: act}
+  kv_a:   {label: kv_a,   shape: [B, c_kv+d_rope],       bytes: 2*B*(c_kv+d_rope),     kind: act}
+  kv_new: {label: kv 새 줄, shape: [B, c_kv+d_rope],     bytes: B*kv_row,              kind: kv,    desc: 정규화 + RoPE를 마친 KV 1줄}
+  q:      {label: q,      shape: [B, n_h, d_nope+d_rope], bytes: 2*B*n_h*(d_nope+d_rope), kind: act}
+  q_full: {label: q_full, shape: [B, n_h, c_kv+d_rope],  bytes: 2*B*n_h*(c_kv+d_rope), kind: act,   desc: latent 공간 쿼리 (흡수 q 512 + q_rope 64)}
+  sc:     {label: attention 점수, shape: [B, n_h, T],    bytes: 4*B*n_h*T,             kind: inter, desc: "head 128개 × T — 블록마다 online softmax로 바로 줄임"}
+  p:      {label: 확률,   shape: [B, n_h, T],            bytes: 2*B*n_h*T,             kind: inter}
+  o_lat:  {label: o_lat,  shape: [B, n_h, c_kv],         bytes: 2*B*n_h*c_kv,          kind: act,   desc: latent 공간 출력}
+  o:      {label: o,      shape: [B, n_h, d_v],          bytes: 2*B*n_h*d_v,           kind: act}
+  y:      {label: y,      shape: [B, d],                 bytes: 2*B*d,                 kind: act,   desc: attention 출력 (잔차 더하기 전)}
+
+steps:
+  - {id: p1, group: MLA 투영, label: 입력 투영, unit: gemm, prec: fp8, in: [x, W_qa, W_kva], out: [q_a, kv_a], flops: 2*B*d*(c_q+c_kv+d_rope), desc: 같은 x로 q latent와 KV latent + k_rope를 만든다.}
+  - {id: p2, group: MLA 투영, label: KV 정규화 · RoPE, unit: vec, in: [kv_a], out: [kv_new], elems: B*(c_kv+d_rope), desc: KV 1줄(576값)을 완성한다.}
+  - {id: p3, group: MLA 투영, label: KV cache 쓰기, unit: mem, viz: append, in: [kv_new], out: [kv_cache], elems: B*(c_kv+d_rope), desc: 새 줄 1개를 KV cache 끝에 붙인다.}
+  - {id: p4, group: MLA 투영, label: q 정규화 · 업투영, unit: gemm, prec: fp8, in: [q_a, W_qb], out: [q], flops: 2*B*c_q*n_h*(d_nope+d_rope), desc: q latent를 head 128개 × 192폭으로 펼친다.}
+  - {id: p5, group: MLA 투영, label: q RoPE · W_UK 흡수, unit: gemm, prec: bf16, in: [q, W_UK], out: [q_full], flops: 2*B*n_h*d_nope*c_kv, desc: head마다 q_nope를 latent 폭(512)으로 바꾼다.}
+  - {id: a1, group: MLA attention, label: QK 점수, unit: gemm, prec: bf16, in: [q_full, kv_cache], out: [sc], flops: 2*B*n_h*(c_kv+d_rope)*T, desc: "head 128개 × KV T줄 전부. 모든 head가 같은 KV 줄을 쓴다."}
+  - {id: a2, group: MLA attention, label: softmax, unit: vec, in: [sc], out: [p], elems: B*n_h*T, desc: online softmax.}
+  - {id: a3, group: MLA attention, label: PV, unit: gemm, prec: bf16, in: [p, kv_cache], out: [o_lat], flops: 2*B*n_h*c_kv*T, desc: 확률로 KV의 c_kv(512) 부분을 가중합한다.}
+  - {id: o1, group: 출력, label: W_UV 풀기, unit: gemm, prec: bf16, in: [o_lat, W_UV], out: [o], flops: 2*B*n_h*c_kv*d_v, desc: head마다 latent 출력(512)을 V 폭(128)으로.}
+  - {id: o2, group: 출력, label: 출력 투영, unit: gemm, prec: fp8, in: [o, W_o], out: [y], flops: 2*B*n_h*d_v*d, desc: head 출력 16,384폭을 hidden 7,168로.}
+
+phases:
+  - {id: P1, focus: p1, label: "쿼리 · KV 만들기", tag: "기존 MLA", tag_style: plain, steps: [p1, p2, p3, p4, p5], plain: "새 토큰으로 q와 KV 1줄을 만들고 KV cache 끝에 붙인다"}
+  - {id: P2, focus: a1, label: "KV 전부로 attention", tag: "전부 읽기", tag_style: outline, steps: [a1, a2, a3], plain: "KV cache T줄을 전부 읽어 attention을 계산한다"}
+  - {id: P3, focus: o2, label: "출력 투영", tag: "기존 MLA", tag_style: plain, steps: [o1, o2], plain: "head 출력을 hidden 폭으로 되돌린다"}
+
+# 약식 화면 문구 (viewer/template-lite.html이 읽는다). scope · verify = 화면 맨 아래 '가정 · 검증'
+page:
+  file: mla-v31
+  nav: "기준선 · DeepSeek-V3.1"
+  doc_title: MLA 데이터 이동
+  lite:
+    doc_title: MLA 데이터 이동 (기준선)
+    sub: "DeepSeek-V3.1 · full attention(MLA) 층 1개 · 새 토큰 1개 생성(decode) · H200"
+  crumbs: [Full attention 기준선, DeepSeek-V3.1 · MLA, 층 1개 · decode 1스텝]
+  scope:
+    - "DeepSeek-V3.1 차원 · 층 1개 · decode 1스텝 · attention 블록만. V3.2와 MoE · FFN · 차원이 같고 색인만 없는 비교 기준"
+    - "KV 형식은 V3.2와 같은 FP8 656 B로 맞춤 — 두 모델의 차이가 색인 유무만 남도록"
+    - "커널 묶음은 흡수형 MLA + FlashMLA dense decode를 대표로 단순화. split-KV 부분 출력은 모델에 넣지 않음"
+    - "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). 가중치 FP8, W_UK · W_UV BF16 가정"
+  verify:
+    - "참조 구현 검증 없음 — config 값으로 세운 식. MLA 부분은 dsa-v32에서 HF 출력과 맞춘 참조 구현과 같은 shape · FLOP 식"
+
+sources:
+  - {label: "DeepSeek-V3.1 config.json", ref: "kv_lora_rank 512 · q_lora_rank 1536 · head 128 · qk_nope 128 · qk_rope 64 · v_head 128 · 61층 (dense 3 + MoE 58)"}
+  - {label: "FlashMLA (deepseek-ai)", ref: "dense decode — 흡수형 MLA로 KV latent 576값을 그대로 읽음"}

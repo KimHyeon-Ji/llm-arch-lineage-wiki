@@ -175,6 +175,7 @@ phases:
 # 약식 화면 문구 (viewer/template-lite.html이 읽는다). scope · verify = 화면 맨 아래 '가정 · 검증' ({checks} = meta 실행 검사 결과)
 page:
   file: gdn-qwen36
+  nav: "Hybrid · Qwen3.6-27B (GDN 층)"
   doc_title: Gated DeltaNet 데이터 이동
   lite:
     doc_title: Gated DeltaNet 데이터 이동

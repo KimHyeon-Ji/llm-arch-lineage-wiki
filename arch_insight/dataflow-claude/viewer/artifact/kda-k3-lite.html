@@ -1,0 +1,889 @@
+<title>KDA 데이터 이동</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: 약식 — 보고서 그림 문법(연한 레인 패널 · 흰 카드 · 굵은 수치). 위 "흐름 한눈에" = 단계별 HBM 막대 + 칩 레인,
+   아래 "커널별 이동" = HBM 레인 | 굵은 화살표(굵기 = 바이트) | 칩 레인 3열. 커널 칸을 누르면 텐서 모양이 아래로 펼쳐진다.
+   색 = 데이터 종류 (yaml kinds.color). 설명 문장 · 결론은 보고서(report/)에 둔다. */
+:root {
+  --bg: #f1f3f8; --surface: #ffffff; --surface2: #f6f7fb; --lane: #f2f4f9; --tint: #eef0f6; --hbm-r: #2f4b8c; --hbm-w: #c0304f;
+  /* 화면 틀 — 진한 남색 블록 · 보라 강조 · 옅은 띠 (데이터 색과 별개) */
+  --navy: #4a5573; --navy-d: #2f3850; --navy-chip: #6a7499; --on-navy: #d9deeb; --white: #ffffff;
+  --purple: #7b61c9; --purple-t: #ebe5fa; --slate-t: #e3e6ef; --band: #eef0f6;
+  --ink: #2b2f3a; --ink2: #4a5573; --muted: #6b7080; --line: #dfe2ec; --line2: #e6e8f1; --axis: #9aa0b0;
+  --c-gray: #9c9a92; --c-gray-l: #dddcd6; --c-blue: #2a78d6; --c-blue-l: #b7d3f6; --c-orange: #eb6834; --c-orange-l: #f8c6b1;
+  --c-green: #1baf7a; --c-green-l: #a9e0cb; --c-yellow: #eda100; --c-yellow-l: #f7d98f; --c-pink: #e87ba4; --c-pink-l: #f6c9da; --c-violet: #6250d6; --c-violet-l: #d6d1f5; --c-gray-ll: #efeeea;
+  --font-text: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --bridge: #f8f9fc;
+  --l-svc: #2f4b8c; --l-req: #5b74b8; --l-step: #a9b8e2;   /* 수명 — 길수록 진한 남색 */
+  --cols: 290px 232px minmax(0, 1fr);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --navy: #3d4767; --navy-d: #2c3550; --navy-chip: #5a6590; --on-navy: #c3cbe0; --purple: #8c74de; --purple-t: #2f2852; --slate-t: #2a2f3b; --band: #20242d;
+    --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
+    --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
+    --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c; --c-gray-ll: #34332f;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12141a; --surface: #1a1d24; --surface2: #20242c; --lane: #1f232b; --tint: #262a33; --bridge: #1d2027; --l-svc: #9db0ea; --l-req: #6b82c4; --l-step: #2f3b5e; --hbm-r: #7f9be0; --hbm-w: #ef7b93;
+    --navy: #3d4767; --navy-d: #2c3550; --navy-chip: #5a6590; --on-navy: #c3cbe0; --purple: #8c74de; --purple-t: #2f2852; --slate-t: #2a2f3b; --band: #20242d;
+  --ink: #eceef3; --ink2: #b6bfd3; --muted: #8b92a3; --line: #2f3440; --line2: #262b35; --axis: #5d6474;
+  --c-gray: #8f8d86; --c-gray-l: #45443f; --c-blue: #3987e5; --c-blue-l: #1f3a5f; --c-orange: #d95926; --c-orange-l: #5a2f1c;
+  --c-green: #199e70; --c-green-l: #1b4537; --c-yellow: #c98500; --c-yellow-l: #4f3c12; --c-pink: #d55181; --c-pink-l: #552538; --c-violet: #9085e9; --c-violet-l: #2f2a5c; --c-gray-ll: #34332f;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-text); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 24px 48px; font-variant-numeric: tabular-nums;
+}
+.wrap { max-width: 1240px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+h1 { font-size: 30px; font-weight: 800; margin: 0; letter-spacing: -0.02em; text-wrap: balance; }
+.mono { font-family: var(--font-mono); }
+button:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+
+header.top { display: flex; flex-direction: column; gap: 6px; padding: 2px; }
+.crumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+.crumb { font-size: 12px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 999px; padding: 2px 10px; }
+.h1row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.litechip { font-size: 12.5px; font-weight: 800; color: var(--white); background: var(--purple); border-radius: 7px; padding: 3px 10px; }
+.sub { color: var(--muted); margin: 0; font-size: 15px; }
+.links { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.links a { font-size: 13px; color: var(--ink2); font-weight: 700; text-decoration: none; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; background: var(--surface); }
+.links a.main { background: var(--ink2); color: var(--surface); border-color: var(--ink2); }
+.links .navcur { font-size: 13px; font-weight: 800; color: var(--white); background: var(--navy); border: 1px solid var(--navy); border-radius: 999px; padding: 3px 12px; }
+.links a:hover { border-color: var(--ink); }
+
+.panel { background: var(--surface); border: 1px solid var(--line2); border-radius: 16px; padding: 18px 22px 20px; min-width: 0; box-shadow: 0 1px 2px rgba(30, 40, 70, 0.04); }
+/* 섹션 제목 = 옅은 띠 + 왼쪽 남색 강조선 */
+.blk { position: relative; overflow: hidden; display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 16px; background: var(--band); border-radius: 10px; padding: 10px 14px 10px 22px; }
+.blk::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--navy); }
+.blk .name { font-size: 17px; font-weight: 800; }
+.blk .what { font-size: 13px; color: var(--muted); }
+
+/* 조건 + 범례 */
+.ctlbar { display: flex; flex-wrap: wrap; gap: 12px 28px; align-items: center; padding: 12px 16px; }
+.ctl { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ctl .cl { font-size: 13px; font-weight: 800; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); }
+.seg button { font: inherit; font-size: 12.5px; font-weight: 600; padding: 4px 11px; border: 0; border-radius: 999px; background: transparent; color: var(--ink2); cursor: pointer; font-variant-numeric: tabular-nums; }
+.seg button:hover { background: var(--tint); }
+.seg button.ext { color: var(--muted); font-style: italic; }
+.seg button[aria-pressed=true] { background: var(--navy); color: var(--white); font-weight: 800; font-style: normal; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); width: 100%; padding-top: 10px; border-top: 1px solid var(--line2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { display: inline-block; width: 13px; height: 13px; border-radius: 4px; }
+.legend .ar { font-weight: 800; color: var(--ink); }
+.legend .dash { width: 18px; height: 11px; border: 1.5px dashed var(--ink2); border-radius: 6px; background: transparent; }
+
+.scroll { overflow-x: auto; }
+#sum svg { display: block; width: 100%; min-width: 900px; height: auto; }
+svg text { fill: var(--ink); font-family: var(--font-text); }
+svg .t-muted { fill: var(--muted); }
+svg .t-inv { fill: var(--surface); }
+svg .t-mono { font-family: var(--font-mono); }
+svg .lane { fill: var(--lane); }
+svg .box { fill: var(--navy); }
+svg .boxhit { cursor: pointer; }
+svg .boxhit:hover .box { fill: var(--navy-d); }
+svg .t-white { fill: var(--white); }
+svg .t-onnavy { fill: var(--on-navy); }
+svg .t-purple { fill: var(--purple); }
+svg .t-navy { fill: var(--navy); }
+
+/* 커널별 이동 */
+.kgrid { display: grid; grid-template-columns: var(--cols); min-width: 900px; position: relative; }
+.lane-bg { background: var(--lane); border-radius: 14px; }
+.lh { padding: 18px 18px 12px; display: flex; flex-direction: column; gap: 1px; }
+.lh b { align-self: flex-start; font-size: 15px; font-weight: 800; color: var(--white); background: var(--navy); border-radius: 8px; padding: 3px 13px; margin-bottom: 4px; }
+.lh span { font-size: 12.5px; color: var(--muted); }
+.lh.mid { justify-content: flex-end; align-items: center; text-align: center; padding: 14px 6px 8px; }
+.lh.mid span { font-size: 12px; }
+.phrow { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 30px 18px 14px; scroll-margin-top: 12px; }
+.phrow .phn { font-size: 16px; font-weight: 800; }
+.phrow::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+/* 단계 태그: DSA 추가 = 보라 · DSA로 변경 = 연보라 · 기존 = 회청 */
+.tag { font-size: 11.5px; font-weight: 700; padding: 2px 10px; border-radius: 999px; white-space: nowrap; color: var(--navy); background: var(--slate-t); }
+.tag.strong { background: var(--purple); color: var(--white); }
+.tag.outline { background: var(--purple-t); color: var(--purple); }
+/* 커널 1개 = 한 줄 묶음: HBM 카드(읽기 칸 + 쓰기 칸) · 화살표 띠 · 커널 카드가 같은 높이, 커널 사이에 간격 줄 */
+.hcell { grid-column: 1; margin: 0 12px 0 14px; background: var(--surface); border: 1px solid var(--line); min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+.hcell.r { border-bottom: 0; border-radius: 12px 12px 0 0; padding: 16px 16px 14px; }
+.hcell.w { border-top: 0; border-radius: 0 0 12px 12px; padding: 14px 16px 16px; position: relative; }
+.hcell.w::before { content: ""; position: absolute; left: 14px; right: 14px; top: 0; border-top: 1px dashed var(--line); }
+.hk-row { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.hk { font-family: var(--font-mono); font-size: 11.5px; font-weight: 700; color: var(--white); background: var(--navy); border-radius: 6px; padding: 1px 7px; line-height: 1.5; }
+.hk-row .hl-t { margin-bottom: 0; }
+.bridge { grid-column: 2; background: var(--bridge); border-top: 1px solid var(--line2); border-bottom: 1px solid var(--line2); }
+.kgap { grid-column: 1 / -1; height: 30px; }
+.hl-t { font-size: 12.5px; font-weight: 800; margin-bottom: 3px; color: var(--ink); }
+.hl-i { display: grid; grid-template-columns: 11px minmax(0, 1fr) auto; gap: 7px; align-items: center; font-size: 12.5px; line-height: 1.75; }
+.hl-i i { width: 10px; height: 10px; border-radius: 2px; }
+.hl-i .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hl-i .b { color: var(--muted); font-size: 12px; }
+.l2 { font-style: normal; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--muted); border: 1px dashed var(--axis); border-radius: 4px; padding: 0 4px; margin-right: 6px; line-height: 1.4; display: inline-block; }
+.hl-i.sm { color: var(--muted); }
+.hl-i.sm i { opacity: 0.7; }
+.hl-i.zero { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--axis); }
+.acell { grid-column: 2; display: flex; align-items: center; justify-content: center; margin: 0 -14px 0 -12px; padding: 18px 0; min-width: 0; position: relative; z-index: 1; }
+.acell svg { display: block; overflow: visible; }
+.acell .al { font-size: 12px; fill: var(--muted); font-weight: 700; }
+.acell .ab { font-size: 16px; font-weight: 800; }
+.kcard { grid-column: 3; margin: 0 14px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 9px; text-align: left; font: inherit; color: inherit; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 22px; cursor: pointer; min-width: 0; }
+.kcard:hover { border-color: var(--navy); }
+.kcard[aria-expanded=true] { border-color: var(--navy); box-shadow: 0 0 0 1.5px var(--navy); }
+.khead { display: flex; align-items: center; gap: 10px; }
+.kid { font-family: var(--font-mono); font-size: 12.5px; font-weight: 700; background: var(--navy); color: var(--white); border-radius: 6px; padding: 2px 8px; flex: none; }
+.kname { font-size: 17.5px; font-weight: 800; }
+.kchev { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--purple); background: var(--purple-t); border-radius: 999px; padding: 3px 12px; white-space: nowrap; flex: none; }
+.kcard[aria-expanded=true] .kchev { background: var(--purple); color: var(--white); }
+.kplain { font-size: 13px; color: var(--muted); }
+.kchips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.kchips .kcl { font-weight: 700; color: var(--muted); margin-right: 2px; }
+.ocp { display: inline-flex; align-items: center; gap: 6px; border: 1.5px dashed var(--k); border-radius: 999px; padding: 1px 10px 1px 4px; background: var(--surface); }
+.ocp em { font-style: normal; color: var(--muted); }
+code.mb { font-family: var(--font-mono); font-size: 10px; font-weight: 700; background: var(--ink2); color: var(--surface); border-radius: 3px; padding: 1px 5px; }
+
+/* 펼친 계산 단계 — 단계마다 한 줄: 입력 텐서 × 입력 텐서 → 출력 텐서 */
+.kx { grid-column: 1 / -1; margin: 18px 14px 4px; background: var(--surface); border: 2px solid var(--navy); border-radius: 14px; padding: 14px 22px 10px; position: relative; z-index: 2; overflow: hidden; }
+.kx-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin: -14px -22px 6px; padding: 13px 22px 12px; background: var(--band); border-bottom: 1px solid var(--line2); }
+.kx-head b { font-size: 14.5px; font-weight: 800; }
+.kx-dims { display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: var(--muted); }
+.kx-dims b { font-family: var(--font-mono); font-size: 12px; font-weight: 700; color: var(--ink); margin-right: 3px; }
+.kx-key { margin-left: auto; display: flex; gap: 6px; }
+.st { display: grid; grid-template-columns: 210px minmax(0, 1fr); gap: 16px; align-items: start; padding: 20px 0; }
+.st + .st { border-top: 1px dashed var(--line2); }
+.st-h { display: flex; align-items: center; gap: 7px; font-size: 13px; padding-top: 3px; min-width: 0; }
+.st-n { font-weight: 800; color: var(--ink2); }
+.st-h code { font-family: var(--font-mono); font-size: 10.5px; font-weight: 700; color: var(--ink2); background: var(--tint); border-radius: 4px; padding: 1px 5px; }
+.st-h b { font-weight: 800; }
+.st-b { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.eq { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 14px; }
+.eq .op { font-style: normal; font-size: 22px; font-weight: 800; color: var(--ink2); }
+.eq .cm { font-style: normal; color: var(--muted); margin-left: -6px; }
+.eq-v { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.eq-v > .op { font-style: normal; font-size: 18px; font-weight: 800; color: var(--ink2); margin-left: 16px; }
+.eq-n { font-size: 12px; color: var(--muted); }
+.tt { display: flex; flex-direction: column; gap: 3px; padding: 9px 11px 10px; border: 1.5px dashed var(--axis); border-radius: 9px; background: var(--surface); min-width: 0; max-width: 300px; }
+.tt.r { border: 2px solid var(--hbm-r); box-shadow: inset 0 4px 0 var(--hbm-r); }   /* HBM에서 읽음 */
+.tt.w { border: 2px solid var(--hbm-w); box-shadow: inset 0 4px 0 var(--hbm-w); }   /* HBM에 씀 */
+.tt-top { display: flex; align-items: baseline; gap: 10px; font-size: 12.5px; }
+.tt-top b { font-weight: 800; white-space: nowrap; }
+.tt-top em { margin-left: auto; font-style: normal; font-size: 11.5px; color: var(--muted); white-space: nowrap; }
+.tt code { font-family: var(--font-mono); font-size: 13px; font-weight: 700; }
+.tgw { margin-top: 4px; }
+.tgw svg { display: block; max-width: 100%; height: auto; }
+.t-ax { display: none; }   /* 그림 밑 축 설명은 숨김 — 모양은 위 [B, T, d_I]로 */
+.key { font-size: 11.5px; font-weight: 700; border-radius: 7px; padding: 1px 8px; }
+.key.r { color: var(--hbm-r); border: 2px solid var(--hbm-r); }
+.key.w { color: var(--hbm-w); border: 2px solid var(--hbm-w); }
+.key.c { color: var(--muted); border: 1.5px dashed var(--axis); font-weight: 400; }
+.eq-v .tt { max-width: 168px; padding: 7px 9px 8px; }   /* 텐서가 많은 단계는 한 줄에 들어가게 좁게 */
+.eq-v .tt code { font-size: 12px; }
+.eq-v .eq { gap: 8px 8px; }
+/* 데이터 성격 한눈에 — 막대 2개(보관 · 스텝당 이동) + 성격 표. 둥근 띠 하나 = 성격 하나, 띠 안 칸 = 데이터 (색 = 데이터 종류) */
+.dp-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin: 0 0 16px; }
+.dp-ctl { margin-left: auto; display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+.dp-ctl .cl { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.dp-legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--muted); min-width: 0; }
+.dp-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.dp-legend i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.dp-bars { display: flex; flex-direction: column; gap: 16px; }
+.dp-row { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 6px 18px; align-items: start; }
+.dp-h { display: flex; flex-direction: column; gap: 1px; }
+.dp-h b { font-size: 14px; font-weight: 800; }
+.dp-h span { font-size: 12px; color: var(--muted); }
+.dp-h .dp-tot { font-family: var(--font-mono); font-size: 19px; font-weight: 700; margin-top: 2px; }
+.dp-bar { display: flex; gap: 4px; min-width: 0; padding-top: 4px; }
+.dp-g { display: flex; flex-direction: column; gap: 6px; min-width: 4px; }
+.dp-strip { display: flex; gap: 1px; height: 38px; border-radius: 9px; overflow: hidden; background: var(--line2); }
+.dp-seg { min-width: 0; display: flex; align-items: center; overflow: hidden; }
+.dp-seg span { font-size: 12px; font-weight: 700; padding: 0 9px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dp-seg span b { font-family: var(--font-mono); font-weight: 700; margin-left: 6px; }
+.dp-cap { font-size: 12.5px; font-weight: 700; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-height: 19px; }
+.dp-cap b { font-family: var(--font-mono); font-weight: 700; color: var(--ink); }
+.dp-key { font-size: 12px; color: var(--muted); margin: 2px 0 0; }
+.dp-tab { width: 100%; min-width: 820px; border-collapse: collapse; font-size: 13px; margin-top: 20px; }
+.dp-tab th { text-align: left; font-size: 12px; font-weight: 700; color: var(--ink2); padding: 8px 12px; background: var(--band); white-space: nowrap; }
+.dp-tab th:first-child { border-radius: 8px 0 0 8px; }
+.dp-tab th:last-child { border-radius: 0 8px 8px 0; }
+/* 성격 표의 묶음 이름 = 데이터 색의 옅은 칩 */
+.gchip { display: inline-block; font-size: 13px; font-weight: 800; color: var(--ink); border-radius: 7px; padding: 2px 10px; }
+.g-ro { background: var(--c-gray-l); } .g-app { background: var(--c-blue-l); } .g-rmw { background: var(--c-green-l); }
+.g-tmp { background: var(--c-yellow-l); } .g-chip { border: 1.5px dashed var(--axis); padding: 1px 9px; }
+.dp-tab th.num, .dp-tab td.num { text-align: right; }
+.dp-tab td { padding: 11px 12px; border-bottom: 1px solid var(--line2); vertical-align: top; }
+.dp-tab tr:last-child td { border-bottom: 0; }
+.dp-tab td.num, .dp-tab td.nw { white-space: nowrap; }
+.dp-tab td:first-child { min-width: 180px; }
+.dp-tab td b { font-weight: 800; }
+.dp-tab td.num b { font-family: var(--font-mono); font-weight: 700; }
+.dp-tab .sm { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.dp-tab tr.chip td { background: var(--surface2); }
+.dp-items { display: flex; flex-wrap: wrap; gap: 3px 14px; }
+.dp-items span { display: inline-flex; align-items: center; gap: 6px; }
+.dp-items i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; flex: none; }
+.dp-items i.dash { border: 1.5px dashed var(--ink2); background: transparent; }
+.dp-note { font-size: 12.5px; color: var(--muted); margin: 12px 0 0; }
+@media (max-width: 640px) { .dp-row { grid-template-columns: minmax(0, 1fr); } .dp-ctl { margin-left: 0; } }
+
+.assume { background: var(--surface); border: 1px solid var(--line2); border-radius: 14px; padding: 12px 18px; font-size: 13px; color: var(--ink2); }
+.assume summary { cursor: pointer; font-weight: 800; color: var(--ink); }
+.assume ul { margin: 10px 0 2px; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+.foot { font-size: 12.5px; color: var(--muted); margin: 0; padding: 0 2px; }
+.foot a { color: var(--ink2); font-weight: 700; }
+
+@media (max-width: 640px) { h1 { font-size: 22px; } }
+@media (prefers-reduced-motion: no-preference) { .kcard, .seg button { transition: border-color 120ms, box-shadow 120ms, background 120ms; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="crumbs" id="crumbs"></div>
+    <div class="h1row"><h1 id="h1"></h1><span class="litechip">약식</span></div>
+    <p class="sub" id="subtext"></p>
+    <nav class="links" id="links" aria-label="다른 버전"></nav>
+  </header>
+
+  <section class="panel ctlbar" aria-label="조건">
+    <div class="ctl"><span class="cl">컨텍스트 길이 T</span><div class="seg" role="group" id="tseg" aria-label="컨텍스트 길이 T"></div></div>
+    <div class="ctl"><span class="cl">동시 요청 수 B</span><div class="seg" role="group" id="bseg" aria-label="동시 요청 수 B"></div></div>
+    <div class="legend" id="legend"></div>
+  </section>
+
+  <section class="panel" aria-label="데이터 성격 한눈에" id="dpanel" hidden>
+    <div class="blk"><span class="name">데이터 성격 한눈에</span><span class="what" id="dpwhat"></span></div>
+    <div class="dp-top"><div class="dp-legend" id="dplegend"></div><div class="dp-ctl"><span class="cl">범위</span><div class="seg" role="group" id="dpscope" aria-label="범위"></div><span class="cl">나눠 보기</span><div class="seg" role="group" id="dpview" aria-label="나눠 보기"></div></div></div>
+    <div class="dp-bars" id="dpbars"></div>
+    <div class="scroll"><table class="dp-tab" id="dptab"></table></div>
+    <p class="dp-note" id="dpnote"></p>
+  </section>
+
+  <section class="panel" aria-label="흐름 한눈에">
+    <div class="blk"><span class="name">흐름 한눈에</span><span class="what" id="sumwhat"></span></div>
+    <div class="scroll"><div id="sum"></div></div>
+  </section>
+
+  <section class="panel" aria-label="커널별 이동">
+    <div class="blk"><span class="name">커널별 이동</span><span class="what">화살표 굵기 = 옮기는 바이트 (√ 눈금 · 100배 차이 = 10배 굵기) · 커널 칸을 누르면 계산 단계(텐서 × 텐서 → 텐서)가 펼쳐진다</span></div>
+    <div class="scroll"><div class="kgrid" id="kgrid"></div></div>
+  </section>
+
+  <details class="assume"><summary>가정 · 검증</summary><ul id="assume"></ul></details>
+  <p class="foot" id="foot"></p>
+</div>
+
+<script>
+const DATA = {"algo": {"model": "Kimi K3 (KDA · linear attention 층)", "scope": "KDA 층 1개 · decode 1스텝 · linear attention 블록 (MoE · MLA 층 제외)", "dims": {"B": {"value": 1, "short": "요청", "desc": "동시 요청 수", "var": true}, "T": {"value": 131072, "short": "토큰", "desc": "컨텍스트 길이 — KDA 층에는 영향 없음 (비교용)", "var": true}, "d": {"value": 7168, "short": "hidden 폭", "desc": "hidden 폭"}, "n_h": {"value": 96, "short": "head", "desc": "q · k · v head 수 = state head 수"}, "d_k": {"value": 128, "short": "key 폭", "desc": "head당 q · k 폭"}, "d_v": {"value": 128, "short": "value 폭", "desc": "head당 v 폭"}, "d_conv": {"value": 4, "short": "conv 탭", "desc": "short_conv_kernel_size"}, "C": {"value": 36864, "short": "conv 채널", "desc": "q · k · v 채널 = 3 × 96 × 128"}, "n_layer": {"value": 93, "short": "층 수", "desc": "전체 층 수 = KDA 69 + MLA 24"}, "n_kda": {"value": 69, "short": "KDA 층 수", "desc": "KDA 층 수"}, "T_max": {"value": 1048576, "short": "지원 길이", "desc": "max_position_embeddings"}}, "formats": {"state_b": {"desc": "state 원소 1개 바이트", "title": "state 정밀도", "ui": true, "options": {"fp32": {"value": 4, "label": "FP32 (가정 · Kimi Linear 커널 기준)"}, "bf16": {"value": 2, "label": "BF16 (가정 · 이동량 절반)"}}, "default": "fp32"}}, "kinds": {"weight": {"label": "가중치", "share": "공유", "color": "gray", "persistent": true, "desc": "모든 요청이 같이 쓴다"}, "state": {"label": "recurrent state", "share": "요청별", "color": "green", "persistent": true, "desc": "요청마다 head 96개 × 128 × 128 — 매 스텝 전부 읽고 다시 씀"}, "conv": {"label": "conv state", "share": "요청별", "color": "pink", "persistent": true, "desc": "요청마다 최근 3토큰의 q · k · v 채널"}, "act": {"label": "토큰 벡터", "share": "요청별", "color": "violet", "desc": "토큰 1개짜리 중간 결과 벡터"}, "inter": {"label": "중간 결과", "share": "요청별", "color": "yellow", "desc": "커널 안에서 잠깐 쓰는 값"}}, "tensors": {"W_qkv": {"label": "W_qkv", "shape": ["d", "C"], "bytes": "2*d*C", "kind": "weight", "desc": "x → q · k · v"}, "W_f": {"label": "W_f", "shape": ["d", "n_h*d_k"], "bytes": "2*d*n_h*d_k", "kind": "weight", "desc": "x → 채널별 감쇠 α (full-rank gate)"}, "W_b": {"label": "W_b", "shape": ["d", "n_h"], "bytes": "2*d*n_h", "kind": "weight", "desc": "x → 쓰기 강도 β"}, "W_ga": {"label": "W_ga", "shape": ["d", "d_v"], "bytes": "2*d*d_v", "kind": "weight", "desc": "출력 gate low-rank a (가정)"}, "W_gb": {"label": "W_gb", "shape": ["d_v", "n_h*d_v"], "bytes": "2*d_v*n_h*d_v", "kind": "weight", "desc": "출력 gate low-rank b (가정)"}, "w_conv": {"label": "conv 가중치", "shape": ["C", "d_conv"], "bytes": "2*C*d_conv", "kind": "weight"}, "w_norm": {"label": "norm 가중치", "shape": ["d_v"], "bytes": "2*d_v", "kind": "weight"}, "W_out": {"label": "W_out", "shape": ["n_h*d_v", "d"], "bytes": "2*n_h*d_v*d", "kind": "weight", "desc": "출력 투영"}, "conv_state": {"label": "conv state", "shape": ["B", "C", "d_conv-1"], "bytes": "2*B*C*(d_conv-1)", "kind": "conv", "desc": "최근 3토큰의 q · k · v 채널 (BF16)"}, "ssm_state": {"label": "state", "shape": ["B", "n_h", "d_k", "d_v"], "bytes": "state_b*B*n_h*d_k*d_v", "kind": "state", "desc": "head마다 [128 × 128] — KV cache를 대신하는 고정 크기 기억"}, "x": {"label": "x", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act"}, "qkv": {"label": "qkv", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act"}, "f": {"label": "f", "shape": ["B", "n_h*d_k"], "bytes": "2*B*n_h*d_k", "kind": "act", "desc": "채널별 감쇠 logit"}, "b": {"label": "b", "shape": ["B", "n_h"], "bytes": "2*B*n_h", "kind": "act"}, "g_lat": {"label": "gate latent", "shape": ["B", "d_v"], "bytes": "2*B*d_v", "kind": "act"}, "conv_win": {"label": "conv 창", "shape": ["B", "C", "d_conv"], "bytes": "2*B*C*d_conv", "kind": "inter"}, "qkv_c": {"label": "qkv (합성곱 후)", "shape": ["B", "C"], "bytes": "2*B*C", "kind": "act"}, "q": {"label": "q", "shape": ["B", "n_h", "d_k"], "bytes": "4*B*n_h*d_k", "kind": "inter"}, "k": {"label": "k", "shape": ["B", "n_h", "d_k"], "bytes": "4*B*n_h*d_k", "kind": "inter"}, "v": {"label": "v", "shape": ["B", "n_h", "d_v"], "bytes": "4*B*n_h*d_v", "kind": "inter"}, "alpha": {"label": "α", "shape": ["B", "n_h", "d_k"], "bytes": "4*B*n_h*d_k", "kind": "inter", "desc": "채널별 감쇠 (하한 −5)"}, "beta": {"label": "β", "shape": ["B", "n_h"], "bytes": "4*B*n_h", "kind": "inter"}, "S_dec": {"label": "감쇠한 state", "shape": ["B", "n_h", "d_k", "d_v"], "bytes": "state_b*B*n_h*d_k*d_v", "kind": "inter"}, "kv_mem": {"label": "기억 읽기 값", "shape": ["B", "n_h", "d_v"], "bytes": "4*B*n_h*d_v", "kind": "inter"}, "S_new": {"label": "새 state", "shape": ["B", "n_h", "d_k", "d_v"], "bytes": "state_b*B*n_h*d_k*d_v", "kind": "state"}, "o": {"label": "o", "shape": ["B", "n_h", "d_v"], "bytes": "2*B*n_h*d_v", "kind": "act"}, "o_n": {"label": "o (gate 후)", "shape": ["B", "n_h", "d_v"], "bytes": "2*B*n_h*d_v", "kind": "act"}, "y": {"label": "y", "shape": ["B", "d"], "bytes": "2*B*d", "kind": "act"}}, "steps": [{"id": "l1", "group": "입력 투영", "label": "입력 투영", "unit": "gemm", "prec": "bf16", "in": ["x", "W_qkv", "W_f", "W_b", "W_ga"], "out": ["qkv", "f", "b", "g_lat"], "flops": "2*B*d*(C+n_h*d_k+n_h+d_v)", "desc": "같은 x로 q · k · v, 채널별 감쇠, 쓰기 강도, 출력 gate latent를 만든다."}, {"id": "l2", "group": "짧은 합성곱", "label": "짧은 합성곱", "unit": "vec", "in": ["qkv", "conv_state", "w_conv"], "out": ["qkv_c"], "flops": "2*B*C*d_conv", "desc": "채널마다 최근 4칸 가중합 + SiLU."}, {"id": "l3", "group": "짧은 합성곱", "label": "conv state 갱신", "unit": "mem", "viz": "append", "in": ["qkv"], "out": ["conv_state"], "elems": "B*C*(d_conv-1)", "desc": "conv state 3칸을 한 칸 밀어 다시 쓴다."}, {"id": "l4", "group": "state 갱신", "label": "q·k 정규화 · gate", "unit": "vec", "in": ["qkv_c", "f", "b"], "out": ["q", "k", "v", "alpha", "beta"], "flops": "6*B*n_h*d_k+4*B*n_h*d_k", "desc": "q · k L2 정규화, α = 채널별 감쇠(하한 −5), β = sigmoid(b)."}, {"id": "l5", "group": "state 갱신", "label": "state 감쇠 (채널별)", "unit": "vec", "in": ["ssm_state", "alpha"], "out": ["S_dec"], "flops": "B*n_h*d_k*d_v", "desc": "state의 key 차원마다 다른 α를 곱한다 — GDN과의 차이."}, {"id": "l6", "group": "state 갱신", "label": "기억 읽기", "unit": "gemv", "in": ["S_dec", "k"], "out": ["kv_mem"], "flops": "2*B*n_h*d_k*d_v", "desc": "지금 k로 state를 읽는다."}, {"id": "l7", "group": "state 갱신", "label": "delta 기록", "unit": "vec", "in": ["S_dec", "k", "v", "kv_mem", "beta"], "out": ["S_new"], "flops": "2*B*n_h*d_k*d_v+3*B*n_h*d_v", "desc": "새 v와 기억한 값의 차이만 β만큼 기록 — state 전체를 다시 쓴다."}, {"id": "l8", "group": "출력 읽기", "label": "출력 읽기", "unit": "gemv", "in": ["S_new", "q"], "out": ["o"], "flops": "2*B*n_h*d_k*d_v", "desc": "갱신한 state에 q를 곱해 출력을 읽는다."}, {"id": "l9", "group": "출력 읽기", "label": "gate 정규화", "unit": "gemm", "prec": "bf16", "in": ["o", "g_lat", "W_gb", "w_norm"], "out": ["o_n"], "flops": "2*B*d_v*n_h*d_v+8*B*n_h*d_v", "desc": "gate latent를 head별로 펼쳐(low-rank b) RMSNorm 후 곱한다."}, {"id": "l10", "group": "출력 투영", "label": "출력 투영", "unit": "gemm", "prec": "bf16", "in": ["o_n", "W_out"], "out": ["y"], "flops": "2*B*n_h*d_v*d", "desc": "head 출력 12", "288폭을 hidden 7": null, "168로.": null}], "phases": [{"id": "P1", "focus": "l1", "label": "입력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l1"], "plain": "x로 q · k · v와 채널별 감쇠 · 쓰기 강도 · gate를 만든다"}, {"id": "P2", "focus": "l2", "label": "짧은 합성곱", "tag": "Linear 고유", "tag_style": "strong", "steps": ["l2", "l3"], "plain": "최근 4토큰을 채널마다 섞는다"}, {"id": "P3", "focus": "l7", "label": "state 갱신", "tag": "KDA 채널별 감쇠", "tag_style": "strong", "steps": ["l4", "l5", "l6", "l7"], "plain": "state를 채널마다 다르게 감쇠하고 delta만 기록한다"}, {"id": "P4", "focus": "l8", "label": "출력 읽기", "tag": "KV 대신 state", "tag_style": "outline", "steps": ["l8", "l9"], "plain": "갱신한 state에 q를 곱해 출력을 읽고 gate로 다듬는다"}, {"id": "P5", "focus": "l10", "label": "출력 투영", "tag": "공통 투영", "tag_style": "plain", "steps": ["l10"], "plain": "head 출력을 hidden 폭으로"}], "page": {"file": "kda-k3", "nav": "Hybrid · Kimi K3 (KDA + MLA)", "doc_title": "KDA 데이터 이동", "lite": {"doc_title": "KDA 데이터 이동", "sub": "Kimi K3 · KDA(linear) 층 1개 · 새 토큰 1개 생성(decode) · H200"}, "crumbs": ["Hybrid attention · linear + full", "Kimi K3 · KDA", "층 1개 · decode 1스텝"], "scope": ["Kimi K3 차원(head 96 × 128, hidden 7,168)의 KDA 층 1개 · decode 1스텝. MLA 24층 · MoE는 데이터 성격 패널의 모델 전체에 식으로 포함", "KDA = Gated DeltaNet + 채널별 감쇠(full-rank gate). 커널 묶음은 fla KDA decode 경로를 GDN과 같은 5단계로 단순화", "attention 가중치 BF16(config의 양자화 제외 목록), state FP32 가정, 출력 gate low-rank 가정", "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). 원소별 · 행렬 × 벡터는 CUDA core FP32 피크"], "verify": ["참조 구현 검증 없음 — config 값 + 위키 02-linear-attention 2.3(KDA)으로 세운 식"]}, "sources": [{"label": "Kimi K3 config.json (HuggingFace moonshotai/Kimi-K3)", "ref": "93층 = KDA 69 + MLA 24 · head 96 × 128 · short conv 4 · full-rank gate · gate 하한 −5 · MoE 896개 중 16개 · MXFP4 routed expert"}, {"label": "위키 02-linear-attention 2.3 · 99-landscape", "ref": "KDA = 채널별 α의 delta rule, K3 = 3 KDA + 1 Gated MLA 반복"}]}, "map": {"name": "GPU 현재 실행 (H200 기준)", "hw": {"label": "H200", "hbm_bw": 4800000000000.0, "hbm_cap": 141000000000, "peak": {"fp8": 1979000000000000.0, "bf16": 989000000000000.0, "vec": 67000000000000.0}, "n_sm": 132, "onchip": {"l2": {"label": "L2 캐시", "short": "L2", "total": 52428800, "desc": "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}, "smem": {"label": "공유 메모리", "short": "SMEM", "per_sm": 233472, "desc": "SM마다 있는 SRAM"}, "reg": {"label": "레지스터", "short": "REG", "per_sm": 262144, "desc": "SM마다 256 KB. 계산 중인 값"}}, "note": "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"}, "kernels": [{"id": "K1", "label": "입력 투영 GEMM", "plain": "x로 q·k·v · 채널별 감쇠 · β · gate latent 만들기", "impl": "q · k · v · f · b · g_a 투영을 묶은 GEMM", "steps": ["l1"], "hbm_read": [{"t": "x", "pat": "small"}, {"t": "W_qkv", "pat": "stream"}, {"t": "W_f", "pat": "stream"}, {"t": "W_b", "pat": "stream"}, {"t": "W_ga", "pat": "stream"}], "hbm_write": [{"t": "qkv", "pat": "small"}, {"t": "f", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "g_lat", "pat": "small"}]}, {"id": "K2", "label": "짧은 합성곱", "plain": "최근 4토큰을 채널마다 섞고 conv state 갱신", "impl": "causal_conv1d_update", "steps": ["l2", "l3"], "hbm_read": [{"t": "qkv", "pat": "small"}, {"t": "conv_state", "pat": "stream"}, {"t": "w_conv", "pat": "stream"}], "hbm_write": [{"t": "qkv_c", "pat": "small"}, {"t": "conv_state", "pat": "overwrite"}], "on_chip": [{"t": "conv_win", "mem": "reg", "how": "state 3칸 + 새 값 = 창 4칸을 레지스터에 모아 가중합"}]}, {"id": "K3", "label": "KDA state 갱신 커널", "plain": "state를 읽어 채널별 감쇠 · 읽기 · 기록 · 출력 후 다시 쓰기", "impl": "fla fused recurrent KDA — head마다 state 블록을 레지스터에 올려 감쇠 · 기억 읽기 · rank-1 갱신 · 출력까지 한 번에", "steps": ["l4", "l5", "l6", "l7", "l8"], "hbm_read": [{"t": "qkv_c", "pat": "small"}, {"t": "f", "pat": "small"}, {"t": "b", "pat": "small"}, {"t": "ssm_state", "pat": "stream"}], "hbm_write": [{"t": "o", "pat": "small"}, {"t": "ssm_state", "via": "S_new", "pat": "overwrite"}], "on_chip": [{"t": "ssm_state", "mem": "reg", "stage": true, "label": "state 블록", "how": "head마다 [128 × 블록] 단위로 state를 레지스터로 올림"}, {"t": "alpha", "mem": "reg", "how": "채널별 감쇠 α — key 차원마다 1개"}, {"t": "S_dec", "mem": "reg", "how": "감쇠한 state"}, {"t": "kv_mem", "mem": "reg", "how": "지금 k로 읽은 기억 값"}, {"t": "S_new", "mem": "reg", "how": "갱신한 state — 출력 읽기에 쓰고 HBM에 다시 씀"}]}, {"id": "K4", "label": "gate 정규화", "plain": "gate latent를 head별로 펼쳐 RMSNorm 후 곱하기", "impl": "low-rank gate b GEMV + FusedRMSNormGated (가정)", "steps": ["l9"], "hbm_read": [{"t": "o", "pat": "small"}, {"t": "g_lat", "pat": "small"}, {"t": "W_gb", "pat": "stream"}, {"t": "w_norm", "pat": "small"}], "hbm_write": [{"t": "o_n", "pat": "small"}]}, {"id": "K5", "label": "출력 투영 GEMM", "plain": "head 출력 12,288폭을 hidden 7,168로", "impl": "o_proj GEMM", "steps": ["l10"], "hbm_read": [{"t": "o_n", "pat": "small"}, {"t": "W_out", "pat": "stream"}], "hbm_write": [{"t": "y", "pat": "small"}]}]}, "checks": null, "pages": "https://kimhyeon-ji.github.io/llm-arch-lineage-wiki/arch_insight/dataflow-claude/viewer/", "nav": [{"file": "mla-v31", "label": "기준선 · DeepSeek-V3.1", "group": ""}, {"file": "dsa-v32", "label": "Sparse · DeepSeek-V3.2", "group": ""}, {"file": "csa-v4flash", "label": "Sparse · DeepSeek-V4-Flash", "group": ""}, {"file": "kda-k3", "label": "Hybrid · Kimi K3 (KDA + MLA)", "group": ""}, {"file": "qsa-qwen38", "label": "Hybrid · Qwen3.8-Flash-Next (GDN + QSA)", "group": ""}, {"file": "gdn-qwen36", "label": "Hybrid · Qwen3.6-27B (GDN 층)", "group": ""}], "model": {"model": "Kimi K3", "layer_label": "KDA 층 1개", "deploy": {"n_gpu": 16, "desc": "H200 16장 — MXFP4 expert 기준 가중치 약 1.6 TB"}, "dims": {"L_mla": {"value": 24, "desc": "MLA 층 수"}, "L_moe": {"value": 92, "desc": "MoE 층 수 (첫 1층은 dense)"}, "c_q": {"value": 1536, "desc": "MLA q_lora_rank"}, "c_kv": {"value": 512, "desc": "MLA kv_lora_rank"}, "d_ffd": {"value": 33792, "desc": "dense FFN 폭"}, "d_lat": {"value": 3584, "desc": "routed expert latent 폭"}, "d_moe": {"value": 3072, "desc": "expert FFN 폭"}, "E": {"value": 896, "desc": "routed expert 수"}, "E_k": {"value": 16, "desc": "토큰당 고르는 expert 수"}, "E_s": {"value": 2, "desc": "shared expert 수"}, "fp4": {"value": 0.53125, "desc": "MXFP4 + scale(32값마다 1 B) 바이트/값"}, "V": {"value": 163840, "desc": "어휘 수"}}, "derived": {"E_hit": {"expr": "E*(1-(1-E_k/E)**B)", "desc": "요청 B개가 건드리는 expert 수 기댓값 — 균등 라우팅 가정"}}, "data": [{"id": "w_kda", "label": "가중치 · KDA attention", "short": "KDA attention", "group": "attention 가중치", "block": {"kind": "weight"}, "layers": "n_kda"}, {"id": "w_mla", "label": "가중치 · MLA attention", "short": "MLA attention", "group": "attention 가중치", "color": "gray", "share": "공유", "layers": "L_mla", "store": "L_mla*2*(d*c_q + c_q*n_h*d_k + d*c_kv + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v)", "read": "L_mla*2*(d*c_q + c_q*n_h*d_k + d*c_kv + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v)", "note": "BF16 · NoPE · 출력 gate 포함"}, {"id": "w_ffn", "label": "가중치 · dense FFN", "short": "dense FFN", "group": "MoE · FFN 가중치", "color": "gray-l", "share": "공유", "layers": 1, "store": "3*d*d_ffd*2", "read": "3*d*d_ffd*2", "note": "첫 1층 · BF16"}, {"id": "w_moe", "label": "가중치 · MoE expert", "short": "MoE expert", "group": "MoE · FFN 가중치", "color": "gray-l", "share": "공유", "layers": "L_moe", "store": "L_moe*(E*3*d_lat*d_moe*fp4 + E_s*3*d*d_moe*2 + 2*d*d_lat*2 + 2*d*E)", "read": "L_moe*(E_hit*3*d_lat*d_moe*fp4 + E_s*3*d*d_moe*2 + 2*d*d_lat*2 + 2*d*E)", "note": "routed MXFP4 · shared BF16 · latent 투영 BF16 · router. 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)"}, {"id": "w_head", "label": "가중치 · LM head", "short": "LM head", "group": "LM head · 임베딩", "color": "gray-ll", "share": "공유", "layers": 1, "store": "2*V*d", "read": "2*V*d"}, {"id": "w_emb", "label": "가중치 · 임베딩", "short": "임베딩", "group": "LM head · 임베딩", "color": "gray-ll", "share": "공유", "layers": 1, "store": "2*V*d", "read": "2*B*d", "note": "토큰 B개의 행만 읽음"}, {"id": "kv_mla", "label": "KV cache · MLA 24층", "short": "KV cache (MLA 24층)", "group": "KV cache (MLA 24층)", "color": "blue", "share": "요청별", "layers": "L_mla", "store": "L_mla*B*T*2*c_kv", "read": "L_mla*B*T*2*c_kv", "write": "L_mla*B*2*c_kv", "note": "NoPE latent 512 · BF16 · 토큰당 1,024 B/층. 전부 읽음"}, {"id": "state", "label": "recurrent state", "short": "KDA state", "group": "recurrent state", "block": {"t": ["ssm_state"]}, "layers": "n_kda"}, {"id": "conv", "label": "conv state", "short": "conv state", "group": "conv state", "block": {"t": ["conv_state"]}, "layers": "n_kda"}, {"id": "temp", "label": "커널 사이 중간값", "short": "q · k · v · gate 등 토큰 벡터", "group": "커널 사이 중간값", "color": "yellow", "block": {"rest": true}, "layers": "n_kda", "note": "KDA 층만 — MLA 층 중간값은 뺌"}]}};
+(function () {
+"use strict";
+const A = DATA.algo, M = DATA.map, P = A.page, LITE = P.lite || {};
+const TENS = Object.assign({}, A.tensors, M.extra_tensors || {});
+const STEPS = (() => {
+  const s = A.steps.slice();
+  for (const e of (M.extra_steps || [])) s.splice(s.findIndex(x => x.id === e.after) + 1, 0, e);
+  return s;
+})();
+const STEP = Object.fromEntries(STEPS.map(s => [s.id, s]));
+const PH = A.phases, KERN = M.kernels;
+const PHS = {}; PH.forEach((p, i) => p.steps.forEach(s => { PHS[s] = i; }));
+(M.extra_steps || []).forEach(e => { PHS[e.id] = PH.findIndex(p => p.id === e.phase); });
+const kPhase = k => PHS[k.steps[0]];
+const CIRC = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧"];
+const KIND_ORDER = Object.keys(A.kinds);
+const UIF = Object.keys(A.formats).find(k => A.formats[k].ui);
+const T_OPTS = [4096, 8192, 16384, 32768, 65536, 131072, 262144, 524288, 1048576];
+const B_OPTS = [1, 2, 4, 8, 16, 32, 64, 128, 256];
+const UNIT = { gemm: "GEMM", gemv: "GEMV", vec: "VEC", sel: "TOP-K", gather: "GATHER", mem: "WRITE" };
+const state = { ti: 5, bi: 0, fmt: UIF ? A.formats[UIF].default : null, open: new Set(), scope: "model", view: "kind" };
+
+/* ── 식 계산 (eval 없이) ── */
+const parsed = {};
+function parse(src) {
+  const toks = String(src).match(/\d+(?:\.\d+)?(?:e[+-]?\d+)?|[A-Za-z_]\w*|\*\*|[-+*/()]/g) || [];
+  let i = 0;
+  const peek = () => toks[i], next = () => toks[i++];
+  function prim() {
+    const t = next();
+    if (t === "(") { const v = add(); next(); return v; }
+    if (t === "-") { const v = prim(); return d => -v(d); }
+    if (/^\d/.test(t)) { const n = parseFloat(t); return () => n; }
+    return d => { if (!(t in d)) throw new Error("unknown dim " + t); return d[t]; };
+  }
+  function pow() { const b = prim(); if (peek() === "**") { next(); const e = pow(); return d => Math.pow(b(d), e(d)); } return b; }
+  function mul() { let l = pow(); while (peek() === "*" || peek() === "/") { const op = next(), r = pow(), a = l; l = op === "*" ? d => a(d) * r(d) : d => a(d) / r(d); } return l; }
+  function add() { let l = mul(); while (peek() === "+" || peek() === "-") { const op = next(), r = mul(), a = l; l = op === "+" ? d => a(d) + r(d) : d => a(d) - r(d); } return l; }
+  return add();
+}
+function ev(e, d) { if (typeof e === "number") return e; const k = String(e); return (parsed[k] || (parsed[k] = parse(k)))(d); }
+
+/* FlashMLA split-KV 스케줄러 (buildlib.flashmla_sched와 같은 규칙) */
+const schedCache = {};
+function flashSched(B, topk) {
+  const key = B + ":" + topk;
+  if (schedCache[key]) return schedCache[key];
+  const sc = M.sched;
+  if (!sc || topk <= sc.min_topk) return (schedCache[key] = { S: 0, U: B });
+  const parts = Math.max(Math.floor(M.hw.n_sm / sc.parts_div), 1), nb = Math.floor((topk - 1) / sc.block) + 1, ov = sc.overhead;
+  const payload = Math.ceil(B * (nb + ov) / parts) + ov;
+  const sp = new Array(B).fill(0);
+  let req = 0, blk = 0, ns = 0;
+  for (let p = 0; p < parts; p++) {
+    let remain = payload;
+    while (req < B) {
+      if (remain >= nb - blk + ov) { sp[req] = ns + 1; remain -= nb - blk + ov; req++; blk = 0; ns = 0; }
+      else { if (remain - ov > 0) { blk += remain - ov; ns++; remain = 0; } break; }
+    }
+  }
+  return (schedCache[key] = { S: sp.filter(x => x > 1).reduce((a, b) => a + b, 0), U: sp.filter(x => x <= 1).length });
+}
+function dims() {
+  const d = {};
+  for (const [k, v] of Object.entries(A.dims)) d[k] = v.value;
+  for (const [k, f] of Object.entries(A.formats)) d[k] = f.options[k === UIF ? state.fmt : f.default].value;
+  d.T = T_OPTS[state.ti]; d.B = B_OPTS[state.bi];
+  if (M.sched) { const sc = flashSched(d.B, d.k); d.S_acc = sc.S; d.U_dir = sc.U; }
+  return d;
+}
+const bytesOf = (tid, d) => ev(TENS[tid].bytes, d);
+const via = e => e.via || e.t;
+function kernelNums(d) {
+  return KERN.map(k => {
+    const rk = {}, wk = {};
+    let rd = 0, wr = 0, tc = 0;
+    for (const e of k.hbm_read) { const b = bytesOf(via(e), d), kd = TENS[e.t].kind; rd += b; rk[kd] = (rk[kd] || 0) + b; }
+    for (const e of (k.hbm_write || [])) { const b = bytesOf(via(e), d), kd = TENS[e.t].kind; wr += b; wk[kd] = (wk[kd] || 0) + b; }
+    for (const sid of k.steps) { const s = STEP[sid]; if (s.flops) tc += ev(s.flops, d) / (s.unit === "gemm" ? M.hw.peak[s.prec || "bf16"] : M.hw.peak.vec); }
+    const tm = (rd + wr) / M.hw.hbm_bw;
+    return { k, rd, wr, rk, wk, t: Math.max(tm, tc) };
+  });
+}
+
+/* ── 포맷 ── */
+function fmtB(b) {
+  for (const [v, s] of [[1e12, "TB"], [1e9, "GB"], [1e6, "MB"], [1e3, "KB"]]) if (b >= v) return (b / v).toPrecision(3).replace(/\.0+$|(\.\d*?)0+$/, "$1") + " " + s;
+  return Math.round(b) + " B";
+}
+function fmtT(t) { const us = t * 1e6; return us >= 1000 ? (us / 1000).toPrecision(3) + " ms" : (us >= 100 ? us.toFixed(0) : us >= 10 ? us.toFixed(1) : us.toFixed(2)) + " µs"; }
+const fmtN = n => n.toLocaleString("en-US");
+const fmtTok = n => n >= 1048576 ? (n / 1048576) + "M" : n >= 1024 ? (n / 1024) + "K" : String(n);
+const kcol = kd => (A.kinds[kd] && A.kinds[kd].color) || "gray";
+const kc = kd => `var(--c-${kcol(kd)})`;
+const kl = kd => `var(--c-${kcol(kd)}-l)`;
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const isKo = c => /[ㄱ-힝]/.test(c);
+const textW = (s, px) => [...String(s)].reduce((w, c) => w + (isKo(c) ? px : px * 0.58), 0);
+function clip(s, px, max) { let w = 0, out = ""; for (const c of String(s)) { w += isKo(c) ? px : px * 0.58; if (w > max) return out + "…"; out += c; } return out; }
+const tagCls = p => ({ strong: "strong", outline: "outline" })[p.tag_style] || "";
+const onChipOf = k => (k.on_chip || []).map(e => typeof e === "string" ? { t: e, mem: "reg" } : e);
+
+/* ── shape 표기: [B, T, d_I] = [1, 131072, 128] ── */
+const symOf = e => String(e).replace(/\*/g, "·");
+const shapeSym = tid => "[" + TENS[tid].shape.map(symOf).join(", ") + "]";
+const shapeNum = (tid, d) => "[" + TENS[tid].shape.map(e => String(Math.round(ev(e, d)))).join(", ") + "]";
+function dimsUsed(tids) {
+  const s = new Set();
+  tids.forEach(t => TENS[t].shape.forEach(e => (String(e).match(/[A-Za-z_]\w*/g) || []).forEach(x => s.add(x))));
+  const known = [...Object.keys(A.dims), ...Object.keys(M.derived || {})];
+  return known.filter(x => s.has(x));
+}
+function dimLabel(x, d) {
+  const info = A.dims[x] || (M.derived && M.derived[x]);
+  return info ? `<span><b>${esc(x)}</b>${esc(info.short || "")} ${fmtN(d[x])}</span>` : "";
+}
+
+/* ── HBM 목록: 가중치는 한 줄로 묶고, 작은 토큰 벡터는 '앞 단계 결과'로 묶음 ── */
+function hbmGroups(k, d) {
+  const reads = [];
+  const wts = k.hbm_read.filter(e => TENS[e.t].kind === "weight");
+  if (wts.length) reads.push({ label: "가중치 " + wts.map(e => TENS[e.t].label).join(" · "), b: wts.reduce((s, e) => s + bytesOf(e.t, d), 0), kind: "weight" });
+  const rs = k.hbm_read.filter(e => TENS[e.t].kind !== "weight").map(e => ({ label: e.pat === "gather" ? `${TENS[e.t].label} (골라 읽기)` : TENS[e.t].label, b: bytesOf(via(e), d), kind: TENS[e.t].kind }));
+  const big = x => x.b >= 64e3 || x.kind !== "act";
+  rs.filter(big).sort((a, b) => b.b - a.b).forEach(x => reads.push(x));
+  const smallR = rs.filter(x => !big(x));
+  if (smallR.length) reads.push({ label: `앞 단계 결과: ${smallR.map(x => x.label).join(" · ")}`, b: smallR.reduce((s, x) => s + x.b, 0), kind: "act", small: true });
+  const writes = (k.hbm_write || []).map(e => ({ label: TENS[e.t].label + (e.pat === "row" ? "에 1줄" : e.pat === "overwrite" ? " 덮어쓰기" : ""), b: bytesOf(via(e), d), kind: TENS[e.t].kind })).sort((a, b) => b.b - a.b);
+  reads.concat(writes).forEach(x => { x.l2 = isHandoff(x); });
+  return { reads, writes };
+}
+/* L2 표시: 상주 데이터(가중치 · cache · state)가 아니고 L2 절반 이하인 값 = 앞뒤 커널이 주고받는 작은 전달값 */
+const L2_B = M.hw.onchip && M.hw.onchip.l2 ? M.hw.onchip.l2.total : 0;
+const isHandoff = x => L2_B > 0 && x.b > 0 && !(A.kinds[x.kind] || {}).persistent && x.b <= L2_B / 2;
+const L2_TIP = `앞뒤 커널이 주고받는 작은 값 — 실제로는 L2 캐시(${Math.round(L2_B / 1048576)} MB)에서 처리돼 HBM까지 안 갈 수 있다`;
+
+/* ── 흐름 한눈에: 단계별 HBM 읽기 · 쓰기 막대 → 칩 레인 ── */
+function phaseAgg(d, ks) {
+  return PH.map((p, i) => {
+    const kn = ks.filter(n => kPhase(n.k) === i);
+    const rk = {}, wk = {}, rt = {}, wt = {};
+    let rd = 0, wr = 0;
+    const add = (map, key, lab, kind, b) => { map[key] = map[key] || { b: 0, lab, kind }; map[key].b += b; };
+    kn.forEach(n => {
+      rd += n.rd; wr += n.wr;
+      for (const [kd, v] of Object.entries(n.rk)) rk[kd] = (rk[kd] || 0) + v;
+      for (const [kd, v] of Object.entries(n.wk)) wk[kd] = (wk[kd] || 0) + v;
+      n.k.hbm_read.forEach(e => { const kd = TENS[e.t].kind; add(rt, kd === "weight" ? "__w" : e.t, kd === "weight" ? "가중치" : TENS[e.t].label, kd, bytesOf(via(e), d)); });
+      (n.k.hbm_write || []).forEach(e => add(wt, e.t, TENS[e.t].label, TENS[e.t].kind, bytesOf(via(e), d)));
+    });
+    const top = m => Object.values(m).reduce((a, b) => (!a || b.b > a.b ? b : a), null);
+    return { p, kn, rd, wr, rk, wk, topR: top(rt), topW: top(wt) };
+  });
+}
+function stackRects(x, w, yb, h, parts, total, light) {
+  let s = "", y = yb;
+  parts.forEach(([kd, b], j) => {
+    const hh = h * b / total; if (hh <= 0) return;
+    const gap = j > 0 && hh > 3 ? 1.5 : 0;
+    s += `<rect x="${x}" y="${(y - hh + gap).toFixed(2)}" width="${w}" height="${Math.max(hh - gap, 0.8).toFixed(2)}" style="fill:${light ? kl(kd) : kc(kd)}${light ? ";stroke:" + kc(kd) + ";stroke-width:1.4" : ""}"/>`;
+    y -= hh;
+  });
+  return s;
+}
+function vArrow(x, y1, y2, color) {   // y1 → y2 방향
+  const dn = y2 > y1, hy = dn ? y2 - 9 : y2 + 9;
+  return `<line x1="${x}" x2="${x}" y1="${y1}" y2="${hy}" style="stroke:${color}" stroke-width="3" stroke-linecap="round"/><path d="M${x - 7} ${hy} L${x} ${y2} L${x + 7} ${hy} Z" style="fill:${color}"/>`;
+}
+function renderSummary() {
+  const d = dims(), ks = kernelNums(d), ag = phaseAgg(d, ks);
+  const n = PH.length, W = 1180, LW = 132, colW = (W - LW - 10) / n;
+  const yH0 = 72, yH1 = 290, yb = 272, maxH = 132, yC0 = 330, boxY = 346, boxH = 66, yC1 = 428, H = 474;
+  const maxB = Math.max(...ag.map(a => Math.max(a.rd, a.wr)));
+  const hOf = b => b > 0 ? Math.max(2.5, maxH * b / maxB) : 0;
+  const parts = m => KIND_ORDER.filter(kd => m[kd] > 0).map(kd => [kd, m[kd]]);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="단계별 HBM 읽기 · 쓰기: ${ag.map(a => `${a.p.label} 읽기 ${fmtB(a.rd)} 쓰기 ${fmtB(a.wr)}`).join(", ")}">`;
+  s += `<rect class="lane" x="6" y="${yH0}" width="${W - 12}" height="${yH1 - yH0}" rx="14"/>`;
+  s += `<rect class="lane" x="6" y="${yC0}" width="${W - 12}" height="${yC1 - yC0}" rx="14"/>`;
+  const lanePill = (y, t) => `<rect x="22" y="${y + 14}" width="${textW(t, 16) + 26}" height="30" rx="8" style="fill:var(--navy)"/><text x="35" y="${y + 35}" font-size="16" font-weight="800" class="t-white">${t}</text>`;
+  s += lanePill(yH0, "HBM") + `<text x="24" y="${yH0 + 66}" font-size="13" class="t-muted">읽기 · 쓰기</text><text x="24" y="${yH0 + 85}" font-size="12" class="t-muted">${M.hw.hbm_bw / 1e12} TB/s</text>`;
+  s += lanePill(yC0, "칩") + `<text x="24" y="${yC0 + 66}" font-size="13" class="t-muted">커널 실행</text>`;
+  ag.forEach((a, i) => {
+    const cx = LW + colW * (i + 0.5), xr = cx - 46, xw = cx + 46, bw = 54;
+    const ttl = `${CIRC[i]} ${a.p.label}`;
+    s += `<text x="${cx}" y="28" font-size="16" font-weight="800" text-anchor="middle">${esc(ttl)}</text>`;
+    const tw = textW(a.p.tag, 11.5) + 20, cls = tagCls(a.p);   // 태그: DSA 추가 = 보라 · DSA로 변경 = 연보라 · 기존 = 회청
+    const tf = { strong: "var(--purple)", outline: "var(--purple-t)" }[cls] || "var(--slate-t)", tc = { strong: "t-white", outline: "t-purple" }[cls] || "t-navy";
+    s += `<rect x="${cx - tw / 2}" y="37" width="${tw}" height="21" rx="10.5" style="fill:${tf}"/>`;
+    s += `<text x="${cx}" y="51.5" font-size="11.5" font-weight="700" text-anchor="middle" class="${tc}">${esc(a.p.tag)}</text>`;
+    const hr = hOf(a.rd), hw = hOf(a.wr);
+    s += stackRects(xr - bw / 2, bw, yb, hr, parts(a.rk), a.rd, false);
+    s += stackRects(xw - bw / 2, bw, yb, hw, parts(a.wk), a.wr, true);
+    const lab = (x, h, b, cap) => `<text x="${x}" y="${yb - h - 22}" font-size="15" font-weight="800" text-anchor="middle">${fmtB(b)}</text><text x="${x}" y="${yb - h - 7}" font-size="11.5" text-anchor="middle" class="t-muted">${esc(clip(cap, 11.5, 88))}</text>`;
+    if (a.topR) s += lab(xr, hr, a.rd, a.topR.lab);
+    if (a.topW) s += lab(xw, hw, a.wr, a.topW.lab);
+    s += `<line x1="${cx - colW / 2 + 14}" x2="${cx + colW / 2 - 14}" y1="${yb + 0.5}" y2="${yb + 0.5}" style="stroke:var(--axis)" stroke-width="1"/>`;
+    if (a.topR) s += vArrow(xr, yb + 4, boxY - 3, kc(a.topR.kind));
+    if (a.topW) s += vArrow(xw, boxY - 3, yb + 4, kc(a.topW.kind));
+    s += `<text x="${xr}" y="${yb + 36}" font-size="11" text-anchor="end" dx="-8" class="t-muted">읽기</text><text x="${xw}" y="${yb + 36}" font-size="11" dx="8" class="t-muted">쓰기</text>`;
+    const bx = cx - colW / 2 + 12, bwid = colW - 24;
+    s += `<g class="boxhit" data-ph="${esc(a.p.id)}" tabindex="0" role="button" aria-label="${esc(ttl)} 커널로 이동"><rect class="box" x="${bx}" y="${boxY}" width="${bwid}" height="${boxH}" rx="12"/>`;
+    const ids = a.kn.map(x => x.k.id), cw = ids.map(id => id.length * 7.6 + 12), tot = cw.reduce((p, c) => p + c, 0) + (ids.length - 1) * 5;
+    let kx = cx - tot / 2;
+    ids.forEach((id, j) => {
+      s += `<rect x="${kx}" y="${boxY + 13}" width="${cw[j]}" height="20" rx="6" style="fill:var(--navy-chip)"/><text x="${kx + cw[j] / 2}" y="${boxY + 27.5}" font-size="12" font-weight="700" text-anchor="middle" class="t-white t-mono">${esc(id)}</text>`;
+      kx += cw[j] + 5;
+    });
+    const units = [...new Set(a.kn.flatMap(x => x.k.steps.map(sid => UNIT[STEP[sid].unit])))].join(" · ");
+    s += `<text x="${cx}" y="${boxY + 52}" font-size="12" text-anchor="middle" class="t-onnavy t-mono">${esc(units)}</text></g>`;
+    if (i < n - 1) {
+      const x1 = bx + bwid + 3, x2 = bx + bwid + 21, y = boxY + boxH / 2;
+      s += `<line x1="${x1}" x2="${x2 - 7}" y1="${y}" y2="${y}" style="stroke:var(--ink2)" stroke-width="2.5"/><path d="M${x2 - 8} ${y - 6} L${x2} ${y} L${x2 - 8} ${y + 6} Z" style="fill:var(--ink2)"/>`;
+    }
+  });
+  const rd = ks.reduce((p, x) => p + x.rd, 0), wr = ks.reduce((p, x) => p + x.wr, 0), t = ks.reduce((p, x) => p + x.t, 0);
+  s += `<text x="${LW}" y="${H - 16}" font-size="14.5" font-weight="800">층 1개 · HBM 읽기 ${fmtB(rd)} · 쓰기 ${fmtB(wr)} · 이론 하한 ${fmtT(t)}</text>`;
+  s += `<text x="${W - 12}" y="${H - 16}" font-size="12" text-anchor="end" class="t-muted">진한 막대 = 읽기 · 옅은 막대 = 쓰기 · 높이 = 바이트(비례)</text>`;
+  const host = document.getElementById("sum");
+  host.innerHTML = s + "</svg>";
+  host.querySelectorAll(".boxhit").forEach(g => {
+    const go = () => { const t0 = document.getElementById("ph-" + g.dataset.ph); if (t0) t0.scrollIntoView({ behavior: "smooth", block: "start" }); };
+    g.addEventListener("click", go);
+    g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); go(); } });
+  });
+  document.getElementById("sumwhat").textContent = `T = ${fmtTok(d.T)} · 요청 ${d.B}개 · 단계마다 HBM에서 읽고 쓰는 양`;
+}
+
+/* ── 커널별 이동: 굵은 화살표 ── */
+const MAXTH = 60, ARW = 258;   // ARW = 화살표 칸 폭 232 + 양옆 카드 여백 (HBM 카드 → 커널 카드에 닿게)
+function arrowSVG(dir, b, kindBytes, maxB) {   // 굵기 ∝ √바이트 — 순서는 지키고 중간 크기 이동도 보이게
+  if (!(b > 0)) return `<span class="hl-i zero">${dir === "r" ? "읽기 없음" : "쓰기 없음"}</span>`;
+  const W = ARW, th = Math.max(4, MAXTH * Math.sqrt(b / maxB)), hh = th + Math.max(12, th * 0.36), hl = Math.min(40, 13 + th * 0.42);
+  const top = 26, H = Math.ceil(top + hh + 4), cy = top + hh / 2, x0 = 1, x1 = W - 1;
+  const parts = KIND_ORDER.filter(kd => kindBytes[kd] > 0).map(kd => ({ kd, b: kindBytes[kd] }));
+  const main = parts.reduce((a, p) => (p.b > a.b ? p : a));
+  const bx0 = dir === "r" ? x0 : x0 + hl, bx1 = dir === "r" ? x1 - hl + 0.5 : x1;
+  let s = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="img" aria-label="${dir === "r" ? "HBM에서 읽기" : "HBM에 쓰기"} ${fmtB(b)}">`;
+  let y = cy - th / 2;
+  for (const p of parts) { const h = th * p.b / b; s += `<rect x="${bx0}" y="${y.toFixed(2)}" width="${(bx1 - bx0).toFixed(2)}" height="${Math.max(h, 0.6).toFixed(2)}" style="fill:${kc(p.kd)}"/>`; y += h; }
+  s += dir === "r"
+    ? `<path d="M${x1 - hl} ${cy - hh / 2} L${x1} ${cy} L${x1 - hl} ${cy + hh / 2} Z" style="fill:${kc(main.kd)}"/>`
+    : `<path d="M${x0 + hl} ${cy - hh / 2} L${x0} ${cy} L${x0 + hl} ${cy + hh / 2} Z" style="fill:${kc(main.kd)}"/>`;
+  s += `<text x="${W / 2}" y="18" text-anchor="middle"><tspan class="al">${dir === "r" ? "읽기" : "쓰기"}</tspan><tspan class="ab" dx="6">${fmtB(b)}</tspan></text>`;
+  return s + "</svg>";
+}
+function listHTML(title, items, kid) {
+  return (kid ? `<div class="hk-row"><span class="hk">${esc(kid)}</span><span class="hl-t">${title}</span></div>` : `<div class="hl-t">${title}</div>`) + items.map(it =>
+    `<div class="hl-i${it.small ? " sm" : ""}${it.b === 0 ? " zero" : ""}" title="${esc(it.label)} · ${fmtB(it.b)}"><i style="background:${kc(it.kind)}"></i><span class="nm">${esc(it.label)}</span><span class="b">${it.l2 ? `<em class="l2" title="${esc(L2_TIP)}">L2</em>` : ""}${fmtB(it.b)}</span></div>`).join("");
+}
+function cardHTML(k, d, r) {
+  const oc = onChipOf(k), open = state.open.has(k.id);
+  const chips = oc.length ? `<span class="kchips"><span class="kcl">칩 안</span>${oc.map(e =>
+    `<span class="ocp" style="--k:${kc(TENS[e.t].kind)}"><code class="mb">${esc(M.hw.onchip[e.mem].short)}</code>${esc(e.label || TENS[e.t].label)}${e.stage ? "" : ` <em>${fmtB(bytesOf(e.t, d))}</em>`}</span>`).join("")}</span>` : "";
+  return `<button type="button" class="kcard" data-k="${esc(k.id)}" aria-expanded="${open}" aria-controls="kx-${esc(k.id)}" style="grid-row:${r} / span 2">
+    <span class="khead"><span class="kid">${esc(k.id)}</span><span class="kname">${esc(k.label)}</span><span class="kchev">계산 단계 ${open ? "▴" : "▾"}</span></span>
+    <span class="kplain">${esc(k.plain || "")}</span>${chips}</button>`;
+}
+
+/* ── 텐서 격자 (펼침의 텐서 그림) ── */
+const NCELL = 36;
+function dens(i, N) {
+  let r = Math.sin((i + 1) * 12.9898) * 43758.5453; r = r - Math.floor(r);
+  let v = Math.pow(r, 3) * 0.55;
+  if (i === 0) v = 0.75;
+  const back = N - 1 - i;
+  if (back === 0) v = 1; else if (back === 1) v = 0.85; else if (back === 2) v = 0.6;
+  return v;
+}
+function gridModel(tid, d) {
+  let sh = TENS[tid].shape.map(e => ({ e: String(e), v: ev(e, d) }));
+  if (sh.length > 1 && (sh[0].e === "B" || (M.derived && M.derived[sh[0].e]))) sh = sh.slice(1);
+  const isLongAx = e => /\b(T|k)\b/.test(e);   // 토큰 축: T · k와 그 식(T/m · k/b 등)
+  let hi = sh.findIndex(a => isLongAx(a.e));
+  if (hi < 0) hi = sh.length - 1;
+  const h = sh[hi], rest = sh.filter((_, i) => i !== hi);
+  const v = rest.length ? rest[rest.length - 1] : null, s = rest.length > 1 ? rest[0] : null;
+  const long = isLongAx(h.e);
+  return { h, v, s, long, hN: long ? NCELL : Math.max(1, Math.min(h.v, 16)), vN: v ? Math.max(1, Math.min(v.v, 10)) : 1 };
+}
+function splitParts(expr, d) {
+  const m = /^(\w+)\+(\w+)$/.exec(expr);
+  return m && (m[1] in d) && (m[2] in d) ? [d[m[1]], d[m[2]]] : null;
+}
+function gridHTML(tid, d, mode) {
+  const t = TENS[tid], gm = gridModel(tid, d), col = kc(t.kind);
+  const cs = gm.long ? 7 : (gm.hN > 12 ? 10 : 12);
+  const gw = gm.hN * cs, gh = gm.vN * cs, sheets = gm.s ? 3 : 1, off = 4;
+  const brk = gm.long && gm.h.v > NCELL;
+  const Wd = gw + (sheets - 1) * off + 2, Hd = gh + (sheets - 1) * off + 2 + (brk ? 9 : 0);
+  let s = `<svg viewBox="0 0 ${Wd} ${Hd}" width="${Wd}" aria-hidden="true">`;
+  const gy = 1 + (sheets - 1) * off;
+  const hp = gm.long ? null : splitParts(gm.h.e, d), vp = gm.v ? splitParts(gm.v.e, d) : null;
+  for (let si = sheets - 1; si >= 0; si--) {
+    const ox = 1 + si * off, oy = gy - si * off;
+    s += `<rect x="${ox}" y="${oy}" width="${gw}" height="${gh}" style="fill:var(--surface);stroke:var(--line)"/>`;
+    if (si) continue;
+    for (let i = 0; i < gm.hN; i++) {
+      let a = { w: 0.55, full: 0.72, onchip: 0.72, none: 0.1, tile: 0.14, append: 0.14, gather: 0.1 }[mode];
+      if (mode === "gather" && dens(i, gm.hN) > 0.15) a = 0.92;
+      if (mode === "append" && i === gm.hN - 1) a = 1;
+      if (mode === "tile" && i < 5) a = 0.85;
+      for (let j = 0; j < gm.vN; j++) s += `<rect x="${ox + i * cs + 0.5}" y="${oy + j * cs + 0.5}" width="${cs - 1}" height="${cs - 1}" style="fill:${col}" fill-opacity="${a}"/>`;
+    }
+    if (vp) { const c = Math.round(gm.vN * vp[0] / (vp[0] + vp[1])); s += `<line x1="${ox - 1}" x2="${ox + gw + 1}" y1="${oy + c * cs}" y2="${oy + c * cs}" style="stroke:var(--ink2)" stroke-width="1.4"/>`; }
+    if (hp) { const c = Math.round(gm.hN * hp[0] / (hp[0] + hp[1])); s += `<line y1="${oy - 1}" y2="${oy + gh + 1}" x1="${ox + c * cs}" x2="${ox + c * cs}" style="stroke:var(--ink2)" stroke-width="1.4"/>`; }
+    if (brk) { const bx = ox + Math.round(gm.hN * 0.62) * cs; s += `<path d="M${bx - 4} ${oy + gh + 8} l6 -6 M${bx + 1} ${oy + gh + 8} l6 -6" style="stroke:var(--ink2)" stroke-width="1.3" fill="none"/>`; }
+  }
+  s += "</svg>";
+  const ax = [`가로 ${symOf(gm.h.e)}` + (gm.h.v > gm.hN ? ` (1칸 ≈ ${fmtN(Math.round(gm.h.v / gm.hN))})` : "")];
+  if (gm.v) ax.push(`세로 ${symOf(gm.v.e)}`);
+  if (gm.s) ax.push(`× ${symOf(gm.s.e)}장`);
+  return `<div class="tgw">${s}</div><div class="t-ax">${esc(ax.join(" · "))}</div>`;
+}
+
+/* ── 펼침: 칩 안 계산 단계 — 텐서 그림으로 A × B → C ── */
+const isW = t => TENS[t].kind === "weight";
+function stepOps(s) {   // 단계 → 연산 목록. yaml의 ops가 있으면 그대로, 없으면 입력 · 출력 목록에서 짝을 짓는다
+  if (s.ops) return s.ops.map(o => o.a ? { mm: true, a: o.a, b: o.b, out: o.out, note: o.note }
+                                       : { mm: false, ins: [].concat(o.in), outs: [].concat(o.out), note: o.note });
+  if (s.unit === "gemm" || s.unit === "gemv") {
+    const acts = s.in.filter(t => !isW(t)), wts = s.in.filter(isW);
+    if (acts.length === 1 && wts.length && wts.length === s.out.length) return wts.map((w, i) => ({ mm: true, a: acts[0], b: w, out: s.out[i] }));
+    if (s.in.length === 2 && s.out.length === 1) return [{ mm: true, a: s.in[0], b: s.in[1], out: s.out[0] }];
+  }
+  return [{ mm: false, ins: s.in, outs: s.out }];
+}
+function tt(k, tid, d, role) {   // 텐서 그림 1개 = 이름 · 크기 · 모양 · 격자(색 = 데이터 종류). 테두리 = 위치: 남색 HBM에서 읽음 · 진홍 HBM에 씀 · 회색 점선 칩 안
+  const t = TENS[tid], r = role === "in" ? k.hbm_read.find(x => x.t === tid) : null;
+  let size = fmtB(bytesOf(tid, d)), place = "c", mode = t.kind === "weight" ? "w" : "full";
+  if (r) { place = "r"; if (via(r) !== tid) size = `${fmtB(bytesOf(via(r), d))} 골라 읽음`; if (r.pat === "gather") mode = "gather"; }
+  if (role === "out") {
+    const w = (k.hbm_write || []).find(x => x.t === tid), wb = w ? bytesOf(via(w), d) : 0;
+    if (wb > 0) { place = "w"; if (via(w) !== tid) { size = `${fmtB(wb)} 씀`; if (w.pat === "row") mode = "append"; } }
+  }
+  const where = { r: "HBM에서 읽음", w: "HBM에 씀", c: "칩 안" }[place];
+  return `<div class="tt ${place}" title="${esc(`${t.label} ${shapeSym(tid)} = ${shapeNum(tid, d)} · ${where}`)}">
+    <div class="tt-top"><b>${esc(t.label)}</b><em>${size}</em></div><code>${esc(shapeSym(tid))}</code>${gridHTML(tid, d, mode)}</div>`;
+}
+function eqHTML(k, o, d) {
+  const join = (ts, role) => ts.map(t => tt(k, t, d, role)).join(`<i class="cm">,</i>`);
+  if (o.mm) {
+    const so = new Set(TENS[o.out].shape.map(String));
+    const red = TENS[o.a].shape.map(String).filter(e => !so.has(e));
+    const rv = red.reduce((p, e) => p * ev(e, d), 1);
+    const note = [red.length ? `${red.map(symOf).join(" · ")} ${fmtN(rv)}개씩 곱해 더함` : "", o.note || ""].filter(Boolean).join(" · ");
+    return `<div class="eq">${tt(k, o.a, d, "in")}<i class="op">×</i>${tt(k, o.b, d, "in")}<i class="op">→</i>${tt(k, o.out, d, "out")}</div>${note ? `<div class="eq-n">${esc(note)}</div>` : ""}`;
+  }
+  const note = o.note ? `<div class="eq-n">${esc(o.note)}</div>` : "";
+  if (o.ins.length + o.outs.length <= 3) return `<div class="eq">${join(o.ins, "in")}<i class="op">→</i>${join(o.outs, "out")}</div>${note}`;
+  return `<div class="eq-v"><div class="eq">${join(o.ins, "in")}</div><i class="op">↓</i><div class="eq">${join(o.outs, "out")}</div></div>${note}`;
+}
+function expHTML(k, d) {
+  const used = dimsUsed(k.steps.flatMap(sid => [...STEP[sid].in, ...STEP[sid].out]));
+  const rows = k.steps.map((sid, i) => { const s = STEP[sid];
+    return `<div class="st"><div class="st-h"><span class="st-n">${CIRC[i] || i + 1}</span><code>${UNIT[s.unit]}</code><b>${esc(s.label)}</b></div><div class="st-b">${stepOps(s).map(o => eqHTML(k, o, d)).join("")}</div></div>`; }).join("");
+  return `<div class="kx-head"><b>${esc(k.id)} ${esc(k.label)} · 계산 단계</b><span class="kx-dims">${used.map(x => dimLabel(x, d)).join("")}</span>
+    <span class="kx-key"><span class="key r">HBM에서 읽음</span><span class="key w">HBM에 씀</span><span class="key c">칩 안</span></span></div><div class="steps">${rows}</div>`;
+}
+
+function renderFlow() {
+  const d = dims(), ks = kernelNums(d);
+  const maxB = Math.max(...ks.map(n => Math.max(n.rd, n.wr)));
+  const items = [];
+  let r = 2, prevP = -1;
+  KERN.forEach((k, i) => {
+    const p = kPhase(k);
+    if (p !== prevP) {
+      const ph = PH[p];
+      items.push(`<div class="phrow" id="ph-${esc(ph.id)}" style="grid-row:${r}"><span class="phn">${CIRC[p]} ${esc(ph.label)}</span><span class="tag ${tagCls(ph)}">${esc(ph.tag)}</span></div>`);
+      r++; prevP = p;
+    }
+    const n = ks[i], g = hbmGroups(k, d), open = state.open.has(k.id);
+    if (p === prevP && i > 0 && kPhase(KERN[i - 1]) === p) items.push(`<div class="kgap" style="grid-row:${r - 1}"></div>`);
+    items.push(`<div class="bridge" style="grid-row:${r} / span 2"></div>`);
+    items.push(`<div class="hcell r" style="grid-row:${r}">${listHTML("읽기", g.reads, k.id)}</div>`);
+    items.push(`<div class="hcell w" style="grid-row:${r + 1}">${g.writes.length ? listHTML("쓰기", g.writes) : `<div class="hl-t">쓰기 없음</div>`}</div>`);
+    items.push(`<div class="acell" style="grid-row:${r}">${arrowSVG("r", n.rd, n.rk, maxB)}</div>`);
+    items.push(`<div class="acell" style="grid-row:${r + 1}">${arrowSVG("l", n.wr, n.wk, maxB)}</div>`);
+    items.push(cardHTML(k, d, r));
+    items.push(`<div class="kx" id="kx-${esc(k.id)}" style="grid-row:${r + 2}"${open ? "" : " hidden"}>${open ? expHTML(k, d) : ""}</div>`);
+    r += 4;   // 읽기 · 쓰기 · 펼침 · 간격
+  });
+  items.push(`<div class="kgap" style="grid-row:${r - 1}"></div>`);   // 레인 아래 여백
+  const host = document.getElementById("kgrid");
+  host.style.gridTemplateRows = `repeat(${r}, auto)`;
+  host.innerHTML =
+    `<div class="lane-bg" style="grid-column:1;grid-row:1 / -1"></div><div class="lane-bg" style="grid-column:3;grid-row:1 / -1"></div>
+     <div class="lh" style="grid-column:1;grid-row:1"><b>HBM</b><span>커널이 읽고 쓰는 데이터</span></div>
+     <div class="lh mid" style="grid-column:2;grid-row:1"><span>→ 읽기 · ← 쓰기</span></div>
+     <div class="lh" style="grid-column:3;grid-row:1"><b>칩</b><span>커널 실행 · 점선 = 칩 안 메모리 (SMEM · 레지스터)</span></div>` + items.join("");
+  host.querySelectorAll(".kcard").forEach(c => c.addEventListener("click", () => toggle(c.dataset.k)));
+}
+function toggle(id) {
+  const open = !state.open.has(id);
+  if (open) state.open.add(id); else state.open.delete(id);
+  const c = document.querySelector(`.kcard[data-k="${id}"]`), x = document.getElementById("kx-" + id);
+  c.setAttribute("aria-expanded", open);
+  c.querySelector(".kchev").textContent = `계산 단계 ${open ? "▴" : "▾"}`;
+  x.innerHTML = open ? expHTML(KERN.find(k => k.id === id), dims()) : "";
+  x.hidden = !open;
+}
+
+/* ── 조건 · 범례 · 머리말 ── */
+function seg(id, opts, cur, label, ext, onPick) {
+  const host = document.getElementById(id);
+  host.innerHTML = opts.map((v, i) => `<button type="button" data-i="${i}" aria-pressed="${i === cur}"${ext(v) ? ' class="ext" title="지원 길이 밖 · 외삽"' : ""}>${label(v)}</button>`).join("");
+  host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => onPick(+b.dataset.i)));
+}
+function renderControls() {
+  const tmax = A.dims.T_max ? A.dims.T_max.value : Infinity;
+  seg("tseg", T_OPTS, state.ti, fmtTok, v => v > tmax, i => { state.ti = i; update(); });
+  seg("bseg", B_OPTS, state.bi, String, () => false, i => { state.bi = i; update(); });
+}
+function renderLegend() {
+  const used = new Set();
+  KERN.forEach(k => { k.hbm_read.concat(k.hbm_write || []).forEach(e => used.add(TENS[e.t].kind)); onChipOf(k).forEach(e => used.add(TENS[e.t].kind)); });
+  document.getElementById("legend").innerHTML =
+    KIND_ORDER.filter(kd => used.has(kd)).map(kd => `<span><i style="background:${kc(kd)}"></i>${esc(A.kinds[kd].label)}</span>`).join("") +
+    `<span><b class="ar">→</b> 읽기 (HBM → 칩)</span><span><b class="ar">←</b> 쓰기 (칩 → HBM)</span><span><i class="dash"></i>칩 안 메모리</span>` +
+    (L2_B ? `<span title="${esc(L2_TIP)}"><em class="l2">L2</em>L2 캐시에서 끝날 수 있는 작은 전달값</span>` : "");
+}
+/* ── 데이터 성격 한눈에 (model.yaml) ──
+   성격은 값에서 판정: 커널 사이 나머지 = 임시값 · 쓰기 0 = read-only · 보관만큼 쓰면 전부 다시 씀 · 그 밖 = 끝에 추가 */
+const MD = DATA.model || null;
+const GRP = {
+  ro:   { label: "가중치",         sub: "read-only · 모든 요청이 같이 씀", life: "서비스 내내",       write: "없음" },
+  app:  { label: "요청별 cache",   sub: "토큰마다 1줄씩 자람",             life: "요청이 끝날 때까지", write: "끝에 1줄 추가" },
+  rmw:  { label: "요청별 state",   sub: "크기 고정",                       life: "요청이 끝날 때까지", write: "매 스텝 전부 다시 씀" },
+  tmp:  { label: "스텝 안 임시값", sub: "앞 커널이 쓰고 다음 커널이 읽음", life: "한 스텝 안",         write: "매번 새로 씀" },
+  chip: { label: "커널 안 값",     sub: "칩 안에서 생겼다 사라짐",         life: "커널 하나 안",       write: "HBM에 안 씀" },
+};
+const GRP_ORDER = ["ro", "app", "rmw", "tmp"];
+const MATCH = (() => {   // model.yaml block 항목 → 텐서 판정
+  const m = {}, named = [];
+  if (!MD) return m;
+  for (const it of MD.data) {
+    const b = it.block;
+    if (!b || b.rest) continue;
+    m[it.id] = b.kind ? (t => TENS[t].kind === b.kind) : (s => t => s.has(t))(new Set(b.t));
+    named.push(m[it.id]);
+  }
+  for (const it of MD.data) if (it.block && it.block.rest) m[it.id] = t => !named.some(f => f(t));
+  return m;
+})();
+function mdDimsAt(B, T) {   // B · T를 바꾼 차원 (null = 지금 조건). 성격의 '골라 읽음' 판정 기준 조건에 씀
+  const d = dims();
+  if (B != null) { d.B = B; d.T = T; if (M.sched) { const sc = flashSched(B, d.k); d.S_acc = sc.S; d.U_dir = sc.U; } }
+  for (const [k, v] of Object.entries(MD.dims || {})) d[k] = v.value;
+  for (const [k, v] of Object.entries(MD.derived || {})) d[k] = ev(v.expr, d);
+  return d;
+}
+const mdDims = () => mdDimsAt(null);
+/* 나눠 보기 — 수명(길수록 진한 남색) · 성격(색 계열 = 쓰기 방식, 진하기 = 전부 읽음 / 골라 읽음). tools/traits.py와 같은 규칙 */
+const LIFE_C = { svc: ["서비스 내내", "--l-svc", false], req: ["요청 동안", "--l-req", false], step: ["스텝 안", "--l-step", true] };
+const CHAR_C = {
+  ro_all: ["read-only · 전부 읽음", "--c-gray", false], ro_sel: ["read-only · 골라 읽음", "--c-gray-l", true],
+  app_all: ["끝에 추가 · 전부 읽음", "--c-blue", false], app_sel: ["끝에 추가 · 골라 읽음", "--c-blue-l", true],
+  rmw: ["매 스텝 전부 다시 씀", "--c-green", false], tmp: ["임시 (커널 사이)", "--c-yellow", true],
+};
+const colOf = c => `var(--c-${c})`;
+const isPale = c => /-l+$/.test(c);   // gray-l · gray-ll 처럼 이미 옅은 색
+const colL = c => isPale(c) ? colOf(c) : `var(--c-${c}-l)`;
+function mdItems(d, scope) {
+  const out = [];
+  for (const it of MD.data) {
+    const b = it.block;
+    if (scope === "layer" && !b) continue;
+    const L = scope === "layer" ? 1 : ev(it.layers || 1, d);
+    let store, rd = 0, wr = 0, color, tmp = false;
+    if (b) {
+      const f = MATCH[it.id];
+      tmp = !!b.rest;
+      for (const k of KERN) {
+        for (const e of k.hbm_read) if (f(e.t)) rd += bytesOf(via(e), d);
+        for (const e of (k.hbm_write || [])) if (f(e.t)) wr += bytesOf(via(e), d);
+      }
+      const own = Object.keys(A.tensors).filter(f);
+      store = tmp ? 0 : own.reduce((s, t) => s + bytesOf(t, d), 0) * L;
+      rd *= L; wr *= L;
+      color = it.color || kcol(TENS[own[0]].kind);
+    } else {
+      store = ev(it.store, d); rd = ev(it.read || 0, d); wr = ev(it.write || 0, d); color = it.color || "gray";
+    }
+    const g = tmp ? "tmp" : wr === 0 ? "ro" : wr >= 0.99 * store ? "rmw" : "app";
+    out.push({ id: it.id, name: it.short || it.label, group: it.group || it.short || it.label, note: it.note || "", store, rd, wr, color, g });
+  }
+  return out;
+}
+function chipOf(d, scope) {   // 칩 안에서만 생겼다 사라지는 값 = on_chip 중 HBM 이동 · 타일 단계가 아닌 것
+  const per = {};
+  for (const k of KERN) {
+    const hb = new Set(k.hbm_read.concat(k.hbm_write || []).flatMap(e => [e.t, via(e)]));
+    for (const e of onChipOf(k)) if (!e.stage && !hb.has(e.t)) per[e.t] = (per[e.t] || 0) + bytesOf(e.t, d);
+  }
+  const rest = MD.data.find(x => x.block && x.block.rest);
+  const L = scope === "layer" || !rest ? 1 : ev(rest.layers || 1, d);
+  const list = Object.entries(per).sort((a, b) => b[1] - a[1]);
+  return { b: list.reduce((s, x) => s + x[1], 0) * L, top: list.slice(0, 3).map(([t]) => TENS[t].label) };
+}
+function renderTraits() {
+  if (!MD) return;
+  document.getElementById("dpanel").hidden = false;
+  const d = mdDims(), sc = state.scope, items = mdItems(d, sc), chip = chipOf(d, sc);
+  const segBtns = (id, opts, cur, key) => {
+    const host = document.getElementById(id);
+    host.innerHTML = opts.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === cur}">${l}</button>`).join("");
+    host.querySelectorAll("button").forEach(b => b.addEventListener("click", () => { state[key] = b.dataset.v; renderTraits(); }));
+  };
+  const vw = state.view;
+  const layerLabel = MD.layer_label || "attention 층 1개";
+  segBtns("dpscope", [["model", "모델 전체"], ["layer", layerLabel]], sc, "scope");
+  segBtns("dpview", [["kind", "데이터 종류"], ["life", "수명"], ["char", "데이터 성격"]], vw, "view");
+  document.getElementById("dpwhat").textContent =
+    `${sc === "model" ? MD.model + " 모델 전체" : layerLabel} · decode 1스텝 · 요청 ${d.B}개 · ${fmtTok(d.T)}` + (vw === "kind" ? " · 진한 칸 = 읽기 · 옅은 칸 = 쓰기" : "");
+  const ref = Object.fromEntries(mdItems(mdDimsAt(1, 131072), sc).map(x => [x.id, x]));
+  items.forEach(x => {   // 수명 · 성격 판정
+    const r = ref[x.id], sel = r && r.rd < 0.9 * r.store;
+    x.life = x.g === "tmp" ? "step" : x.g === "ro" ? "svc" : "req";
+    x.char = x.g === "tmp" || x.g === "rmw" ? x.g : (x.g === "ro" ? "ro" : "app") + (sel ? "_sel" : "_all");
+  });
+  let cats;   // 막대의 둥근 띠 = 고른 기준의 묶음 하나
+  if (vw === "kind") {
+    const m = new Map();
+    items.forEach(x => { if (!m.has(x.group)) m.set(x.group, { label: x.group, its: [] }); m.get(x.group).its.push(x); });
+    cats = [...m.values()];
+  } else {
+    cats = Object.entries(vw === "life" ? LIFE_C : CHAR_C).map(([k, [label, col, pale]]) => ({ label, col, pale, its: items.filter(x => x[vw] === k) })).filter(c => c.its.length);
+  }
+
+  const groups = GRP_ORDER.map(g => ({ g, its: items.filter(x => x.g === g) })).filter(x => x.its.length);
+  const sum = (its, f) => its.reduce((s, x) => s + f(x), 0);
+  const totS = sum(items, x => x.store), totM = sum(items, x => x.rd + x.wr);
+  const pct = (v, t) => { const p = 100 * v / t; return p >= 10 ? p.toFixed(0) + "%" : p >= 0.1 ? p.toPrecision(2) + "%" : p > 0 ? "0.1% 미만" : "0%"; };
+  const bar = kind => {
+    const tot = kind === "store" ? totS : totM;
+    return cats.map(({ label: glab, its, col, pale: cp }) => {
+      const gv = sum(its, x => kind === "store" ? x.store : x.rd + x.wr);
+      if (gv <= 0) return "";
+      const segs = its.flatMap(x => kind === "store" ? [[x.store, false, x, "보관"]]
+          : vw === "kind" ? [[x.rd, false, x, "읽기"], [x.wr, true, x, "쓰기"]] : [[x.rd + x.wr, false, x, "읽기 + 쓰기"]])
+        .filter(s => s[0] > 0)
+        .map(([v, w, x, what]) => {
+          const c = x.color, bg = col ? `var(${col})` : (w ? colL(c) : colOf(c));
+          const pale = col ? cp : (w || isPale(c) || c === "yellow");   // 옅은 칸 · 노랑은 진한 글자
+          const lab = v / tot >= 0.1 ? `<span style="color:var(${pale ? "--ink" : "--surface"})">${esc(x.name)}${w ? " 쓰기" : ""}<b>${fmtB(v)}</b></span>` : "";
+          return `<div class="dp-seg" style="flex:${(1000 * v / gv).toFixed(4)} 1 0;background:${bg}" title="${esc(`${x.name} · ${what} ${fmtB(v)} · ${pct(v, tot)}`)}">${lab}</div>`;
+        }).join("");
+      const sh = gv / tot;
+      return `<div class="dp-g" style="flex:${(1000 * sh).toFixed(4)} 1 0"><div class="dp-strip">${segs}</div>` +
+        `<div class="dp-cap">${sh >= 0.12 ? `${esc(glab)} <b>${pct(gv, tot)}</b>` : sh >= 0.03 ? `<b>${pct(gv, tot)}</b>` : ""}</div></div>`;
+    }).join("");
+  };
+  const row = (t, s, v, inner) => `<div class="dp-row"><div class="dp-h"><b>${t}</b><span>${s}</span><span class="dp-tot">${fmtB(v)}</span></div><div class="dp-bar">${inner}</div></div>`;
+  document.getElementById("dpbars").innerHTML =
+    row("보관", "HBM에 들고 있는 양", totS, bar("store")) + row("스텝당 이동", "HBM 읽기 + 쓰기", totM, bar("move"));
+  document.getElementById("dplegend").innerHTML =
+    cats.map(c => `<span><i style="background:${c.col ? `var(${c.col})` : colOf(c.its[0].color)}"></i>${esc(c.label)}</span>`).join("") +
+    (vw === "char" ? `<span>골라 읽음 = 요청 1개 · 128K에서 스텝당 읽기가 보관의 90% 미만</span>` : vw === "life" ? `<span>커널 안 값은 HBM 밖 — 아래 표 맨 아래 줄</span>` : "");
+
+  const nG = (MD.deploy || {}).n_gpu || 1;
+  const allM = sc === "model" ? totM : sum(mdItems(d, "model"), x => x.rd + x.wr);
+  const stepT = allM / (nG * M.hw.hbm_bw), layerT = kernelNums(d).reduce((s, x) => s + x.t, 0);
+  const later = ["한 스텝 뒤", `그사이 모델 전체가 지나감 · ${M.hw.label} ${nG}장 하한 ${fmtT(stepT)}`];
+  const reread = { ro: later, app: later, rmw: later, tmp: ["바로 다음 커널", `층 1개 전체가 하한 ${fmtT(layerT)}`], chip: ["같은 커널 안", "만든 자리(SMEM · 레지스터)에서 바로 씀"] };
+  const sw = x => `<span title="${esc(x.note)}"><i style="background:${colOf(x.color)}"></i>${esc(x.name)}</span>`;
+  const rows = groups.map(({ g, its }) => {
+    const s = sum(its, x => x.store), r = sum(its, x => x.rd), w = sum(its, x => x.wr);
+    return `<tr><td><span class="gchip g-${g}">${GRP[g].label}</span><span class="sm">${GRP[g].sub}</span></td>
+      <td><div class="dp-items">${its.map(sw).join("")}</div></td>
+      <td class="nw">${GRP[g].life}</td><td>${reread[g][0]}<span class="sm">${esc(reread[g][1])}</span></td><td class="nw">${GRP[g].write}</td>
+      <td class="num">${g === "tmp" ? "—" : `<b>${fmtB(s)}</b><span class="sm">${pct(s, totS)}</span>`}</td>
+      <td class="num"><b>${fmtB(r + w)}</b><span class="sm">${pct(r + w, totM)}${w > 0 ? ` · 그중 쓰기 ${fmtB(w)}` : ""}</span></td></tr>`;
+  });
+  rows.push(`<tr class="chip"><td><span class="gchip g-chip">${GRP.chip.label}</span><span class="sm">${GRP.chip.sub}</span></td>
+    <td><div class="dp-items">${chip.top.map(l => `<span><i class="dash"></i>${esc(l)}</span>`).join("")}</div></td>
+    <td class="nw">${GRP.chip.life}</td><td>${reread.chip[0]}<span class="sm">${reread.chip[1]}</span></td><td class="nw">${GRP.chip.write}</td>
+    <td class="num">—</td><td class="num"><b>0</b><span class="sm">칩 안에서 생기는 양 ${fmtB(chip.b)}</span></td></tr>`);
+  document.getElementById("dptab").innerHTML =
+    `<thead><tr><th>성격</th><th>데이터</th><th>수명</th><th>다시 읽히기까지</th><th>쓰기</th><th class="num">보관</th><th class="num">스텝당 이동</th></tr></thead><tbody>${rows.join("")}</tbody>`;
+  document.getElementById("dpnote").textContent =
+    `다시 읽히기까지가 짧은 값(임시값 · 커널 안 값)은 칩 안(L2 ${Math.round(L2_B / 1048576)} MB · SMEM)에 남길 수 있음. 한 스텝 뒤에 다시 읽히는 값은 그사이 모델 전체가 지나가 칩 안에 남지 않음 → HBM에 둠` +
+    (sc === "model" && MD.derived && MD.derived.E_hit ? " · MoE expert 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)" : "");
+}
+
+function update() { renderControls(); renderTraits(); renderSummary(); renderFlow(); }
+
+(function init() {
+  const base = DATA.pages || "";
+  document.getElementById("crumbs").innerHTML = (P.crumbs || []).map(c => `<span class="crumb">${esc(c)}</span>`).join("");
+  document.getElementById("h1").textContent = LITE.doc_title || P.doc_title;
+  document.getElementById("subtext").textContent = LITE.sub || "";
+  const nav = DATA.nav || [];   // 모델 이동 줄 — 지금 모델은 남색 칩
+  document.getElementById("links").innerHTML = nav.length > 1
+    ? nav.map(n => n.file === P.file ? `<span class="navcur">${esc(n.label)}</span>`
+        : `<a href="${esc(base + n.file + "-lite.html")}" target="_blank" rel="noopener">${esc(n.label)}</a>`).join("")
+    : (LITE.sibling ? `<a class="main" href="${esc(base + LITE.sibling.file + "-lite.html")}" target="_blank" rel="noopener">${esc(LITE.sibling.label)} →</a>` : "");
+  const chk = DATA.checks ? `(${DATA.checks.n}개 중 실패 ${DATA.checks.fail}개)` : "";
+  document.getElementById("assume").innerHTML = [...(P.scope || []), ...(P.verify || [])].map(s => `<li>${esc(s.replace("{checks}", chk))}</li>`).join("");
+  document.getElementById("foot").textContent = `${M.name} · 이론 하한 = max(바이트 ÷ ${M.hw.hbm_bw / 1e12} TB/s, FLOP ÷ 피크) · 해석과 결론은 보고서(report/)에 있음`;
+  renderLegend();
+  update();
+})();
+})();
+</script>

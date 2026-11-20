@@ -1,0 +1,75 @@
+# 배치 — 현재 GPU 실행 (as-is) · DeepSeek-V3.1 MLA decode
+# 항목 규칙은 dsa-v32/map-gpu.yaml과 같다. 색인 커널(K5 ~ K7)이 없고 attention이 KV cache를 전부 읽는다.
+
+name: GPU 현재 실행 (H200 기준)
+hw:
+  label: H200
+  hbm_bw: 4.8e12
+  hbm_cap: 141000000000
+  peak:
+    fp8:  1979e12
+    bf16: 989e12
+    vec:  67e12
+  n_sm: 132
+  onchip:
+    l2:   {label: L2 캐시,     short: L2,   total: 52428800, desc: "HBM 읽기 · 쓰기가 거쳐 가는 하드웨어 캐시. 칩 전체 공유"}
+    smem: {label: 공유 메모리, short: SMEM, per_sm: 233472,  desc: "SM마다 있는 SRAM. 커널이 직접 타일을 올려 두고 쓴다"}
+    reg:  {label: 레지스터,    short: REG,  per_sm: 262144,  desc: "SM마다 256 KB. 행렬곱 누산값 · 원소별 계산 값"}
+  note: "이론 하한 = max(바이트 ÷ 대역폭, FLOP ÷ 피크). 커널 실행 지연 · 동기화 미포함"
+
+kernels:
+  - id: K1
+    label: 입력 투영 GEMM
+    plain: "x로 q latent · KV latent 만들기"
+    impl: "fused q_a + kv_a GEMM"
+    steps: [p1]
+    hbm_read:  [{t: x, pat: small}, {t: W_qa, pat: stream}, {t: W_kva, pat: stream}]
+    hbm_write: [{t: q_a, pat: small}, {t: kv_a, pat: small}]
+  - id: K2
+    label: KV 정규화 · 캐시 쓰기
+    plain: "KV 1줄을 완성해 KV cache 끝에 붙이기"
+    impl: "RMSNorm + RoPE + FP8 양자화 + paged KV cache 쓰기"
+    steps: [p2, p3]
+    hbm_read:  [{t: kv_a, pat: small}]
+    hbm_write: [{t: kv_cache, via: kv_new, pat: row}]
+    on_chip:
+      - {t: kv_new, mem: reg, how: "정규화 · RoPE · 양자화한 값을 레지스터에서 바로 KV cache로 씀"}
+  - id: K3
+    label: q 업투영 GEMM
+    plain: "q latent를 head 128개로 펼치기"
+    impl: "RMSNorm → q_b GEMM"
+    steps: [p4]
+    hbm_read:  [{t: q_a, pat: small}, {t: W_qb, pat: stream}]
+    hbm_write: [{t: q, pat: small}]
+  - id: K4
+    label: q 흡수 BMM
+    plain: "q를 latent 공간으로 바꾸기"
+    impl: "RoPE + head별 BMM × W_UK"
+    steps: [p5]
+    hbm_read:  [{t: q, pat: small}, {t: W_UK, pat: stream}]
+    hbm_write: [{t: q_full, pat: small}]
+  - id: K5
+    label: MLA attention 커널
+    plain: "KV cache T줄을 전부 읽어 attention 계산"
+    impl: "FlashMLA dense decode — KV 블록을 SMEM 타일로 올려 QK · online softmax · PV를 한 커널에서"
+    steps: [a1, a2, a3]
+    hbm_read:  [{t: q_full, pat: small}, {t: kv_cache, pat: stream}]
+    hbm_write: [{t: o_lat, pat: small}]
+    on_chip:
+      - {t: kv_cache, mem: smem, stage: true, label: KV 타일, how: "HBM의 KV를 블록 단위로 SMEM에 올려 Tensor core에 공급"}
+      - {t: sc, mem: reg, how: "QK 누산값. 블록마다 online softmax로 바로 확률로 바꿈"}
+      - {t: p, mem: reg, how: "확률을 레지스터에 둔 채 PV에 사용"}
+  - id: K6
+    label: W_UV 풀기 BMM
+    plain: "head마다 latent 출력(512)을 V 폭(128)으로"
+    impl: "head별 BMM × W_UV"
+    steps: [o1]
+    hbm_read:  [{t: o_lat, pat: small}, {t: W_UV, pat: stream}]
+    hbm_write: [{t: o, pat: small}]
+  - id: K7
+    label: 출력 투영 GEMM
+    plain: "head 출력 16,384폭을 hidden 7,168로 투영"
+    impl: "o_proj GEMM"
+    steps: [o2]
+    hbm_read:  [{t: o, pat: small}, {t: W_o, pat: stream}]
+    hbm_write: [{t: y, pat: small}]
