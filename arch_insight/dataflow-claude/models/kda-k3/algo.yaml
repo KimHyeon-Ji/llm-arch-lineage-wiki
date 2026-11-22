@@ -1,4 +1,4 @@
-# Kimi K3 KDA 층 (Kimi Delta Attention · linear) — 층 1개 · decode 1스텝 연산 그래프 (HW와 무관)
+# Kimi K3.1 Pro KDA 층 (Kimi Delta Attention · linear · K3와 같은 층) — 층 1개 · decode 1스텝 연산 그래프 (HW와 무관)
 #
 # KDA = Gated DeltaNet과 같은 delta rule이지만 감쇠 α가 채널(key 차원)마다 다르다.
 # - head 96개 × [128 × 128] state를 매 스텝 전부 읽고 다시 씀. q · k · v head 수가 같다(96).
@@ -6,8 +6,8 @@
 # - attention 가중치 BF16(양자화 제외 목록), conv · o_norm · A_log · dt_bias는 FP32
 # - 참조 구현 검증 없음: config · 체크포인트 shape + 위키 02-linear-attention 2.3(KDA)으로 세운 식
 
-model: Kimi K3 (KDA · linear attention 층)
-scope: KDA 층 1개 · decode 1스텝 · linear attention 블록 (MoE · MLA 층 제외)
+model: Kimi K3.1 Pro (KDA · linear attention 층)
+scope: KDA 층 1개 · decode 1스텝 · linear attention 블록 (MoE · DSA 층 제외)
 
 dims:
   B:      {value: 1,      short: 요청,       desc: 동시 요청 수, var: true}
@@ -18,7 +18,7 @@ dims:
   d_v:    {value: 128,    short: value 폭,   desc: head당 v 폭}
   d_conv: {value: 4,      short: conv 탭,    desc: short_conv_kernel_size}
   C:      {value: 36864,  short: conv 채널,  desc: "q · k · v 채널 = 3 × 96 × 128"}
-  n_layer: {value: 93,    short: 층 수,      desc: "전체 층 수 = KDA 69 + MLA 24"}
+  n_layer: {value: 93,    short: 층 수,      desc: "전체 층 수 = KDA 69 + Gated DSA 24"}
   n_kda:  {value: 69,     short: KDA 층 수,  desc: KDA 층 수}
   T_max:  {value: 1048576, short: 지원 길이, desc: max_position_embeddings}
 
@@ -93,14 +93,14 @@ phases:
 
 page:
   file: kda-k3
-  nav: "Hybrid · Kimi K3 (KDA + MLA)"
+  nav: "Hybrid · Kimi K3.1 Pro (KDA + DSA)"
   doc_title: KDA 데이터 이동
   lite:
     doc_title: KDA 데이터 이동
-    sub: "Kimi K3 · KDA(linear) 층 1개 · 새 토큰 1개 생성(decode) · H200"
-  crumbs: [Hybrid attention · linear + full, Kimi K3 · KDA, 층 1개 · decode 1스텝]
+    sub: "Kimi K3.1 Pro · KDA(linear) 층 1개 · 새 토큰 1개 생성(decode) · H200"
+  crumbs: [Hybrid attention · linear + sparse, Kimi K3.1 Pro · KDA, 층 1개 · decode 1스텝]
   scope:
-    - "Kimi K3 차원(head 96 × 128, hidden 7,168)의 KDA 층 1개 · decode 1스텝. MLA 24층 · MoE는 데이터 성격 패널의 모델 전체에 식으로 포함"
+    - "Kimi K3.1 Pro 차원(head 96 × 128, hidden 7,168)의 KDA 층 1개 · decode 1스텝. Gated DSA 24층(K3의 MLA 24층을 바꾼 것) · MoE는 데이터 성격 패널의 모델 전체에 식으로 포함"
     - "KDA = Gated DeltaNet + 채널별 감쇠. 감쇠 low-rank(128) · 출력 gate full-rank — 체크포인트 shape. 커널 묶음은 fla KDA decode 경로를 6단계로 단순화"
     - "attention 가중치 BF16(config의 양자화 제외 목록), conv · norm · 감쇠 파라미터 FP32. state FP32 가정(vLLM은 BF16 경로도 있음 — 위 선택)"
     - "이론 시간 = max(바이트 ÷ 4.8 TB/s, FLOP ÷ 피크). 원소별 · 행렬 × 벡터는 CUDA core FP32 피크"
@@ -108,5 +108,5 @@ page:
     - "참조 구현 검증 없음 — config 값 + 위키 02-linear-attention 2.3(KDA)으로 세운 식"
 
 sources:
-  - {label: "Kimi K3 config.json · 체크포인트 shape (HuggingFace moonshotai/Kimi-K3)", ref: "93층 = KDA 69 + MLA 24 · head 96 × 128 · short conv 4 · f_a [128 × 7168] → f_b [12288 × 128] · g_proj [12288 × 7168] · gate 하한 −5 · MoE 896개 중 16개 · MXFP4 routed expert"}
-  - {label: "위키 02-linear-attention 2.3 · 99-landscape", ref: "KDA = 채널별 α의 delta rule, K3 = 3 KDA + 1 Gated MLA 반복"}
+  - {label: "Kimi K3.1 Pro config.json (HuggingFace moonshotai/Kimi-K3.1-Pro) · 체크포인트 shape (moonshotai/Kimi-K3)", ref: "93층 = KDA 69 + Gated DSA 24(색인 head 32 × 128 · top-k 2,048) · head 96 × 128 · short conv 4 · f_a [128 × 7168] → f_b [12288 × 128] · g_proj [12288 × 7168] · gate 하한 −5 · MoE 896개 중 16개 · MXFP4 routed expert"}
+  - {label: "위키 02-linear-attention 2.3 · 99-landscape", ref: "KDA = 채널별 α의 delta rule, K3 = 3 KDA + 1 Gated MLA 반복 → K3.1 Pro는 Gated MLA를 Gated DSA로"}

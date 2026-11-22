@@ -1,4 +1,4 @@
-"""algo.yaml + map-gpu.yaml → 수치 · 뷰어 (Kimi K3 KDA 층). 참조 구현 검증 없음.
+"""algo.yaml + map-gpu.yaml → 수치 · 뷰어 (Kimi K3.1 Pro KDA 층). 참조 구현 검증 없음.
 
   python build.py      → numbers.md · dataflow.json · ../../viewer/kda-k3-lite.html
 """

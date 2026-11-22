@@ -1,4 +1,4 @@
-# 배치 — 현재 GPU 실행 (as-is) · Kimi K3 KDA 층 decode
+# 배치 — 현재 GPU 실행 (as-is) · Kimi K3.1 Pro KDA 층 decode
 # 항목 규칙은 gdn-qwen36/map-gpu.yaml과 같다 (pat = overwrite 는 상주 데이터를 전부 다시 쓰는 것).
 
 name: GPU 현재 실행 (H200 기준)

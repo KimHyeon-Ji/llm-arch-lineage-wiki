@@ -1,23 +1,30 @@
-# Kimi K3 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/traits.py(보고서 그림)가 읽음
+# Kimi K3.1 Pro 모델 전체 — 약식 뷰어 "데이터 성격 한눈에" · tools/traits.py(보고서 그림)가 읽음
 #
-# 93층 = KDA 69 + MLA 24 (3:1 반복 + 마지막 MLA). block = KDA 층 1개(algo · map) × 69.
-# MLA 층(식): NoPE · 출력 gate · head 96. 체크포인트에 64차원 k_pe 분기가 있고 vLLM도 latent와 함께 cache에 넣음
-#   → KV = (512 + 64) × BF16 = 1,152 B/토큰/층, 전부 읽음. attention 가중치 BF16 (q_b [18432 × 1536] · kv_a [576 × 7168])
+# 93층 = KDA 69 + Gated DSA 24 (3:1 반복 + 마지막 DSA). block = KDA 층 1개(algo · map) × 69.
+# K3.1 Pro = Kimi K3에서 post-training · full attention(Gated MLA) 24층을 Gated DSA로 바꿈. KDA 층 · MoE는 K3와 같음
+# DSA 층(식): 흡수형 MLA(NoPE · 출력 gate · head 96) + 색인기(head 32 × 128, RoPE 없음, top-k 2,048)
+#   - KV = (512 + 64) × BF16 = 1,152 B/토큰/층 (K3와 같은 가정 — config에 KV 형식 없음). 색인이 고른 2,048줄만 읽음
+#   - 색인 K = 128값 FP8 + scale = 132 B/토큰/층 (DeepSeek-V3.2 vLLM 형식 가정 — config에 형식 없음). 매 스텝 전부 읽음
+#   - 색인기 가중치(q 투영 [4096 × 1536] · k 투영 [128 × 7168] · head 가중치 [32 × 7168]) = V3.2 색인기 구조 가정, BF16
 # MoE: Stable LatentMoE — routed expert 896개 중 16개, latent 폭 3,584 · expert 폭 3,072, MXFP4(+ scale → 0.53 B/값).
-#      shared expert 2개(BF16, hidden 7,168) · latent down/up 투영(BF16 가정) · 첫 1층 dense FFN(33,792, BF16)
-# AttnRes(블록 residual) · MTP는 뺌
-# config: HuggingFace moonshotai/Kimi-K3 config.json (text_config)
+#      shared expert 2개(BF16, hidden 7,168) · latent down/up 투영(BF16 — 양자화 제외 목록) · 첫 1층 dense FFN(33,792, BF16)
+# AttnRes(블록 residual) · MTP · DSA 층 중간값(색인 점수 · 선택 위치)은 뺌
+# config: HuggingFace moonshotai/Kimi-K3.1-Pro config.json (text_config · dsa_config)
 
-model: Kimi K3
+model: Kimi K3.1 Pro
 layer_label: KDA 층 1개
 deploy: {n_gpu: 16, desc: "H200 16장 — MXFP4 expert 기준 가중치 약 1.6 TB"}
 
 dims:
-  L_mla:   {value: 24,     desc: MLA 층 수}
+  L_dsa:   {value: 24,     desc: Gated DSA 층 수}
   L_moe:   {value: 92,     desc: MoE 층 수 (첫 1층은 dense)}
-  c_q:     {value: 1536,   desc: MLA q_lora_rank}
-  c_kv:    {value: 512,    desc: MLA kv_lora_rank}
-  d_r:     {value: 64,     desc: "MLA k_pe 폭 (NoPE지만 체크포인트 · cache에 있음)"}
+  c_q:     {value: 1536,   desc: DSA 층 q_lora_rank}
+  c_kv:    {value: 512,    desc: DSA 층 kv_lora_rank}
+  d_r:     {value: 64,     desc: "k_pe 폭 (NoPE지만 체크포인트 · cache에 있음 — K3 가정 유지)"}
+  n_i:     {value: 32,     desc: 색인 head 수 (index_num_heads)}
+  d_i:     {value: 128,    desc: 색인 head 폭 (index_head_dim · RoPE 없음)}
+  k_sel:   {value: 2048,   desc: "색인이 고르는 줄 수 (index_topk) — 뷰어 문맥 4K 이상이라 상수로 둠"}
+  idx_row: {value: 132,    desc: "색인 K 1줄 바이트 — 128 FP8 + scale (V3.2 vLLM 형식 가정)"}
   d_ffd:   {value: 33792,  desc: dense FFN 폭}
   d_lat:   {value: 3584,   desc: routed expert latent 폭}
   d_moe:   {value: 3072,   desc: expert FFN 폭}
@@ -32,9 +39,10 @@ derived:
 
 data:
   - {id: w_kda,  label: "가중치 · KDA attention", short: KDA attention, group: attention 가중치, block: {kind: weight}, layers: n_kda}
-  - {id: w_mla,  label: "가중치 · MLA attention", short: MLA attention, group: attention 가중치, color: gray, share: 공유, layers: L_mla,
-     store: "L_mla*2*(d*c_q + c_q*n_h*(d_k+d_r) + d*(c_kv+d_r) + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v)",
-     read:  "L_mla*2*(d*c_q + c_q*n_h*(d_k+d_r) + d*(c_kv+d_r) + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v)", note: "BF16 · q_b [18432 × 1536] · kv_a [576 × 7168] · 출력 gate 포함"}
+  - {id: w_dsa,  label: "가중치 · DSA attention", short: DSA attention, group: attention 가중치, color: gray, share: 공유, layers: L_dsa,
+     store: "L_dsa*2*(d*c_q + c_q*n_h*(d_k+d_r) + d*(c_kv+d_r) + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v + c_q*n_i*d_i + d*d_i + d*n_i + 2*d_i)",
+     read:  "L_dsa*2*(d*c_q + c_q*n_h*(d_k+d_r) + d*(c_kv+d_r) + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v + c_q*n_i*d_i + d*d_i + d*n_i + 2*d_i)",
+     note: "BF16 · MLA(q_b [18432 × 1536] · kv_a [576 × 7168] · 출력 gate) + 색인기(q [4096 × 1536] · k [128 × 7168] · head 가중치 [32 × 7168] · k LayerNorm)"}
   - {id: w_ffn,  label: "가중치 · dense FFN", short: dense FFN, group: "MoE · FFN 가중치", color: gray-l, share: 공유, layers: 1,
      store: "3*d*d_ffd*2", read: "3*d*d_ffd*2", note: "첫 1층 · BF16"}
   - {id: w_moe,  label: "가중치 · MoE expert", short: MoE expert, group: "MoE · FFN 가중치", color: gray-l, share: 공유, layers: L_moe,
@@ -43,8 +51,12 @@ data:
      note: "routed MXFP4 · shared BF16 · latent 투영 BF16 · router. 읽기 = 요청들이 건드린 expert만 (균등 라우팅 가정)"}
   - {id: w_head, label: "가중치 · LM head", short: LM head, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*V*d"}
   - {id: w_emb,  label: "가중치 · 임베딩", short: 임베딩, group: "LM head · 임베딩", color: gray-ll, share: 공유, layers: 1, store: "2*V*d", read: "2*B*d", note: "토큰 B개의 행만 읽음"}
-  - {id: kv_mla, label: "KV cache · MLA 24층", short: KV cache (MLA 24층), group: KV cache (MLA 24층), color: blue, share: 요청별, layers: L_mla,
-     store: "L_mla*B*T*2*(c_kv+d_r)", read: "L_mla*B*T*2*(c_kv+d_r)", write: "L_mla*B*2*(c_kv+d_r)", note: "latent 512 + k_pe 64 · BF16 · 토큰당 1,152 B/층. 전부 읽음"}
+  - {id: kv_dsa, label: "KV cache · DSA 24층", short: KV cache (DSA 24층), group: KV cache (DSA 24층), color: blue, share: 요청별, layers: L_dsa,
+     store: "L_dsa*B*T*2*(c_kv+d_r)", read: "L_dsa*B*k_sel*2*(c_kv+d_r)", write: "L_dsa*B*2*(c_kv+d_r)",
+     note: "latent 512 + k_pe 64 · BF16 · 토큰당 1,152 B/층. 색인이 고른 2,048줄만 읽음"}
+  - {id: idxk,   label: "색인 K cache · DSA 24층", short: 색인 K cache (DSA 24층), group: 색인 K cache, color: orange, share: 요청별, layers: L_dsa,
+     store: "L_dsa*B*T*idx_row", read: "L_dsa*B*T*idx_row", write: "L_dsa*B*idx_row",
+     note: "128값 FP8 + scale · 토큰당 132 B/층 (V3.2 형식 가정). 매 스텝 전부 읽음"}
   - {id: state,  label: recurrent state, short: KDA state, group: recurrent state, block: {t: [ssm_state]}, layers: n_kda}
   - {id: conv,   label: conv state, short: conv state, group: conv state, block: {t: [conv_state]}, layers: n_kda}
-  - {id: temp,   label: 커널 사이 중간값, short: "q · k · v · gate 등 토큰 벡터", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: n_kda, note: "KDA 층만 — MLA 층 중간값은 뺌"}
+  - {id: temp,   label: 커널 사이 중간값, short: "q · k · v · gate 등 토큰 벡터", group: 커널 사이 중간값, color: yellow, block: {rest: true}, layers: n_kda, note: "KDA 층만 — DSA 층 중간값(색인 점수 · 선택 위치 등)은 뺌"}

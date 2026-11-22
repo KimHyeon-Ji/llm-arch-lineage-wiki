@@ -1,4 +1,4 @@
-# Kimi K3 (KDA · linear attention 층) — 층 1개 decode 1스텝 수치
+# Kimi K3.1 Pro (KDA · linear attention 층) — 층 1개 decode 1스텝 수치
 
 build.py가 algo.yaml · map-gpu.yaml에서 계산한다. 손으로 고치지 않는다.
 
