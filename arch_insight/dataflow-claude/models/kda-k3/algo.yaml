@@ -82,7 +82,7 @@ steps:
   - {id: l7, group: state 갱신, label: delta 기록, unit: vec, in: [S_dec, k, v, kv_mem, beta], out: [S_new], flops: 2*B*n_h*d_k*d_v+3*B*n_h*d_v, desc: "새 v와 기억한 값의 차이만 β만큼 기록 — state 전체를 다시 쓴다."}
   - {id: l8, group: 출력 읽기, label: 출력 읽기, unit: gemv, in: [S_new, q], out: [o], flops: 2*B*n_h*d_k*d_v, desc: 갱신한 state에 q를 곱해 출력을 읽는다.}
   - {id: l9, group: 출력 읽기, label: gate 정규화, unit: vec, in: [o, g, w_norm], out: [o_n], flops: 8*B*n_h*d_v, desc: "o를 head별 RMSNorm 후 sigmoid(gate)를 곱한다."}
-  - {id: l10, group: 출력 투영, label: 출력 투영, unit: gemm, prec: bf16, in: [o_n, W_out], out: [y], flops: 2*B*n_h*d_v*d, desc: head 출력 12,288폭을 hidden 7,168로.}
+  - {id: l10, group: 출력 투영, label: 출력 투영, unit: gemm, prec: bf16, in: [o_n, W_out], out: [y], flops: 2*B*n_h*d_v*d, desc: "head 출력 12,288폭을 hidden 7,168로."}
 
 phases:
   - {id: P1, focus: l1, label: "입력 투영", tag: "공통 투영", tag_style: plain, steps: [l1, l1b], plain: "x로 q · k · v와 채널별 감쇠 · 쓰기 강도 · gate를 만든다"}
