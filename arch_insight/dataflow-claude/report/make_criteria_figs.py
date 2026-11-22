@@ -22,7 +22,7 @@ W = 1760
 INK, MUTED, LINE, BOXF = mr.INK, mr.MUTED, "#dfe2ec", "#f6f7fb"
 NAVY, WRITE, READ, IDLE = "#4a5573", "#eb6834", "#6b7080", "#c9ccd6"
 MODELS = ["mla-v31", "dsa-v32", "csa-v4flash", "kda-k3", "qsa-qwen38"]
-TAG = {"mla-v31": "V3.1", "dsa-v32": "V3.2", "csa-v4flash": "V4", "kda-k3": "K3", "qsa-qwen38": "Q3.8"}
+TAG = {"mla-v31": "V3.1", "dsa-v32": "V3.2", "csa-v4flash": "V4", "kda-k3": "K3.1", "qsa-qwen38": "Q3.8"}
 REF = (32, 131072)          # 칸에 넣을 데이터를 고르는 조건 (임시값 · 칩 안 값이 다 보이는 조건)
 
 
@@ -159,9 +159,9 @@ OVR = {
         ("char", "app_all"): ("읽기 대역폭 — 메모리 근처 선택", "색인 K는 형식에 민감 (FP8 132 B / MXFP4 68 B)", "2.2"),
     },
     "kda-k3": {
-        ("kind", "ctx"): ("용량 + 대역폭 함께 — 기준선과 같은 대응", "MLA KV(24층)를 매 스텝 전부 읽음", "2.5"),
+        ("kind", "ctx"): ("용량 — 큰 메모리 계층", "DSA KV(24층)는 보관만 큼 · 요청당 2,048줄만 읽음", "2.1"),
         ("life", "req"): ("HBM — 또는 메모리 안 갱신", "state는 한 스텝 뒤에 다시 읽고 다시 씀 → 칩 안에 못 남음", "2.4"),
-        ("char", "app_all"): ("용량 + 대역폭 함께 — 기준선과 같은 대응", "MLA KV를 매 스텝 전부 읽음", "2.5"),
+        ("char", "app_all"): ("읽기 대역폭 — 메모리 근처 선택", "색인 K: 보관은 작아도 매 스텝 전부 읽음 · 키 1 B당 약 62 FLOP (색인 head 32)", "2.2"),
         ("char", "rmw_all"): ("쓰기 대역폭 — 메모리 안 갱신", "이득은 감쇠 · rank-1 갱신을 메모리 쪽이 감당하는지에 달림", "2.4"),
     },
     "qsa-qwen38": {
@@ -174,7 +174,7 @@ HL = {
     "mla-v31": {"kind": {"ctx"}, "life": {"svc", "req"}, "char": {"app_all"}},
     "dsa-v32": {"kind": {"ctx"}, "life": {"kern"}, "char": {"app_all", "app_sel"}},
     "csa-v4flash": {"kind": {"ctx", "fx"}, "life": {"svc"}, "char": {"app_all", "app_sel", "ring_all"}},
-    "kda-k3": {"kind": {"fx", "ctx"}, "life": {"req"}, "char": {"rmw_all", "app_all"}},
+    "kda-k3": {"kind": {"fx", "ctx"}, "life": {"req"}, "char": {"rmw_all", "app_sel", "app_all"}},
     "qsa-qwen38": {"kind": {"ctx"}, "life": {"step", "kern"}, "char": {"app_sel", "app_all", "rmw_all"}},
     "_synth": {"kind": {"fx", "ctx"}, "life": {"req"}, "char": {"app_all", "app_sel", "rmw_all"}},
 }
@@ -376,12 +376,15 @@ SUMMARY = {
     ],
     "kda-k3": [
         ("KDA state", "green", "rmw_all", "매 스텝 전부 다시 씀 — 요청당 434 MB(69층), 문맥과 무관",
-         "요청이 늘수록 층 이동의 대부분", "요청 256개: 층 이동 74% · 이동 비중이 보관 비중의 약 2배",
+         "요청이 늘수록 층 이동의 대부분", "요청 256개: KDA 층 이동 74% · 모델 이동 비중이 보관 비중의 2 ~ 3배",
          "메모리 안에서 갱신해 왕복 제거", "이득은 감쇠 · rank-1 갱신을 메모리 쪽이 감당하는지에 달림", "2.4"),
-        ("MLA KV (24층)", "blue", "app_all", "끝에 추가 · 전부 읽음 — 토큰당 27.6 KB",
-         "긴 문맥에서는 기준선과 같은 부담", "요청 256개 · 128K: 보관 36% · 이동 34%",
-         "HBM 용량 · 대역폭, KV 저정밀", "기준선(V3.1)과 같은 대응", "2.5"),
-        ("attention 가중치 (BF16)", "gray", "ro_all", "read-only · 전부 읽음 — 약 72 GB",
+        ("DSA KV (24층)", "blue", "app_sel", "끝에 추가 · 골라 읽음 — 토큰당 27.6 KB, 요청당 2,048줄만 읽음",
+         "보관만 크고 이동은 작은 용량형", "요청 256개 · 128K: 보관 34% · 이동 0.8% (K3의 MLA는 이동 34%)",
+         "전체 KV는 큰 메모리, 고를 KV만 HBM", "MLA → DSA로 기준선 대응(2.5)에서 계층형 KV로 바뀐 칸", "2.1"),
+        ("색인 K cache (24층)", "orange", "app_all", "끝에 추가 · 전부 읽음 — 토큰당 3.2 KB (132 B × 24층, 형식 가정)",
+         "보관은 작아도 요청별 이동에서 state 다음", "요청 1개 · 128K: 요청별 이동의 30% / 요청 256개 · 128K: 모델 이동 5.6%",
+         "색인 읽기를 메모리 근처에서, 칩에는 선택 위치만", "키 1 B당 약 62 FLOP — 색인 head 32개라 V3.2의 절반", "2.2"),
+        ("attention 가중치 (BF16)", "gray", "ro_all", "read-only · 전부 읽음 — 약 73 GB",
          "요청이 적을 때 이동의 절반", "요청 1개: attention 가중치 52% · MoE 44%",
          "attention 가중치 저정밀", "지금은 routed expert만 MXFP4", "2.5"),
     ],
@@ -462,11 +465,129 @@ def fig_summary(mid):
     mr.save(f)
 
 
+# ------------------------------------------------------------------ 기준 설명 그림 (모델 무관) — 분류 · 뜻 → HW 특성
+# 행 = (막대 색, 분류, 뜻, 예, HW 제목, HW 보조, Ⅱ장 절) · ("#", 제목) = 묶음 머리
+GEN = {
+    "kind": ("crit-c1-kind", "기준 1. 데이터 종류 — 무엇에 비례해 커지나",
+             "커지는 조건이 많을수록 HBM을 먼저 채움", "→ HW에서 문제가 되는 것", [
+                 (mr.GRAY, "공유 가중치", "요청 · 문맥과 무관 — 모든 요청이 같이 씀", "가중치",
+                  "고정 크기 → 용량보다 읽기 대역폭",
+                  "요청이 적으면 매 스텝 이동의 대부분 · 요청이 많으면 한 번 읽어 여러 요청이 나눠 씀", None),
+                 (mr.GREEN, "요청별 · 크기 고정", "요청 수에만 비례 — 문맥이 길어도 그대로", "linear attention state",
+                  "동시 요청 수만큼 용량", "짧은 문맥 · 많은 요청에서 비중이 큼", None),
+                 (mr.BLUE, "요청별 · 문맥 비례", "요청 수 × 문맥 길이에 비례 — 토큰마다 쌓임", "KV cache",
+                  "용량 — 가장 먼저 HBM을 채움", "요청 · 문맥이 함께 크면 가중치보다 커짐 → 큰 메모리 계층 · 압축", "2.1"),
+             ]),
+    "life": ("crit-c2-life", "기준 2. 수명 — 얼마나 오래 남나",
+             "다시 읽힐 때까지 오래 걸릴수록 칩에서 먼 큰 메모리 · 금방 버릴수록 칩 안", "→ 둘 곳", [
+                 ("#2f4b8c", "서비스 내내", "안 바뀌고 모든 요청이 같이 씀", "가중치",
+                  "HBM에 상주", "커서 칩 안에 못 둠 · 바뀌지 않아 GPU 여러 장에 나눠 두거나 복제 가능", None),
+                 ("#5b74b8", "요청 동안", "요청이 끝날 때까지 남고 매 스텝 다시 읽힘", "KV cache · state",
+                  "HBM 또는 그 아래 큰 메모리", "다시 읽기 전에 모델 전체가 지나가 칩 안에 못 남음 · 요청 수만큼 쌓임", "2.1"),
+                 ("#a9b8e2", "스텝 안", "한 커널이 쓰고 다음 커널이 바로 읽고 버림", "q · 점수 · 선택 위치",
+                  "칩 안 L2에 남길 수 있음", "커널 합치기 · L2 상주로 HBM 왕복을 없앰 — SRAM이 효과를 내는 곳", None),
+                 ("#e1e7f5", "커널 안", "한 커널 안에서 만들고 바로 줄여 끝남", "attention 점수 · 확률",
+                  "이미 칩 안 (레지스터 · SMEM)", "HBM 부담 없음 · 처리를 다른 장치로 옮기면 이 값도 그쪽에서 끝내야 함", None),
+             ]),
+    "char": ("crit-c3-char", "기준 3. 데이터 성격 — 어떻게 읽고 쓰나",
+             "읽는 방식이 용량형 · 대역폭형을, 쓰는 방식이 쓰기 부담 · 압축 자유도를 정함", "→ 필요한 메모리 특성", [
+                 ("#", "읽는 방식 — 용량형인가 대역폭형인가"),
+                 (NAVY, "전부 읽음", "매 스텝 들고 있는 만큼 다 읽음", "dense 가중치 · full attention KV · 색인 K",
+                  "대역폭형 — 읽기 대역폭", "크기 = 매 스텝 이동량 · 메모리 근처에서 처리해 결과만 보내면 이동이 줄어듦", "2.2"),
+                 (IDLE, "골라 읽음", "들고 있는 것 중 일부만 읽음", "sparse attention KV · MoE expert",
+                  "용량형 — 큰 메모리 + 고른 것만 HBM", "대부분 쉬고 있음 → 크고 느린 메모리에 두고 고른 것만 빠르게 가져옴", "2.1"),
+                 ("#", "쓰는 방식 — 쓰기 부담과 압축 자유도"),
+                 (mr.GRAY, "read-only", "한 번 올리면 안 바뀜", "가중치",
+                  "압축 · 저정밀 · 복제가 자유로움", "쓰기가 없어 미리 변환해 두고 여러 장치에 나눠 둬도 됨", None),
+                 (mr.BLUE, "끝에 추가", "토큰마다 한 줄 추가 · 지난 줄은 그대로", "KV cache",
+                  "쓰기는 작고 보관이 쌓임 → 용량", "스텝당 쓰기는 한 줄 · 문맥만큼 보관이 늘어남", None),
+                 ("#6250d6", "고정 크기 · 덮어씀", "최근 N개만 남기고 덮어씀", "sliding window KV",
+                  "작은 고정 버퍼", "문맥이 길어도 안 커짐 → 별도 대응 불필요", None),
+                 (mr.GREEN, "매 스텝 전부 다시 씀", "읽은 만큼 다시 씀", "linear attention state",
+                  "쓰기 대역폭 — 메모리 안 갱신", "읽기 = 쓰기 → 메모리 안에서 갱신하면 칩까지 왕복이 사라짐", "2.4"),
+                 (mr.YELLOW, "임시", "다음 커널이 읽고 버림", "q · 점수",
+                  "칩 안에서 끝내기", "수명 '스텝 안'과 같은 데이터 · 커널 합치기 · L2 상주", None),
+             ]),
+}
+GL, GLW, GLAB = 40, 780, 280      # 왼쪽 상자 · 분류 이름 칸 폭
+GR = 890
+GRW = W - 40 - GR
+
+
+def gen_fig(key):
+    """기준 하나 = 분류마다 '이런 데이터면 → 이런 HW 특성' 한 줄. 모델 데이터는 넣지 않음."""
+    name, ttl, rule, rhead, rows = GEN[key]
+    dw = GLW - GLAB - 40
+
+    def parts(r):
+        _, lab, what, ex, h1, h2, sec = r
+        tw = GRW - 56 - (mr.text_w(SECS[sec], 13) + 44 if sec else 0)
+        return wrap(what, 17, dw), wrap("예: " + ex, 15, dw), wrap(h1, 20, tw), wrap(h2, 15, tw)
+
+    def rh(r):
+        if r[0] == "#":
+            return 40
+        a, b, c, d = parts(r)
+        return max(92, 26 * len(a) + 22 * len(b) + 40, 30 * len(c) + 22 * len(d) + 40)
+
+    TOP = 180
+    f = mr.Fig(name, W, TOP + sum(rh(r) + 12 for r in rows) + 24)
+    f.text(40, 56, ttl, 28, weight=800)
+    f.text(40, 100, rule, 20, weight=800, color="#5b47b0")
+    f.text(GL + 4, TOP - 24, "분류 · 어떤 데이터인가", 17, weight=800, color=MUTED)
+    f.text(GR + 4, TOP - 24, rhead, 17, weight=800, color=MUTED)
+    if any(r[0] != "#" and r[6] for r in rows):
+        f.text(W - 40, TOP - 24, "알약 = 기준 보고서 Ⅱ장 절", 14, "end", 600, MUTED)
+    y = TOP
+    for r in rows:
+        h = rh(r)
+        if r[0] == "#":
+            f.text(GL + 4, y + 27, r[1], 17, weight=800, color=NAVY)
+            f.line(GL + 16 + mr.text_w(r[1], 17), y + 21, W - 40, y + 21, LINE, 1.2)
+            y += h + 12
+            continue
+        acc, lab, *_ , sec = r
+        a, b, c, d = parts(r)
+        # 왼쪽 — 분류 이름 | 뜻 · 예
+        f.rect(GL, y, GLW, h, "#ffffff", LINE, 12, 1.2)
+        f.rect(GL, y, 10, h, acc, LINE if acc in ("#e1e7f5", IDLE) else "none", 4, 1)
+        f.text(GL + 32, y + h / 2 + 8, lab, 22, weight=800)
+        yy = y + (h - 26 * len(a) - 22 * len(b)) / 2 + 19
+        for ln in a:
+            f.text(GL + GLAB, yy, ln, 17, weight=600)
+            yy += 26
+        for ln in b:
+            f.text(GL + GLAB, yy, ln, 15, color=MUTED)
+            yy += 22
+        # 오른쪽 — HW 특성
+        arrow(f, GL + GLW + 12, GR - 10, y + h / 2, HL_LINE)
+        f.rect(GR, y, GRW, h, HL_FILL, "#ddd5f5", 12, 1.2)
+        yy = y + (h - 30 * len(c) - 22 * len(d)) / 2 + 21
+        for ln in c:
+            f.text(GR + 28, yy, ln, 20, weight=800)
+            yy += 30
+        for ln in d:
+            f.text(GR + 28, yy - 2, ln, 15, color=MUTED)
+            yy += 22
+        if sec:
+            tag = SECS[sec]
+            pw = mr.text_w(tag, 13) + 20
+            px = GR + GRW - 22 - pw
+            f.rect(px, y + h / 2 - 13, pw, 26, PILL, "none", 13)
+            f.text(px + pw / 2, y + h / 2 + 5, tag, 13, "middle", 700, "#ffffff")
+        y += h + 12
+    mr.save(f)
+
+
 if __name__ == "__main__":
-    ids = sys.argv[1:] or MODELS + ["map"]
+    ids = sys.argv[1:] or MODELS + ["map", "gen"]
     for mid in ids:
         if mid == "map":
             fig_char_map()
+            continue
+        if mid == "gen":
+            for k in GEN:
+                gen_fig(k)
             continue
         fig_kind(mid)
         fig_life(mid)
