@@ -69,7 +69,7 @@ tensors:
   k:        {label: k,        shape: [B, n_v, d_k],      bytes: 4*B*n_v*d_k,     kind: inter}
   v:        {label: v,        shape: [B, n_v, d_v],      bytes: 4*B*n_v*d_v,     kind: inter}
   beta:     {label: β,        shape: [B, n_v],           bytes: 4*B*n_v,         kind: inter, desc: 쓰기 강도 (sigmoid)}
-  g:        {label: g,        shape: [B, n_v],           bytes: 4*B*n_v,         kind: inter, desc: 감쇠 (log 공간, 음수)}
+  g:        {label: g,        shape: [B, n_v],           bytes: 4*B*n_v,         kind: inter, desc: "감쇠 (log 공간, 음수)"}
   S_dec:    {label: 감쇠한 state, shape: [B, n_v, d_k, d_v], bytes: state_b*B*n_v*d_k*d_v, kind: inter}
   kv_mem:   {label: 기억 읽기 값, shape: [B, n_v, d_v],  bytes: 4*B*n_v*d_v,     kind: inter, desc: 지금 k로 state에서 읽은 값}
   S_new:    {label: 새 state,  shape: [B, n_v, d_k, d_v], bytes: state_b*B*n_v*d_k*d_v, kind: state}

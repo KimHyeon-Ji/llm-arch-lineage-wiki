@@ -62,7 +62,7 @@ tensors:
   W_Icmp: {label: 색인 압축기 W, shape: [d, 2*2*d_I], bytes: 2*2*d*2*d_I + 4*m*2*d_I, kind: weight, desc: "색인 압축기 wkv · wgate — BF16 [256 × 4096] 2장 + 위치 bias(FP32)"}
   W_Iw:  {label: W_Iw,  shape: [d, n_I],         bytes: 2*d*n_I,        kind: weight, desc: x → 색인 head 가중치 (BF16)}
   W_oa:  {label: W_oa,  shape: [n_h*d_h, c_o],   bytes: n_h*d_h*c_o,    kind: weight, desc: "출력 LoRA a — head 8개씩 8그룹, 그룹마다 4,096 → 1,024 (FP8)"}
-  W_ob:  {label: W_ob,  shape: [g_o*c_o, d],     bytes: g_o*c_o*d,      kind: weight, desc: 출력 LoRA b — 8,192 → hidden 4,096 (FP8)}
+  W_ob:  {label: W_ob,  shape: [g_o*c_o, d],     bytes: g_o*c_o*d,      kind: weight, desc: "출력 LoRA b — 8,192 → hidden 4,096 (FP8)"}
   kv_cmp:    {label: 압축 KV,      shape: [B, T/m, d_h], bytes: B*(T/m)*kv_row,  kind: kv,   desc: "토큰 4개를 학습된 가중합으로 묶은 엔트리"}
   kv_win:    {label: 최근 창 KV,   shape: [B, W, d_h],   bytes: B*W*kv_row,      kind: kv,   desc: "압축 전 최근 128토큰 ring buffer — 매 스텝 가장 오래된 1줄을 덮어씀"}
   idx_cache: {label: 색인 K cache, shape: [B, T/m, d_I], bytes: B*(T/m)*idx_row, kind: idxk, desc: "압축 엔트리마다 색인 키 1줄"}
@@ -109,7 +109,7 @@ steps:
   - {id: a3, group: Sparse attention, label: softmax, unit: vec, in: [sc], out: [p], elems: B*n_h*(k+W), desc: online softmax.}
   - {id: a4, group: Sparse attention, label: PV, unit: gemm, prec: bf16, in: [p, kv_sel, kv_win], out: [o], flops: 2*B*n_h*d_h*(k+W), desc: "같은 512폭 KV를 V로도 쓴다."}
   - {id: o1, group: 출력, label: 출력 LoRA a (그룹), unit: gemm, prec: fp8, in: [o, W_oa], out: [o_g], flops: 2*B*n_h*d_h*c_o, desc: "head 8개씩 8그룹, 그룹마다 4,096 → 1,024 (그룹마다 다른 가중치 — 8그룹 합 = 가중치 전부를 한 번씩)."}
-  - {id: o2, group: 출력, label: 출력 LoRA b, unit: gemm, prec: fp8, in: [o_g, W_ob], out: [y], flops: 2*B*g_o*c_o*d, desc: 8,192 → hidden 4,096.}
+  - {id: o2, group: 출력, label: 출력 LoRA b, unit: gemm, prec: fp8, in: [o_g, W_ob], out: [y], flops: 2*B*g_o*c_o*d, desc: "8,192 → hidden 4,096."}
 
 phases:
   - {id: P1, focus: p1c, label: "쿼리 · KV · 압축", tag: "V4 압축", tag_style: strong, steps: [p1, p1c, p2, p3, p4], plain: "q와 원본 KV 1줄을 만들고, 압축기 state에 1줄 쓰고, 4토큰마다 압축 엔트리 1줄"}

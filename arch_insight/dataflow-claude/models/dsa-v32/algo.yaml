@@ -77,7 +77,7 @@ tensors:
   logits: {label: head별 점수, shape: [B, n_I, T],       bytes: 4*B*n_I*T,             kind: inter, desc: head 64개 × T — 온칩에서 바로 축약하면 HBM에 안 씀}
   s:      {label: 색인 점수, shape: [B, T],              bytes: 4*B*T,                 kind: inter, desc: 토큰별 점수 1개 (FP32)}
   idx:    {label: 선택 위치, shape: [B, k],              bytes: 4*B*k,                 kind: sel,   desc: top-k 토큰 번호 (int32)}
-  kv_sel: {label: 선택 KV, shape: [B, k, c_kv+d_rope],   bytes: B*k*kv_row,            kind: kv,    desc: 선택한 2,048줄}
+  kv_sel: {label: 선택 KV, shape: [B, k, c_kv+d_rope],   bytes: B*k*kv_row,            kind: kv,    desc: "선택한 2,048줄"}
   sc:     {label: attention 점수, shape: [B, n_h, k],    bytes: 4*B*n_h*k,             kind: inter}
   p:      {label: 확률,   shape: [B, n_h, k],            bytes: 2*B*n_h*k,             kind: inter}
   o_lat:  {label: o_lat,  shape: [B, n_h, c_kv],         bytes: 2*B*n_h*c_kv,          kind: act,   desc: latent 공간 출력}

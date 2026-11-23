@@ -66,7 +66,7 @@ steps:
   - {id: a2, group: MLA attention, label: softmax, unit: vec, in: [sc], out: [p], elems: B*n_h*T, desc: online softmax.}
   - {id: a3, group: MLA attention, label: PV, unit: gemm, prec: bf16, in: [p, kv_cache], out: [o_lat], flops: 2*B*n_h*c_kv*T, desc: 확률로 KV의 c_kv(512) 부분을 가중합한다.}
   - {id: o1, group: 출력, label: W_UV 풀기, unit: gemm, prec: bf16, in: [o_lat, W_UV], out: [o], flops: 2*B*n_h*c_kv*d_v, desc: head마다 latent 출력(512)을 V 폭(128)으로.}
-  - {id: o2, group: 출력, label: 출력 투영, unit: gemm, prec: fp8, in: [o, W_o], out: [y], flops: 2*B*n_h*d_v*d, desc: head 출력 16,384폭을 hidden 7,168로.}
+  - {id: o2, group: 출력, label: 출력 투영, unit: gemm, prec: fp8, in: [o, W_o], out: [y], flops: 2*B*n_h*d_v*d, desc: "head 출력 16,384폭을 hidden 7,168로."}
 
 phases:
   - {id: P1, focus: p1, label: "쿼리 · KV 만들기", tag: "기존 MLA", tag_style: plain, steps: [p1, p2, p3, p4, p5], plain: "새 토큰으로 q와 KV 1줄을 만들고 KV cache 끝에 붙인다"}
