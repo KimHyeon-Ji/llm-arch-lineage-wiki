@@ -14,6 +14,8 @@
 
 **종합 보고서:** [report/synthesis-traits.md](report/synthesis-traits.md) — 모델 5개(full 기준선 · sparse 2 · hybrid 2)를 요청당 보관 · 이동, 읽는 비율, 역전점, 최소 장수로 비교하고 성격별 HW 대응 × 모델 표로 정리.
 
+**연산 종합 보고서:** [report/synthesis-compute.md](report/synthesis-compute.md) — 같은 모델 5개를 연산 쪽에서: 연산 묶음별 FLOP · 이론 시간, 연산기 · 정밀도, 문맥에 따른 FLOP 역전점, 산술 강도, top-k · gather, 커널 직렬 깊이 → HW 대응 × 모델 표. 수치 [tools/ops.py](tools/ops.py) · 그림 [report/make_compute_report.py](report/make_compute_report.py).
+
 모델별 보고서(`*-traits.md`) = 세 가지 기준(종류 · 수명 · 성격)의 공통 분류 그림 3장(분류 → HW 특성, `crit-c1 ~ c3`) + 그 모델의 데이터 종류별 수명 · 성격 표 + 약식 화면 '데이터 성격 한눈에'를 요청 수 · 문맥 길이로 펼친 그림 6장(종류 · 수명 · 성격 × 모델 전체 · 층 1개) + 그래프 인사이트 + 절마다 HW로 발전시킬 포인트 표(대상 · 특성 · HW 방향 · Ⅱ장 절) + 맨 아래 정리(데이터 특성 → 인사이트 → HW 그림 · 표). 그림 생성: `make_traits_report.py`(막대) · `make_criteria_figs.py`(기준 · 정리) · `make_synthesis_report.py`(종합). 커널별 보고서(dsa-v32.md · gdn-qwen36.md) = 모델 전체 decode 1스텝 중 attention 비중 + 요청 수 · 문맥 길이별 '흐름 한눈에' + 약식 화면 커널별 이동 스냅샷 분석 + 커널별 특성(병목 위치 · 접근 모양 · 재사용) → 필요한 HW 특성 + 계산값과 실제의 차이(다시 읽기 · 패딩 · L2) + 아키텍처 아이디어 후보.
 
 ---
@@ -56,6 +58,7 @@ dataflow-claude/
   tools/export_repo.py   약식 화면 HTML만 Sparse_Hybrid_Attention 저장소로 내보냄 (모델 이동 링크 → 상대 경로)
   DEPLOY-INTERNAL.md     사내 GitHub 배포 매뉴얼 — 내보내기 · 사내 PC 받기 · Pages · 사내 Claude 프롬프트
   report/<model>.md      모델별 보고서 — 그림 report/figures/, 모델 전체 수치 model_totals.py, 그림 · 스냅샷 make_report.py
+  tools/ops.py           연산 집계: 연산 묶음 · 연산기 · 이론 시간 · 산술 강도 · 직렬 깊이 (연산 종합 보고서)
   models/<model>/
     README.md            차원 · 범위 · 출처 · 관찰
     ref_decode.py        커널 동작 기준 참조 구현
@@ -63,6 +66,7 @@ dataflow-claude/
     algo.yaml            HW 무관 연산 그래프
     map-gpu.yaml         현재 GPU 배치
     model.yaml           모델 전체 데이터 (FFN · MoE · LM head · 다른 층 종류) — 데이터 성격 한눈에 · 보고서 그림
+    ops.yaml             모델 전체 연산 — 그린 층 커널 → 연산 묶음, 그린 층 밖 연산의 FLOP · 바이트 식 (연산 종합 보고서)
     build.py             검증 → numbers.md · dataflow.json · viewer
     numbers.md           계산 결과 (생성물)
     dataflow.json        뷰어 데이터 (생성물)

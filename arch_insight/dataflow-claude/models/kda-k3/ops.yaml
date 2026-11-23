@@ -1,0 +1,46 @@
+# Kimi K3.1 Pro 모델 전체 연산 — tools/ops.py(연산 종합 보고서)가 읽음. 형식은 mla-v31/ops.yaml 머리말
+#
+# 그린 층 = KDA 69층. 그린 층 밖:
+#   Gated DSA 24층 — model.yaml과 같은 가정: 흡수형 MLA(head 96 · 출력 gate) + 색인기(head 32 × 128) · top-k 2,048
+#     투영 BF16 · 색인 점수 FP8(색인 키 FP8 132 B, V3.2 형식 가정) · attention BF16(KV BF16 1,152 B)
+#     커널 묶음은 V3.2 DSA와 같다고 봄 (색인 점수 → top-k → sparse attention)
+#   MoE 92층 + dense 1층 — routed MXFP4는 BF16으로 풀어 계산한다고 가정 · shared · latent 투영 BF16
+# AttnRes · MTP는 뺌 (model.yaml과 같은 범위)
+
+layers: n_kda
+kernels:
+  K1: {cat: proj,  short: 입력 투영}
+  K2: {cat: proj,  short: 감쇠 업투영}
+  K3: {cat: state, short: 짧은 합성곱}
+  K4: {cat: state, short: state 갱신}
+  K5: {cat: misc,  short: gate 정규화}
+  K6: {cat: proj,  short: 출력 투영}
+
+ops:
+  # ── Gated DSA 24층 ──
+  - {id: dsa_proj, label: "DSA 투영 (MLA · 출력 gate · 색인기)", layer: DSA, cat: proj, unit: gemm, prec: bf16, layers: L_dsa,
+     flops: "2*B*(d*c_q + c_q*n_h*(d_k+d_r) + d*(c_kv+d_r) + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v + c_q*n_i*d_i + d*d_i + d*n_i)",
+     bytes: "2*(d*c_q + c_q*n_h*(d_k+d_r) + d*(c_kv+d_r) + c_kv*n_h*(d_k+d_v) + n_h*d_v*d + d*n_h*d_v + c_q*n_i*d_i + d*d_i + d*n_i + 2*d_i)"}
+  - {id: dsa_misc, label: "DSA KV · 색인 키 쓰기", layer: DSA, cat: misc, unit: mem, layers: L_dsa,
+     flops: "0", bytes: "B*2*(c_kv+d_r) + B*idx_row"}
+  - {id: dsa_idx,  label: "DSA 색인 점수", layer: DSA, cat: idx, unit: gemm, prec: fp8, layers: L_dsa,
+     flops: "2*B*n_i*d_i*T + 2*B*n_i*T", bytes: "B*T*idx_row + 4*B*T",
+     note: "색인 키 T줄 전부 · head 32개가 같은 키 재사용 · 점수 [T] 쓰기"}
+  - {id: dsa_topk, label: "DSA top-k", layer: DSA, cat: topk, unit: sel, layers: L_dsa,
+     flops: "0", bytes: "4*B*T + 4*B*k_sel", elems: "B*T"}
+  - {id: dsa_attn, label: "DSA sparse attention", layer: DSA, cat: attn, unit: gemm, prec: bf16, layers: L_dsa,
+     flops: "2*B*n_h*(c_kv+d_r)*k_sel + 2*B*n_h*c_kv*k_sel", bytes: "B*k_sel*2*(c_kv+d_r) + 4*B*k_sel",
+     gather: {rows: "B*k_sel", row: "2*(c_kv+d_r)"}}
+  # ── MoE · FFN · LM head ──
+  - {id: ffn,   label: dense FFN, cat: moe, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*3*d*d_ffd", bytes: "3*d*d_ffd*2"}
+  - {id: moe_r, label: "MoE routed expert (latent 폭)", cat: moe, unit: gemm, prec: bf16, layers: L_moe,
+     flops: "2*B*E_k*3*d_lat*d_moe", bytes: "E_hit*3*d_lat*d_moe*fp4"}
+  - {id: moe_s, label: "MoE shared · latent 투영 · router", cat: moe, unit: gemm, prec: bf16, layers: L_moe,
+     flops: "2*B*(E_s*3*d*d_moe + 2*d*d_lat + d*E)", bytes: "E_s*3*d*d_moe*2 + 2*d*d_lat*2 + 2*d*E"}
+  - {id: head,  label: LM head, cat: head, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*d*V", bytes: "2*V*d"}
+
+# 직렬 경로(커널 의존 깊이) — 그린 층 밖 층 종류는 같은 구조 모델의 배치로 대신 셈
+chains:
+  DSA: {from: dsa-v32, skip: [K8b], layers: L_dsa}

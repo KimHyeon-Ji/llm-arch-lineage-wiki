@@ -1,0 +1,51 @@
+# DeepSeek-V4-Flash 모델 전체 연산 — tools/ops.py(연산 종합 보고서)가 읽음. 형식은 mla-v31/ops.yaml 머리말
+#
+# 그린 층 = CSA 21층. 그린 층 밖:
+#   HCA 20층 — 128토큰을 엔트리 1개로 고압축, 색인 · top-k 없이 엔트리 전부 + 최근 창 128줄을 읽음 (model.yaml 식과 같은 가정)
+#   창 2층   — 최근 창 128줄만
+#   투영은 CSA 층과 같은 구조(FP8), 압축기 wkv · wgate는 BF16 [512 × 4096] 2장
+# MoE: 43층 모두 · routed FP4 — H200에는 FP4 Tensor core가 없어 BF16으로 풀어 계산한다고 가정 · shared FP8
+# mHC · MTP · hash routing은 뺌 (model.yaml과 같은 범위)
+
+layers: L_csa
+kernels:
+  K1: {cat: proj,  short: 입력 투영}
+  K2: {cat: misc,  short: 창 쓰기 · 압축}
+  K3: {cat: proj,  short: q 업투영}
+  K4: {cat: proj,  short: 색인 투영}
+  K5: {cat: idx,   short: 색인 점수}
+  K6: {cat: topk,  short: top-k}
+  K7: {cat: attn,  short: Sparse attention}
+  K8: {cat: proj,  short: 출력 투영}
+
+ops:
+  # ── HCA 20층 ──
+  - {id: hca_proj, label: "HCA 투영", layer: HCA, cat: proj, unit: gemm, prec: fp8, layers: L_hca,
+     flops: "2*B*(d*c_q + d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d)",
+     bytes: "d*c_q + d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d"}
+  - {id: hca_cmp,  label: "HCA 압축기 투영", layer: HCA, cat: proj, unit: gemm, prec: bf16, layers: L_hca,
+     flops: "2*B*d*2*d_h", bytes: "2*2*d*d_h + 4*m_h*d_h"}
+  - {id: hca_misc, label: "HCA 창 쓰기 · 압축", layer: HCA, cat: misc, unit: vec, layers: L_hca,
+     flops: "6*B*d_h", bytes: "2*B*2*d_h*4 + B*kv_row + B*kv_row/m_h"}
+  - {id: hca_attn, label: "HCA attention", layer: HCA, cat: attn, unit: gemm, prec: bf16, layers: L_hca,
+     flops: "4*B*n_h*d_h*(T/m_h + W)", bytes: "B*(T/m_h + W)*kv_row",
+     note: "MQA처럼 head 64개가 엔트리 1줄을 공유 — QK · PV"}
+  # ── 창 2층 ──
+  - {id: swa_proj, label: "창 층 투영", layer: 창, cat: proj, unit: gemm, prec: fp8, layers: L_swa,
+     flops: "2*B*(d*c_q + d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d)",
+     bytes: "d*c_q + d*d_h + c_q*n_h*d_h + n_h*d_h*c_o + g_o*c_o*d"}
+  - {id: swa_misc, label: "창 쓰기", layer: 창, cat: misc, unit: mem, layers: L_swa,
+     flops: "0", bytes: "B*kv_row"}
+  - {id: swa_attn, label: "창 attention", layer: 창, cat: attn, unit: gemm, prec: bf16, layers: L_swa,
+     flops: "4*B*n_h*d_h*W", bytes: "B*W*kv_row"}
+  # ── MoE · LM head ──
+  - {id: moe_r, label: "MoE routed expert", cat: moe, unit: gemm, prec: bf16, layers: n_layer,
+     flops: "2*B*E_k*3*d*d_moe", bytes: "E_hit*3*d*d_moe*fp4"}
+  - {id: moe_s, label: "MoE shared expert · router", cat: moe, unit: gemm, prec: fp8, layers: n_layer,
+     flops: "2*B*(E_s*3*d*d_moe + d*E)", bytes: "E_s*3*d*d_moe + 2*d*E"}
+  - {id: head,  label: LM head, cat: head, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*d*V", bytes: "2*V*d"}
+
+# 직렬 경로(커널 의존 깊이) — HCA · 창 층은 CSA 배치에서 색인 투영 · 색인 점수 · top-k를 뺀 것으로 셈
+chains:
+  "HCA · 창": {from: csa-v4flash, skip: [K4, K5, K6], layers: L_hca + L_swa}

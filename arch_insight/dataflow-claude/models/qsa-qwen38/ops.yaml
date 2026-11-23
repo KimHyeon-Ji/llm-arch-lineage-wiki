@@ -1,0 +1,50 @@
+# Qwen3.8-Flash-Next 모델 전체 연산 — tools/ops.py(연산 종합 보고서)가 읽음. 형식은 mla-v31/ops.yaml 머리말
+#
+# 그린 층 = QSA 12층. 그린 층 밖:
+#   GDN 36층 — Qwen3.6 GDN과 같은 층 구조(models/gdn-qwen36/algo.yaml 식), 차원만 model.yaml 값 (key head 16 · value head 48 · 128 × 128)
+#     state FP32 — 매 스텝 전부 읽고 다시 씀 · 커널 묶음은 Qwen3.6 GDN 배치와 같다고 봄
+#   MoE 48층 (BF16) · hyper-connection(층마다 2개) · PLE 투영(1층) · LM head
+# n-gram 표 조회(host) · MTP는 뺌 (model.yaml과 같은 범위)
+
+layers: n_qsa
+kernels:
+  K1: {cat: proj, short: 입력 투영}
+  K2: {cat: misc, short: KV 쓰기}
+  K3: {cat: proj, short: 색인 투영}
+  K4: {cat: idx,  short: 블록 점수}
+  K5: {cat: topk, short: top-k}
+  K6: {cat: attn, short: 블록 attention}
+  K7: {cat: proj, short: 출력 투영}
+
+ops:
+  # ── GDN 36층 ──
+  - {id: gdn_proj,  label: "GDN 입력 · 출력 투영", layer: GDN, cat: proj, unit: gemm, prec: bf16, layers: L_gdn,
+     flops: "2*B*(d*(g_C + g_v*g_d + 2*g_v) + g_v*g_d*d)", bytes: "2*(d*(g_C + g_v*g_d + 2*g_v) + g_v*g_d*d + 4*g_C)"}
+  - {id: gdn_conv,  label: "GDN 짧은 합성곱", layer: GDN, cat: state, unit: vec, layers: L_gdn,
+     flops: "2*B*g_C*4", bytes: "2*B*g_C*3*2"}
+  - {id: gdn_state, label: "GDN state 갱신", layer: GDN, cat: state, unit: gemv, prec: fp32, layers: L_gdn,
+     flops: "7*B*g_v*g_d*g_d + 6*B*g_k*g_d + 8*B*g_v + 3*B*g_v*g_d", bytes: "2*B*g_v*g_d*g_d*4",
+     note: "감쇠 · 읽기(GEMV) · delta 쓰기 · 출력 읽기(GEMV) — gdn-qwen36 l4 ~ l8 식"}
+  - {id: gdn_norm,  label: "GDN gate 정규화", layer: GDN, cat: misc, unit: vec, layers: L_gdn,
+     flops: "8*B*g_v*g_d", bytes: "0"}
+  # ── MoE · HC · PLE · LM head ──
+  - {id: moe,  label: "MoE expert · router", cat: moe, unit: gemm, prec: bf16, layers: n_layer,
+     flops: "2*B*((E_k+E_s)*3*d*d_moe + d*E)", bytes: "(E_hit+E_s)*3*d*d_moe*2 + 2*d*E"}
+  - {id: hc,   label: hyper-connection, cat: proj, unit: gemm, prec: bf16, layers: n_layer,
+     flops: "2*B*2*(2*320*4*d + 4*4*d + 4*d)", bytes: "2*2*(2*320*4*d + 4*4*d + 4*d)"}
+  - {id: ple,  label: PLE 투영, cat: proj, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*(4*d*d + d*d + 4*d*4 + 3*4*d)", bytes: "2*(4*d*d + d*d + 4*d*4 + 3*4*d)"}
+  - {id: head, label: LM head, cat: head, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*d*V", bytes: "2*V*d"}
+
+# 직렬 경로(커널 의존 깊이) — 그린 층 밖 층 종류는 같은 구조 모델의 배치로 대신 셈
+chains:
+  GDN:
+    from: gdn-qwen36
+    layers: L_gdn
+    kernels:
+      K1: {cat: proj,  short: 입력 투영}
+      K2: {cat: state, short: 짧은 합성곱}
+      K3: {cat: state, short: state 갱신}
+      K4: {cat: misc,  short: gate 정규화}
+      K5: {cat: proj,  short: 출력 투영}

@@ -1,0 +1,25 @@
+# DeepSeek-V3.2 모델 전체 연산 — tools/ops.py(연산 종합 보고서)가 읽음. 형식은 mla-v31/ops.yaml 머리말
+# 61층 모두 그린 DSA 층과 같음. split-KV(K8b)는 모델 비교에서 뺌 — tools/ops.py가 S_acc = 0으로 계산 (synthesis-traits.md와 같은 처리)
+
+layer: DSA
+layers: n_layer
+kernels:
+  K1:  {cat: proj, short: 입력 투영}
+  K2:  {cat: misc, short: KV 쓰기}
+  K3:  {cat: proj, short: q 업투영}
+  K4:  {cat: proj, short: q 흡수}
+  K5:  {cat: proj, short: 색인 투영}
+  K6:  {cat: idx,  short: 색인 점수}
+  K7:  {cat: topk, short: top-k}
+  K8:  {cat: attn, short: Sparse MLA}
+  K8b: {cat: misc, short: split 합치기, skip: true}
+  K9:  {cat: proj, short: W_UV 풀기}
+  K10: {cat: proj, short: 출력 투영}
+
+ops:
+  - {id: ffn,  label: dense FFN,         cat: moe,  unit: gemm, prec: fp8,  layers: L_dense,
+     flops: "2*B*3*d*d_ff", bytes: "3*d*d_ff"}
+  - {id: moe,  label: "MoE expert · router", cat: moe, unit: gemm, prec: fp8, layers: L_moe,
+     flops: "2*B*((E_k+E_s)*3*d*d_moe + d*E)", bytes: "(E_hit+E_s)*3*d*d_moe + 2*d*E"}
+  - {id: head, label: LM head,           cat: head, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*d*V", bytes: "2*V*d"}

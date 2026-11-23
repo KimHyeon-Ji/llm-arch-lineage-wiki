@@ -1,0 +1,28 @@
+# DeepSeek-V3.1 모델 전체 연산 — tools/ops.py(연산 종합 보고서 report/synthesis-compute.md)가 읽음
+#
+# - kernels: 그린 층(algo · map)의 커널 → 연산 묶음(cat) · 짧은 이름. FLOP · HBM 바이트는 algo · map 식 그대로 × layers
+# - ops: 그린 층 밖 연산. flops = 층 1개 FLOP, bytes = 층 1개 HBM 읽기 + 쓰기 (model.yaml read · write 식과 같은 범위)
+#   unit = gemm · gemv · vec · sel · mem, prec = 행렬곱 정밀도 (이론 시간의 피크 선택)
+# - 묶음: proj(가중치 GEMM · attention 투영) · moe(MoE · FFN) · head(LM head) · attn(attention 본체)
+#         · idx(색인 · 블록 점수) · topk(top-k) · state(state · conv 갱신) · misc(쓰기 · 정규화 · 합치기)
+# - 잔차 · RMSNorm · 임베딩 조회 · MTP는 뺌 (model.yaml과 같은 범위)
+# V3.1은 61층 모두 그린 MLA 층과 같음 — 그린 층 밖은 MoE · FFN · LM head뿐
+
+layers: n_layer
+kernels:
+  K1: {cat: proj, short: 입력 투영}
+  K2: {cat: misc, short: KV 쓰기}
+  K3: {cat: proj, short: q 업투영}
+  K4: {cat: proj, short: q 흡수}
+  K5: {cat: attn, short: MLA attention}
+  K6: {cat: proj, short: W_UV 풀기}
+  K7: {cat: proj, short: 출력 투영}
+
+ops:
+  - {id: ffn,  label: dense FFN,         cat: moe,  unit: gemm, prec: fp8,  layers: L_dense,
+     flops: "2*B*3*d*d_ff", bytes: "3*d*d_ff"}
+  - {id: moe,  label: "MoE expert · router", cat: moe, unit: gemm, prec: fp8, layers: L_moe,
+     flops: "2*B*((E_k+E_s)*3*d*d_moe + d*E)", bytes: "(E_hit+E_s)*3*d*d_moe + 2*d*E",
+     note: "토큰당 expert 8 + shared 1 · 읽기 = 요청들이 건드린 expert (균등 라우팅 가정)"}
+  - {id: head, label: LM head,           cat: head, unit: gemm, prec: bf16, layers: 1,
+     flops: "2*B*d*V", bytes: "2*V*d"}

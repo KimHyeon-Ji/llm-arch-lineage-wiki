@@ -516,7 +516,8 @@ GRW = W - 40 - GR
 
 def gen_fig(key):
     """기준 하나 = 분류마다 '이런 데이터면 → 이런 HW 특성' 한 줄. 모델 데이터는 넣지 않음."""
-    name, ttl, rule, rhead, rows = GEN[key]
+    name, ttl, rule, rhead, rows = GEN[key][:5]
+    lhead = GEN[key][5] if len(GEN[key]) > 5 else "분류 · 어떤 데이터인가"
     dw = GLW - GLAB - 40
 
     def parts(r):
@@ -534,7 +535,7 @@ def gen_fig(key):
     f = mr.Fig(name, W, TOP + sum(rh(r) + 12 for r in rows) + 24)
     f.text(40, 56, ttl, 28, weight=800)
     f.text(40, 100, rule, 20, weight=800, color="#5b47b0")
-    f.text(GL + 4, TOP - 24, "분류 · 어떤 데이터인가", 17, weight=800, color=MUTED)
+    f.text(GL + 4, TOP - 24, lhead, 17, weight=800, color=MUTED)
     f.text(GR + 4, TOP - 24, rhead, 17, weight=800, color=MUTED)
     if any(r[0] != "#" and r[6] for r in rows):
         f.text(W - 40, TOP - 24, "알약 = 기준 보고서 Ⅱ장 절", 14, "end", 600, MUTED)
