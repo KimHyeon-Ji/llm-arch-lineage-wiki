@@ -108,7 +108,7 @@ steps:
   - {id: a2, group: Sparse attention, label: QK 점수, unit: gemm, prec: bf16, in: [q, kv_sel, kv_win], out: [sc], flops: 2*B*n_h*d_h*(k+W), desc: "head 64개 × (선택 512 + 창 128). 모든 head가 같은 KV 줄을 쓴다."}
   - {id: a3, group: Sparse attention, label: softmax, unit: vec, in: [sc], out: [p], elems: B*n_h*(k+W), desc: online softmax.}
   - {id: a4, group: Sparse attention, label: PV, unit: gemm, prec: bf16, in: [p, kv_sel, kv_win], out: [o], flops: 2*B*n_h*d_h*(k+W), desc: "같은 512폭 KV를 V로도 쓴다."}
-  - {id: o1, group: 출력, label: 출력 LoRA a (그룹), unit: gemm, prec: fp8, in: [o, W_oa], out: [o_g], flops: 2*B*n_h*d_h*c_o/g_o, desc: "head 8개씩 8그룹, 그룹마다 4,096 → 1,024."}
+  - {id: o1, group: 출력, label: 출력 LoRA a (그룹), unit: gemm, prec: fp8, in: [o, W_oa], out: [o_g], flops: 2*B*n_h*d_h*c_o, desc: "head 8개씩 8그룹, 그룹마다 4,096 → 1,024 (그룹마다 다른 가중치 — 8그룹 합 = 가중치 전부를 한 번씩)."}
   - {id: o2, group: 출력, label: 출력 LoRA b, unit: gemm, prec: fp8, in: [o_g, W_ob], out: [y], flops: 2*B*g_o*c_o*d, desc: 8,192 → hidden 4,096.}
 
 phases:
