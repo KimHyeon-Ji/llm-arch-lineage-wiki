@@ -53,6 +53,8 @@ dataflow-claude/
   viewer/template-lite.html  뷰어 템플릿 — 모델 데이터가 /*__DATA__*/ 자리에 들어감. 제목 · 문구는 algo.yaml page, 색 · 조건 버튼은 kinds · formats, 데이터 성격은 model.yaml
   viewer/<model>-lite.html  build.py가 만든 공유용 뷰어 — 완전한 HTML 문서, 브라우저 · GitHub Pages에서 바로 열림
   viewer/artifact/       같은 뷰어의 claude.ai artifact 게시용 본문 (직접 고치지 않음)
+  tools/export_repo.py   약식 화면 HTML만 Sparse_Hybrid_Attention 저장소로 내보냄 (모델 이동 링크 → 상대 경로)
+  DEPLOY-INTERNAL.md     사내 GitHub 배포 매뉴얼 — 내보내기 · 사내 PC 받기 · Pages · 사내 Claude 프롬프트
   report/<model>.md      모델별 보고서 — 그림 report/figures/, 모델 전체 수치 model_totals.py, 그림 · 스냅샷 make_report.py
   models/<model>/
     README.md            차원 · 범위 · 출처 · 관찰
