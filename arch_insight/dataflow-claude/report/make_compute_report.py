@@ -34,7 +34,7 @@ MODELS, TAG, MCOL, NAME = cf.MODELS, cf.TAG, cf.MCOL, ms.NAME
 PINK, VIOLET = "#e87ba4", "#7b61c9"
 CAT_COL = {"proj": mr.GRAY, "moe": mr.GRAY_L, "head": mr.LMH, "attn": mr.BLUE, "idx": mr.ORANGE,
            "topk": PINK, "state": mr.GREEN, "misc": mr.YELLOW}
-CATS = [(k, lab, CAT_COL[k]) for k, lab in ops.CATS]
+CATS = [(k, lab.replace("가중치 GEMM", "가중치 행렬곱"), CAT_COL[k]) for k, lab in ops.CATS]
 UCOL = {("gemm", "fp8"): "#2f4b8c", ("gemm", "bf16"): "#7d93cf", ("vec", "fp32"): mr.GREEN}
 DARK = mt.DARK | {"#2f4b8c", "#7d93cf"}
 CONDS = ms.CONDS
@@ -73,35 +73,35 @@ def pc(v):
 # ------------------------------------------------------------------ 기준 그림 (모델 무관) — make_criteria_figs.gen_fig 양식
 cf.GEN.update({
     "ops1": ("comp-c1-unit", "기준 1. 연산기 — 무엇으로 계산하나",
-             "FLOP은 거의 전부 행렬곱 — FLOP이 작거나 없는 연산이 따로 유닛과 시간을 요구함", "→ HW에서 필요한 것", [
+             "계산량(FLOP)은 거의 전부 행렬곱 — 계산량이 작거나 없는 연산도 따로 유닛과 시간을 요구함", "→ HW에서 필요한 것", [
                  (mr.GRAY, "행렬곱 (GEMM)", "행렬 × 행렬 — Tensor core", "가중치 투영 · MoE · attention QK · PV · 색인 점수",
-                  "Tensor core 피크 · 정밀도", "FLOP의 98% 이상 · 어느 정밀도(FP8 · BF16) 유닛이 받느냐가 연산 시간을 정함", None),
-                 (mr.GREEN, "GEMV · 원소별", "행렬 × 벡터 · 감쇠 · 정규화 — CUDA core", "linear state 갱신 · softmax · 정규화",
-                  "넓은 벡터 유닛 · 메모리 안 처리", "FLOP은 1% 남짓 · FP32 state를 매 스텝 전부 읽고 다시 씀", "2.4"),
+                  "Tensor core 피크 · 정밀도", "계산량의 98% 이상 · 어느 정밀도(FP8 · BF16) 유닛이 받느냐가 계산 시간을 정함", None),
+                 (mr.GREEN, "행렬 × 벡터 · 원소별", "행렬 × 벡터(GEMV) · 감쇠 · 정규화 — CUDA core", "linear state 갱신 · softmax · 정규화",
+                  "넓은 벡터 유닛 · 메모리 안 처리", "계산량은 1% 남짓 · FP32 state를 매 스텝 전부 읽고 다시 씀", "2.4"),
                  (PINK, "비교 · 선택 (top-k)", "점수 비교 · 상위 k개 고르기", "색인 점수 13만 개 → 2,048개",
-                  "선택 전용 유닛", "FLOP 0 — FLOP 그림에 안 보이지만 층마다 직렬 단계 하나", "2.3"),
+                  "선택 전용 유닛", "계산량 0 — 계산량 그림에 안 보이지만 층마다 기다리는 단계 하나", "2.3"),
                  (mr.BLUE, "흩어진 읽기 (gather)", "고른 줄만 골라 모아 읽기", "sparse attention의 KV 2,048줄",
-                  "작은 덩어리 읽기 효율 · 주소 계산", "덩어리가 작고 많을수록 대역폭을 못 채움 — 블록 단위가 유리", "2.2"),
+                  "작은 덩어리 읽기 효율 · 주소 계산", "덩어리가 작고 많을수록 메모리 읽기 속도를 다 못 씀 — 블록 단위가 유리", "2.2"),
              ], "분류 · 어떤 연산인가"),
-    "ops2": ("comp-c2-axis", "기준 2. 커지는 축 — 토큰 1개의 FLOP이 무엇에 비례하나",
-             "문맥에 비례하는 연산이 긴 문맥의 FLOP을 정함 — 요청 수는 모든 연산을 똑같이 늘림", "→ HW에서 문제가 되는 것", [
-                 (mr.GRAY, "고정 — 가중치 연산", "문맥과 무관 · 토큰마다 같은 FLOP", "투영 · MoE · LM head",
-                  "활성 파라미터 수가 정함", "모델 크기 · 고르는 expert 수가 그대로 FLOP", None),
-                 (mr.BLUE, "문맥 비례", "토큰마다 지난 문맥 전체와 계산", "full attention 본체 · 색인 · 블록 점수",
-                  "긴 문맥 FLOP의 대부분 → 색인 연산기 규모", "압축 · 블록 키 · 색인 head 수는 기울기만 줄임", "2.3"),
-                 (mr.GREEN, "고정 예산 — 요청별 연산", "문맥이 길어도 그대로 — 고른 k줄 · state 크기", "sparse attention 본체 · state 갱신",
-                  "문맥과 무관한 요청별 부담", "요청 수에만 비례 · 짧은 문맥에서 상대 비중이 큼", None),
+    "ops2": ("comp-c2-axis", "기준 2. 커지는 축 — 토큰 1개의 계산량이 무엇에 비례하나",
+             "문맥에 비례하는 연산이 긴 문맥의 계산량을 정함 — 요청 수는 모든 연산을 똑같이 늘림", "→ HW에서 문제가 되는 것", [
+                 (mr.GRAY, "고정 — 가중치 연산", "문맥과 무관 · 토큰마다 같은 계산량", "투영 · MoE · LM head",
+                  "활성 파라미터 수가 정함", "모델 크기 · 고르는 expert 수가 그대로 계산량", None),
+                 (mr.BLUE, "문맥에 비례", "토큰마다 지난 문맥 전체와 계산", "full attention 본체 · 색인 · 블록 점수",
+                  "긴 문맥 계산량의 대부분 → 색인 연산기 규모", "압축 · 블록 키 · 색인 head 수는 기울기만 줄임", "2.3"),
+                 (mr.GREEN, "고정 — 요청마다 정해진 양", "문맥이 길어도 그대로 — 고른 k줄 · state 크기", "sparse attention 본체 · state 갱신",
+                  "문맥과 상관없이 요청마다 드는 부담", "요청 수에만 비례 · 짧은 문맥에서 상대 비중이 큼", None),
              ], "분류 · 어떤 연산인가"),
-    "ops3": ("comp-c3-ai", "기준 3. 산술 강도 — HBM 1 B를 읽을 때 몇 번 계산하나",
-             "강도가 H200 경계(BF16 약 206 · FP8 약 412 FLOP/B)보다 높으면 연산이, 낮으면 대역폭이 시간을 정함", "→ 필요한 HW 특성", [
-                 (mr.GRAY, "요청 수로 커짐", "공유 가중치를 여러 요청이 나눠 씀", "투영 · LM head (MoE는 expert로 나뉘어 느리게 커짐)",
-                  "요청이 적으면 대역폭형 → 가중치 대역폭 · 배치", "강도 ≈ 요청 수(BF16) · 요청 수 × 2(FP8)", None),
-                 (mr.BLUE, "구조로 고정 · 수백", "KV 1줄을 head 수십 ~ 128개가 함께 씀", "MLA · DSA · CSA attention 본체",
-                  "연산형 — Tensor core가 시간을 정함", "요청을 모아도 강도가 그대로 (요청마다 자기 KV)", "2.5"),
-                 (mr.ORANGE, "구조로 고정 · 수 ~ 수십", "키 1줄을 색인 head 몇 개가 씀", "색인 · 블록 점수 · GQA attention",
-                  "대역폭형 — 메모리 근처에 둘 연산기 크기", "head 수 · 키 형식이 강도를 정함", "2.2"),
-                 (mr.GREEN, "1 이하", "값 하나를 한두 번 계산하고 다시 씀", "linear state 갱신",
-                  "대역폭만 — 메모리 안 갱신", "연산기는 작아도 됨 · 읽은 만큼 다시 씀", "2.4"),
+    "ops3": ("comp-c3-ai", "기준 3. 1바이트당 계산 횟수 — HBM에서 1바이트 읽을 때 몇 번 계산하나",
+             "H200 균형점(1바이트당 BF16 약 206번 · FP8 약 412번)보다 많이 계산하면 계산이, 적으면 메모리 읽기가 병목", "→ 필요한 HW 특성", [
+                 (mr.GRAY, "요청 수에 따라 커짐", "모든 요청이 같은 가중치를 나눠 씀", "투영 · LM head (MoE는 expert로 나뉘어 천천히 커짐)",
+                  "요청이 적으면 메모리 읽기가 병목 → 가중치 읽기 속도 · 배치", "1바이트당 계산 ≈ 요청 수(BF16) · 요청 수 × 2(FP8)", None),
+                 (mr.BLUE, "구조로 고정 · 수백 번", "KV 1줄을 head 수십 ~ 128개가 함께 씀", "MLA · DSA · CSA attention 본체",
+                  "계산이 병목 — Tensor core가 시간을 정함", "요청을 모아도 횟수가 그대로 (요청마다 자기 KV)", "2.5"),
+                 (mr.ORANGE, "구조로 고정 · 수 ~ 수십 번", "키 1줄을 색인 head 몇 개가 씀", "색인 · 블록 점수 · GQA attention",
+                  "메모리 읽기가 병목 — 메모리 근처에 둘 연산기 크기", "head 수 · 키 형식이 횟수를 정함", "2.2"),
+                 (mr.GREEN, "1번 이하", "값 하나를 한두 번 계산하고 다시 씀", "linear state 갱신",
+                  "거의 읽기 · 쓰기뿐 — 메모리 안에서 갱신", "연산기는 작아도 됨 · 읽은 만큼 다시 씀", "2.4"),
              ], "분류 · 어떤 연산인가"),
 })
 
@@ -156,10 +156,10 @@ def cmp_fig(name, ttl, sub, cats, valf, fmts, heads, take):
 
 # ------------------------------------------------------------------ t1 연산 묶음별 FLOP · 이론 시간
 def fig_cat():
-    cmp_fig("comp-t1-cat-model", "모델 5개 — 연산 묶음별 FLOP · 이론 시간 (모델 전체 · decode 1스텝)",
-            "이론 시간 = 커널마다 max(HBM 바이트 ÷ 4.8 TB/s, FLOP ÷ 그 연산기 피크)의 합 · H200 1장으로 환산(나눠 담으면 장수만큼 줄어듦) · 조건마다 같은 눈금",
+    cmp_fig("comp-t1-cat-model", "모델 5개 — 연산 묶음별 계산량 · 이론 시간 (모델 전체 · decode 1스텝)",
+            "이론 시간 = 커널마다 '읽고 쓰는 시간(HBM 바이트 ÷ 4.8 TB/s)'과 '계산 시간(FLOP ÷ 연산기 피크)' 중 긴 쪽의 합 · H200 1장으로 환산 · 조건마다 같은 눈금",
             CATS, lambda m, B, T: (ops.by_cat(ops.rows(m, B, T), "flops"), ops.by_cat(ops.rows(m, B, T), "t")),
-            (ff, ft), ("FLOP — 계산량", "이론 시간 — 메모리 · 연산 중 큰 쪽의 합"), TAKE["t1"])
+            (ff, ft), ("계산량 (FLOP)", "이론 시간 — 계산 · 메모리 읽기 중 긴 쪽의 합"), TAKE["t1"])
 
 
 # ------------------------------------------------------------------ t2 연산기 · 정밀도 + 연산이 시간을 정하는 몫
@@ -168,12 +168,12 @@ def fig_unit():
     PX, PWa = 400, 560
     QX, QW = 1080, 190
     f = mr.Fig("comp-t2-unit", W, TOP + 5 * RH + 2 * FG + 170)
-    mr.title(f, "연산기 · 정밀도별 FLOP 구성과 '연산이 시간을 정하는' 몫 (모델 전체)",
-             "왼쪽 = FLOP 100%를 연산기 · 정밀도로 나눔 (요청 수와 무관 — 문맥만 바꿈) · 오른쪽 = 이론 시간 중 FLOP ÷ 피크가 바이트 ÷ 대역폭보다 긴 커널의 몫")
-    mr.legend(f, [(lab, UCOL[u]) for u, lab in ops.UNITS] + [("연산이 시간을 정함", VIOLET)], 40, 130, 26)
+    mr.title(f, "연산기 · 정밀도별 계산량 구성과 '계산이 병목인' 시간 몫 (모델 전체)",
+             "왼쪽 = 계산량 100%를 연산기 · 정밀도로 나눔 (요청 수와 무관 — 문맥만 바꿈) · 오른쪽 = 이론 시간 중 계산 시간이 읽고 쓰는 시간보다 긴 커널의 몫")
+    mr.legend(f, [(lab, UCOL[u]) for u, lab in ops.UNITS] + [("계산이 병목", VIOLET)], 40, 130, 26)
     ms.fam_legend(f, 40, 172)
-    f.text(PX, TOP - 22, "FLOP 구성 — 문맥 8K · 128K", 17, weight=700)
-    f.text(QX, TOP - 22, "이론 시간 중 연산형 몫", 17, weight=700)
+    f.text(PX, TOP - 22, "계산량 구성 — 문맥 8K · 128K", 17, weight=700)
+    f.text(QX, TOP - 22, "이론 시간 중 계산이 병목인 몫", 17, weight=700)
     for i, (B, T, lab, _) in enumerate(CONDS):
         f.text(QX + i * QW + 4, TOP - 2, lab, 13, weight=700, color=mr.MUTED)
 
@@ -221,8 +221,8 @@ def fig_growth():
     def sy(r):
         return PY + PH - PH * (math.log10(max(r, 10 ** yl)) - yl) / (yh - yl)
     f = mr.Fig("comp-t3-growth", W, PY + PH + 210)
-    mr.title(f, "문맥이 길어지면 FLOP은 어디서 늘어나나 — 요청별 데이터 연산 ÷ 가중치 GEMM (토큰 1개 · 모델 전체)",
-             "요청별 데이터 연산 = attention 본체 + 색인 · 블록 점수 + state 갱신 · 가중치 GEMM = 투영 + MoE + LM head · 두 축 모두 로그 · 점선 = 지원 길이 밖")
+    mr.title(f, "문맥이 길어지면 계산량은 어디서 늘어나나 — 요청마다 하는 계산 ÷ 가중치 행렬곱 (토큰 1개 · 모델 전체)",
+             "요청마다 하는 계산 = attention 본체 + 색인 · 블록 점수 + state 갱신 · 가중치 행렬곱 = 투영 + MoE + LM head · 두 축 모두 로그 · 점선 = 지원 길이 밖")
     for e in range(xl, xh + 1):
         f.line(sx(2 ** e), PY, sx(2 ** e), PY + PH, mr.GRID, 1)
         f.text(sx(2 ** e), PY + PH + 26, f"{2 ** e // 1024}K" if e < 20 else f"{2 ** e // 2 ** 20}M", 13, "middle", color=mr.MUTED)
@@ -234,10 +234,10 @@ def fig_growth():
                 f.text(PX - 10, sy(v) + 5, f"{v:g}", 13, "end", color=mr.MUTED)
     f.rect(PX, PY, PWX, PH, "none", mr.AXIS, 0, 1.2)
     f.raw(f'<line x1="{PX}" y1="{sy(1):.1f}" x2="{PX + PWX}" y2="{sy(1):.1f}" stroke="{mr.INK}" stroke-width="2" stroke-dasharray="8 6"/>')
-    f.text(PX + 40, sy(1) + 26, "역전 (= 1)", 14, weight=800)
+    f.text(PX + 40, sy(1) + 26, "같아지는 지점 (= 1)", 14, weight=800)
     f.text(PX + PWX / 2, PY + PH + 60, "문맥 길이 (토큰)", 16, "middle", 700)
     f.raw(f'<text x="{PX - 76}" y="{PY + PH / 2}" font-family="{mr.FONT}" font-size="16" font-weight="700" fill="{mr.INK}" '
-          f'text-anchor="middle" transform="rotate(-90 {PX - 76} {PY + PH / 2})">요청별 데이터 연산 FLOP ÷ 가중치 GEMM FLOP</text>')
+          f'text-anchor="middle" transform="rotate(-90 {PX - 76} {PY + PH / 2})">요청마다 하는 계산 ÷ 가중치 행렬곱 계산</text>')
     Ts = [2 ** (xl + i * (xh - xl) / 36) for i in range(37)]
     lab_dy = {"mla-v31": -14, "dsa-v32": -14, "csa-v4flash": 22, "kda-k3": -14, "qsa-qwen38": 22}
     f.raw(f'<clipPath id="plot"><rect x="{PX}" y="{PY}" width="{PWX}" height="{PH}"/></clipPath><g clip-path="url(#plot)">')
@@ -261,13 +261,13 @@ def fig_growth():
             f.text(sx(c), sy(1) + lab_dy[mid] + (8 if lab_dy[mid] > 0 else 0), fk(c), 13, "middle", 800, MCOL[mid])
         x, y, (xe, ye) = ends[mid]
         if ye > PY + 10:
-            f.text(xe + 8, ye + 5, TAG[mid], 14, "start", 800, MCOL[mid])
+            f.text(xe + 8, ye + 5, NAME[mid], 14, "start", 800, MCOL[mid])
         else:
-            f.text(x + 10, y + 22, TAG[mid], 14, "start", 800, MCOL[mid])
-    # 오른쪽 표
-    RX = PX + PWX + 60
+            f.text(x + 10, y + 22, NAME[mid], 14, "start", 800, MCOL[mid])
+    # 오른쪽 표 — 선 끝 이름표(attention 이름)와 겹치지 않게 띄움
+    RX = PX + PWX + 120
     f.text(RX, PY + 10, "토큰 1개 · 문맥 128K", 17, weight=800)
-    for t, dx in (("모델", 0), ("가중치 GEMM", 190), ("요청별 연산", 320), ("역전 문맥", 460)):
+    for t, dx in (("모델", 0), ("가중치 행렬곱", 140), ("요청마다 하는 계산", 270), ("넘는 문맥", 430)):
         f.text(RX + dx, PY + 46, t, 14, weight=700, color=mr.MUTED)
     y = PY + 82
     for k, lab, ms_ in ms.FAM:
@@ -280,13 +280,13 @@ def fig_growth():
             c = ops.cross_ctx(mid)
             tmax = ops.load(mid)["algo"]["dims"]["T_max"]["value"]
             ms.marker(f, RX + 8, y - 5, 6, ms.FAM_OF[mid], MCOL[mid])
-            f.text(RX + 24, y, TAG[mid], 14, weight=700)
-            f.text(RX + 190, y, ff(wv), 14)
-            f.text(RX + 320, y, ff(rv), 14, weight=700)
-            f.text(RX + 460, y, (fk(c) + (" (지원 밖)" if c > tmax else "")) if c else "—", 14, weight=700)
+            f.text(RX + 24, y, NAME[mid], 14, weight=700)
+            f.text(RX + 140, y, ff(wv), 14)
+            f.text(RX + 270, y, ff(rv), 14, weight=700)
+            f.text(RX + 430, y, (fk(c) + (" (지원 밖)" if c > tmax else "")) if c else "—", 14, weight=700)
             y += 32
         y += 6
-    cf.lines(f, RX, y + 10, cf.wrap("요청별 연산 = attention 본체 · 색인 · state. 둘 다 요청 수에 비례해 비율은 요청 수와 무관 · "
+    cf.lines(f, RX, y + 10, cf.wrap("요청마다 하는 계산 = attention 본체 · 색인 · state. 둘 다 요청 수에 비례해 비율은 요청 수와 무관 · "
                                     "선의 기울기 = 문맥에 비례하는 연산(full attention · 색인)의 몫", 13.5, W - 40 - RX), 13.5, mr.MUTED, lh=21)
     mr.takeaway(f, PY + PH + 120, *TAKE["t3"])
     mr.save(f)
@@ -318,7 +318,7 @@ def ai_axis(f, x0, top, bot):
         dy = 22 if lab == "FP8" else 0
         f.raw(f'<line x1="{x:.1f}" y1="{top - 6 - dy}" x2="{x:.1f}" y2="{bot}" stroke="{VIOLET}" stroke-width="1.6" stroke-dasharray="5 4"/>')
         f.text(x, top - 12 - dy, f"{lab} {v:.0f}", 12, "middle", 700, VIOLET)
-    f.text(x0 + PWI / 2, bot + 46, "산술 강도 — FLOP ÷ HBM 바이트 (로그)", 14, "middle", 700, mr.MUTED)
+    f.text(x0 + PWI / 2, bot + 46, "1바이트당 계산 횟수 — FLOP ÷ HBM 바이트 (로그)", 14, "middle", 700, mr.MUTED)
 
 
 def dot(f, x, y, shape, fill, r=7, hollow=False):
@@ -336,8 +336,8 @@ def fig_ai():
     RH, FG, TOP = 74, 10, 270
     bot = TOP + 5 * RH + 2 * FG
     f = mr.Fig("comp-t4-ai", W, bot + 230)
-    mr.title(f, "산술 강도 — 요청별 데이터 연산은 구조가, 공유 가중치 GEMM은 요청 수가 정함 (문맥 128K)",
-             "보라 점선 = H200 경계(피크 ÷ 4.8 TB/s) — 오른쪽이면 연산이, 왼쪽이면 대역폭이 시간을 정함 · 층 종류가 여럿이면 FLOP · 바이트 합으로 계산")
+    mr.title(f, "1바이트당 계산 횟수 — 요청마다 하는 연산은 구조가, 가중치 행렬곱은 요청 수가 정함 (문맥 128K)",
+             "보라 점선 = H200 균형점(피크 ÷ 4.8 TB/s) — 오른쪽이면 계산이, 왼쪽이면 메모리 읽기가 시간을 정함 · 층 종류가 여럿이면 계산량 · 바이트 합으로 계산")
     items = [("c", mr.BLUE, "attention 본체"), ("s", mr.ORANGE, "색인 · 블록 점수"), ("d", mr.GREEN, "state 갱신"),
              ("c", mr.GRAY, "투영 · 기타 (요청 1 → 32 → 256개)"), ("s", "#b9b7ae", "MoE · FFN (요청 1 → 32 → 256개)")]
     x = 40
@@ -346,8 +346,8 @@ def fig_ai():
         f.text(x + 24, 129, lab, 14.5, color=mr.MUTED)
         x += 40 + mr.text_w(lab, 14.5)
     ms.fam_legend(f, 40, 172)
-    f.text(PA, TOP - 58, "요청별 데이터 연산 — 요청 수와 무관", 17, weight=800)
-    f.text(PB, TOP - 58, "공유 가중치 GEMM — 요청 수만큼 커짐", 17, weight=800)
+    f.text(PA, TOP - 58, "요청마다 하는 연산 — 요청 수와 무관", 17, weight=800)
+    f.text(PB, TOP - 58, "모든 요청이 같이 쓰는 가중치 행렬곱 — 요청 수만큼 커짐", 17, weight=800)
     ai_axis(f, PA, TOP - 6, bot)
     ai_axis(f, PB, TOP - 6, bot)
 
@@ -384,7 +384,7 @@ def fig_irr():
     BX, BW = 960, 300          # 덩어리 크기
     CX, CW = 1380, 200         # 스텝당 덩어리 수
     f = mr.Fig("comp-t5-irregular", W, TOP + 5 * RH + 2 * FG + 160)
-    mr.title(f, "FLOP 없는 불규칙 연산 — top-k 후보 → 선택, gather 덩어리 크기 · 개수 (문맥 128K)",
+    mr.title(f, "계산량 없는 불규칙 연산 — top-k 후보 → 선택, gather 덩어리 크기 · 개수 (문맥 128K)",
              "막대 = 로그 눈금 · 층 1개 · 요청 1개 기준(왼쪽 두 칸) · 오른쪽 = 모델 전체 · 요청 256개 · 스텝 1번 · hybrid는 sparse 층만")
     mr.legend(f, [("top-k 후보 (점수 개수)", "#f6c9d9"), ("고르는 개수", PINK), ("gather 덩어리 크기", mr.BLUE),
                   ("스텝당 gather 덩어리 수", "#2f4b8c")], 40, 130, 26)
@@ -443,13 +443,13 @@ def fig_chain():
         return 26 + r[5] * (BH + 6)
     H = TOP + sum(rh(r) + 8 for r in rows) + 2 * 10 + 130
     f = mr.Fig("comp-t6-chain", W, H)
-    mr.title(f, "직렬 경로 — 층 1개가 차례로 거치는 커널 (의존 깊이)",
-             "가로 = 깊이(앞 커널이 HBM에 쓴 값을 읽으면 다음 깊이) · 같은 칸에 쌓인 커널은 서로 기다리지 않음 · MoE · FFN 커널은 모델마다 같아 뺌 · 회색 글 = 같은 구조 모델의 배치로 대신 셈")
-    mr.legend(f, [(lab, CAT_COL[c]) for c, lab in ops.CATS if c not in ("moe", "head")], 40, 130, 22)
+    mr.title(f, "기다리는 단계 — 층 1개가 차례로 거치는 커널",
+             "가로 = 단계(앞 커널이 HBM에 쓴 값을 읽어야 하면 다음 단계) · 같은 칸에 쌓인 커널은 서로 기다리지 않음 · MoE · FFN 커널은 모델마다 같아 뺌 · 회색 글 = 같은 구조 모델의 배치로 대신 셈")
+    mr.legend(f, [(lab, col) for c, lab, col in CATS if c not in ("moe", "head")], 40, 130, 22)
     ms.fam_legend(f, 40, 172)
     for l in range(1, 9):
-        f.text(LX + (l - 1) * LW + BWb / 2, TOP - 16, f"깊이 {l}", 13, "middle", 700, mr.MUTED)
-    f.text(RX, TOP - 16, "깊이 × 층 수 = 직렬 단계", 13, weight=700, color=mr.MUTED)
+        f.text(LX + (l - 1) * LW + BWb / 2, TOP - 16, f"단계 {l}", 13, "middle", 700, mr.MUTED)
+    f.text(RX, TOP - 16, "단계 × 층 수 = 모델 전체 단계", 13, weight=700, color=mr.MUTED)
     y = TOP
     tot = {}
     for fam in [k for k, _, _ in ms.FAM]:
@@ -466,7 +466,7 @@ def fig_chain():
             if i == 0:
                 f.text(ms.XN, y + 26, NAME[mid], 15, weight=800)
             own = c["src"] == mid
-            f.text(ms.XN, y + (50 if i == 0 else 26), f"{c['name']} {c['n']:.0f}층" + ("" if own else f" ({TAG.get(c['src'], 'Qwen3.6')} 배치)"),
+            f.text(ms.XN, y + (50 if i == 0 else 26), f"{c['name']} {c['n']:.0f}층" + ("" if own else f" ({NAME.get(c['src'], 'Qwen3.6')} 배치)"),
                    13, weight=700, color=mr.INK if own else mr.MUTED)
             used = {}
             lv = max(l for _, l in c["chain"])
@@ -493,21 +493,21 @@ def fig_chain():
 
 # ------------------------------------------------------------------ 정리
 SUM_ROWS = [   # (항목, 색 토큰, 왼쪽 띠 색, 특성, 인사이트, 인사이트 보조, HW, HW 보조, 절)
-    ("attention 본체 (V3.1 · V3.2 · V4 · K3.1)", mr.BLUE, "KV 1줄을 head 64 ~ 128개가 공유 — 1 B당 180 ~ 420 FLOP, 요청 수와 무관",
-     "연산형 — full은 긴 문맥 FLOP의 97%", "V3.1 요청 256개 · 128K: 이론 시간의 81%를 연산이 정함 · sparse는 고른 512 ~ 2,048줄만이라 시간 몫 5% 미만",
-     "연산형 attention과 대역폭형 나머지를 나눠 배치", "sparse에서는 몫이 작아 attention 전용 연산기의 이득은 full에 한정", "2.5"),
-    ("색인 · 블록 점수 (V3.2 · V4 · K3.1 · Q3.8)", mr.ORANGE, "문맥 비례 FLOP — 토큰마다 지난 모든 키와 내적, 1 B당 4 ~ 121 FLOP",
-     "sparse는 attention FLOP을 색인으로 옮김", "V3.2 128K 토큰당 FLOP의 55%가 색인 · 색인 + attention이 문맥 약 4만부터 가중치 GEMM을 넘음",
-     "메모리 근처 색인 연산 — 저정밀 행렬 연산기", "필요한 연산 밀도가 모델마다 약 30배 차이 (Q3.8 4 · V3.2 121 FLOP/B)", "2.2"),
-    ("top-k · gather (V3.2 · V4 · K3.1 · Q3.8)", PINK, "FLOP 0 — 후보 3.3 ~ 13만 개에서 512 ~ 2,048개 · 덩어리 584 B ~ 8 KB",
-     "FLOP 그림에는 없고 층마다 직렬 단계를 더함", "요청 256개 · 128K 스텝당 gather 덩어리: V3.2 3,200만 개(656 B) vs Q3.8 157만 개(8 KB 블록)",
-     "선택 전용 유닛 · 블록 단위 gather", "덩어리가 클수록 HBM · 아래 계층 전송 효율이 좋음 (Q3.8 블록 방식)", "2.3"),
-    ("state 갱신 (K3.1 · Q3.8)", mr.GREEN, "GEMV · 원소별 FP32 — 1 B당 약 0.9 FLOP, FLOP 몫 0.3 ~ 1.4%",
-     "FLOP은 작은데 시간은 MoE 다음", "요청 256개 · 8K 이론 시간 몫: Q3.8 18% · K3.1 13% — 연산은 거의 없고 읽기 = 쓰기",
-     "state 갱신 PIM — 연산기는 작아도 됨", "GEMV와 원소별 연산만 있으면 됨 · 이득은 왕복 제거", "2.4"),
-    ("가중치 GEMM (전 모델)", mr.GRAY, "공유 가중치 — 강도가 요청 수에 비례, MoE는 expert로 나뉘어 요청 256개에서도 6 ~ 26 FLOP/B",
-     "sparse · hybrid 이론 시간의 대부분", "요청 32개 · 128K: MoE 시간 몫 85 ~ 88% (V3.1 54%) — 요청별 연산이 줄어 다시 가중치 읽기가 정함",
-     "가중치 대역폭 · 요청 수에 맞춘 배치", "attention 쪽 연산 HW 이득의 상한 = 요청별 연산 시간 몫", "-"),
+    ("attention 본체 (Full MLA에서 큼)", mr.BLUE, "KV 1줄을 head 64 ~ 128개가 같이 씀 — 1바이트당 180 ~ 420번 계산, 요청 수와 무관",
+     "계산이 병목 — Full MLA는 긴 문맥 계산량의 97%", "Full MLA 요청 256개 · 128K: 이론 시간의 81%를 계산이 정함 · sparse는 고른 512 ~ 2,048줄만 계산해 시간 몫 5% 미만",
+     "계산이 병목인 attention과 메모리 읽기가 병목인 나머지를 나눠 배치", "sparse에서는 몫이 작아 attention 전용 연산기의 이득은 Full MLA에 한정", "2.5"),
+    ("색인 · 블록 점수 (sparse · hybrid 4개)", mr.ORANGE, "문맥에 비례 — 토큰마다 지난 모든 키와 비교, 1바이트당 4 ~ 121번 계산",
+     "sparse는 attention 계산을 색인으로 옮김", "DSA 128K 토큰당 계산량의 55%가 색인 · 색인 + attention이 문맥 약 4만부터 가중치 행렬곱을 넘음",
+     "메모리 근처 색인 계산 — 저정밀 행렬 연산기", "필요한 계산 밀도가 모델마다 약 30배 차이 (GDN + QSA 4번 · DSA 121번)", "2.2"),
+    ("top-k · gather (sparse · hybrid 4개)", PINK, "계산량 0 — 후보 3.3 ~ 13만 개에서 512 ~ 2,048개 · 덩어리 584 B ~ 8 KB",
+     "계산량 그림에는 없고 층마다 기다리는 단계를 더함", "요청 256개 · 128K 스텝당 덩어리: DSA 약 3,200만 개(656 B) vs GDN + QSA 157만 개(8 KB 블록)",
+     "선택 전용 유닛 · 블록 단위 gather", "덩어리가 클수록 HBM · 아래 계층 전송이 효율적 (GDN + QSA의 블록 방식)", "2.3"),
+    ("state 갱신 (hybrid 2개)", mr.GREEN, "행렬 × 벡터 · 원소별 FP32 — 1바이트당 약 0.9번 계산, 계산량 몫 0.3 ~ 1.4%",
+     "계산량은 작은데 시간은 MoE 다음", "요청 256개 · 8K 이론 시간 몫: GDN + QSA 18% · KDA + DSA 13% — 계산은 거의 없고 읽은 만큼 다시 씀",
+     "state 갱신 PIM — 연산기는 작아도 됨", "행렬 × 벡터와 원소별 연산만 있으면 됨 · 이득은 왕복 제거", "2.4"),
+    ("가중치 행렬곱 (전 모델)", mr.GRAY, "모든 요청이 같이 쓰는 가중치 — 1바이트당 계산이 요청 수에 비례, MoE는 expert로 나뉘어 요청 256개에서도 6 ~ 26번",
+     "sparse · hybrid 이론 시간의 대부분", "요청 32개 · 128K: MoE 시간 몫 85 ~ 88% (Full MLA 54%) — 요청마다 하는 연산이 줄어 다시 가중치 읽기가 정함",
+     "가중치 읽기 속도 · 요청 수에 맞춘 배치", "attention 쪽 HW 이득의 상한 = 요청마다 하는 연산의 시간 몫", "-"),
 ]
 
 
@@ -549,18 +549,18 @@ def fig_sum():
 
 # ------------------------------------------------------------------ 그림 아래 한 줄 결론 (print로 확인한 값)
 TAKE = {
-    "t1": ("FLOP과 시간은 다른 곳에 감 — FLOP은 문맥 쪽(full attention · 색인)으로, 시간은 여전히 가중치 읽기(MoE)가 정함",
-           "요청 256개 · 128K: V3.2 FLOP 55%가 색인이지만 시간은 MoE 65% · 색인 28% / V3.1은 attention이 FLOP 97% · 시간 80%로 둘이 일치하는 유일한 경우"),
-    "t2": ("FLOP은 98% 이상이 Tensor core — 그런데 연산이 시간을 정하는 것은 full(V3.1)의 attention뿐",
-           "연산형 시간 몫: V3.1 22% → 44%(32개) → 81%(256개 · 128K) / sparse · hybrid는 어느 조건에서도 8% 이하 · K3.1 · Q3.8은 거의 전부 BF16"),
-    "t3": ("full은 문맥 약 4천부터 attention FLOP이 가중치 GEMM을 넘음 — sparse는 역전을 4만(V3.2) · 23만(V4)으로 늦추고, 그 뒤 늘어나는 FLOP은 색인",
-           "128K 토큰당 FLOP: V3.1 2.3 TFLOP(97%가 attention) → V3.2 242 GFLOP(55%가 색인) / hybrid는 1M 근처(K3.1) · 지원 길이 밖(Q3.8)"),
-    "t4": ("요청을 모아도 attention 본체 · 색인 · state의 강도는 그대로 — 구조가 정한 값이 연산형 · 대역폭형을 가름",
-           "attention 본체 180 ~ 420(연산형, Q3.8만 12) · 색인 4 ~ 121 · state 약 0.9 / 투영은 요청 256개에 250 ~ 390까지 오르지만 MoE는 6 ~ 26에 머묾"),
-    "t5": ("top-k · gather는 FLOP이 0이지만 양이 큼 — 덩어리 크기가 같은 바이트를 몇 번에 나눠 읽는지 정함",
-           "요청 256개 · 128K 스텝당 gather 덩어리: V3.2 3,200만 개(656 B) · K3.1 1,260만 개(1,152 B) · V4 275만 개 · Q3.8 157만 개(8 KB 블록)"),
-    "t6": ("sparse 층은 색인 점수 → top-k로 층마다 직렬 단계 2개가 늘어남 — 층 수를 곱하면 모델 전체 직렬 단계가 정해짐",
-           "모델 전체: V3.1 366 → V3.2 488 · K3.1 537(KDA 345 + DSA 192) · Q3.8 240 · V4 214 — 이론 하한에 없는 커널 실행 · 동기화 지연이 이 수만큼 쌓임"),
+    "t1": ("계산이 많은 곳과 시간이 걸리는 곳이 다름 — 계산은 attention(Full MLA) · 색인(DSA)에, 시간은 MoE 가중치 읽기에 몰림",
+           "요청 256개 · 128K: DSA는 색인이 계산량의 55%지만 시간은 28%, MoE가 시간의 65% / Full MLA만 attention이 계산량 97% · 시간 80%로 둘이 일치"),
+    "t2": ("계산량의 98% 이상이 Tensor core 행렬곱 — 그런데 계산이 시간을 정하는 것은 Full MLA의 attention뿐",
+           "계산이 병목인 시간 몫: Full MLA 22% → 44%(요청 32개) → 81%(256개 · 128K) / sparse · hybrid는 어느 조건에서도 8% 이하 · hybrid 둘은 거의 전부 BF16"),
+    "t3": ("Full MLA는 문맥 약 4천 토큰부터 attention 계산이 가중치 행렬곱을 넘음 — sparse는 그 지점을 10 ~ 50배 늦추고, 그 뒤 늘어나는 것은 색인",
+           "넘는 지점: DSA 약 4만 · CSA + HCA 약 23만 · KDA + DSA 약 100만 토큰 · GDN + QSA는 지원 길이 밖 / 128K에서 DSA는 계산량의 55%가 색인"),
+    "t4": ("요청을 모아도 attention · 색인 · state의 1바이트당 계산 횟수는 그대로 — 구조가 병목을 정함",
+           "attention 181 ~ 423번(균형점 근처 이상, GDN + QSA만 12) · 색인 4 ~ 121번 · state 약 0.9번 / 투영은 요청 256개에서 250 ~ 390번까지 오르지만 MoE는 6 ~ 26번에 머묾"),
+    "t5": ("top-k · gather는 계산량이 0이지만 처리할 개수가 많음 — 덩어리 크기가 같은 양을 몇 번에 나눠 읽는지 정함",
+           "요청 256개 · 128K 스텝당 덩어리: DSA 약 3,200만 개(한 줄씩) · KDA + DSA 약 1,260만 개 · CSA + HCA 275만 개 · GDN + QSA 157만 개(4토큰 블록)"),
+    "t6": ("sparse 층은 색인 점수 → top-k로 층마다 기다리는 단계가 2개 늘어남 — 층 수를 곱하면 모델 전체 단계 수가 정해짐",
+           "모델 전체: Full MLA 366 → DSA 488(+33%) · KDA + DSA 537 · GDN + QSA 240 · CSA + HCA 214 — 이론 시간에 없는 커널 실행 · 동기화 지연이 이 수만큼 쌓임"),
 }
 
 

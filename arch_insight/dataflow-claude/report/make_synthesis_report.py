@@ -33,7 +33,10 @@ MODELS = cf.MODELS
 TAG = cf.TAG
 MCOL = cf.MCOL
 ATT = {"mla-v31": "MLA", "dsa-v32": "DSA", "csa-v4flash": "CSA + HCA", "kda-k3": "KDA + DSA", "qsa-qwen38": "GDN + QSA"}
-NAME = {m: f"{TAG[m]} · {ATT[m]}" for m in MODELS}
+# 종합 보고서는 attention 이름으로 부름 — 모델 버전은 구조 범례에 함께 적음
+NAME = {"mla-v31": "Full MLA", "dsa-v32": "DSA", "csa-v4flash": "CSA + HCA", "kda-k3": "KDA + DSA", "qsa-qwen38": "GDN + QSA"}
+MODEL = {"mla-v31": "DeepSeek-V3.1", "dsa-v32": "DeepSeek-V3.2", "csa-v4flash": "DeepSeek-V4-Flash",
+         "kda-k3": "Kimi K3.1 Pro", "qsa-qwen38": "Qwen3.8-Flash-Next"}
 # 구조 묶음 — 줄 띠 · 알약
 FAM = [("full", "기준선", ["mla-v31"]), ("sparse", "Sparse", ["dsa-v32", "csa-v4flash"]),
        ("hybrid", "Hybrid", ["kda-k3", "qsa-qwen38"])]
@@ -51,8 +54,12 @@ KIND = [("w_attn", "attention 가중치", mr.GRAY), ("w_moe", "MoE · FFN 가중
         ("idx", "색인 · 블록 키", mr.ORANGE), ("state", "state · conv", mr.GREEN),
         ("ring", "최근 창 · 압축기 state", "#6250d6"), ("temp", "커널 사이 중간값", mr.YELLOW)]
 REQK = [k for k in KIND if k[0] in ("kv", "idx", "state", "ring")]
-LIFEK = [(k, tr.LIFE[k], mt.LIFE_COL[k]) for k in ("svc", "req", "step")]
-CHARK = [(k, tr.CHAR[k], mt.CHAR_COL[k]) for k in tr.CHAR]
+LIFE_LAB = {"svc": "서비스 내내 (가중치)", "req": "요청 동안 (KV · 색인 키 · state)", "step": "스텝 안 (커널 사이 값)"}
+CHAR_LAB = {"ro_all": "읽기만 · 전부 읽음", "ro_sel": "읽기만 · 골라 읽음", "app_all": "토큰마다 추가 · 전부 읽음",
+            "app_sel": "토큰마다 추가 · 골라 읽음", "ring": "고정 크기 · 덮어씀", "rmw": "매 스텝 전부 다시 씀",
+            "tmp": "임시 (커널 사이)"}
+LIFEK = [(k, LIFE_LAB[k], mt.LIFE_COL[k]) for k in ("svc", "req", "step")]
+CHARK = [(k, CHAR_LAB.get(k, tr.CHAR[k]), mt.CHAR_COL[k]) for k in tr.CHAR]
 _M = {}
 
 
@@ -165,7 +172,7 @@ def fam_legend(f, x, y):
         pw = mr.text_w(lab, 13) + 18
         f.rect(x, y - 16, pw, 22, FAM_ACC[k], "none", 11)
         f.text(x + pw / 2, y, lab, 13, "middle", 800, "#ffffff")
-        t = f"{' · '.join(TAG[m] for m in ms)} — {FAM_SUB[k]}"
+        t = " · ".join(f"{NAME[m]} ({MODEL[m]})" for m in ms)
         f.text(x + pw + 8, y, t, 13, color=mr.MUTED)
         x += pw + 8 + mr.text_w(t, 13) + 26
     return x
@@ -204,7 +211,7 @@ def cmp_fig(name, ttl, sub, cats, conds, valf, take, take_sub, shared=False, hea
     mr.title(f, ttl, sub)
     mr.legend(f, [(c[1], c[2]) for c in cats], 40, 130, 24)
     fam_legend(f, 40, 172)
-    h1, h2 = heads or ("보관 — HBM에 들고 있는 양", "스텝당 이동 — HBM 읽기 + 쓰기")
+    h1, h2 = heads or ("저장량 — HBM에 저장해 둔 양", "스텝마다 읽고 쓰는 양 — HBM 읽기 + 쓰기")
     for x, t in ((X1, h1), (X2, h2)):
         f.text(x, TOP - 22, t, 17, weight=700)
     y = TOP
@@ -226,28 +233,28 @@ def cmp_fig(name, ttl, sub, cats, conds, valf, take, take_sub, shared=False, hea
 
 
 def fig_kind_model():
-    cmp_fig("synth-t1-kind-model", "모델 5개 — 데이터 종류별 보관 · 이동 (모델 전체 · 바이트)",
+    cmp_fig("synth-t1-kind-model", "모델 5개 — 데이터 종류별 저장량 · 스텝마다 읽고 쓰는 양 (모델 전체 · 바이트)",
             "decode 1스텝 · 전 층 + MoE + LM head · 조건마다 다섯 모델이 같은 눈금 · MoE expert 읽기는 균등 라우팅 가정",
             KIND, CONDS, lambda m, B, T: agg(m, B, T, kkey), *TAKE["t1"])
 
 
 def fig_kind_req():
     conds = [(1, 8192, "문맥 8K", "요청 1개"), (1, 131072, "문맥 128K", "요청 1개")]
-    cmp_fig("synth-t2-kind-req", "모델 5개 — 요청 1개 몫의 요청별 데이터 (종류별 · 바이트)",
-            "요청별 데이터 = KV · 색인 키 · state 등 요청 동안 남는 것 · 전 층 합 · 두 문맥이 같은 눈금 → 문맥에 따라 무엇이 커지는지 보임",
+    cmp_fig("synth-t2-kind-req", "모델 5개 — 요청 1개에 딸린 데이터 (KV · 색인 키 · state · 바이트)",
+            "요청마다 따로 쌓이는 데이터만 셈 (가중치 제외) · 전 층 합 · 두 문맥이 같은 눈금 → 문맥이 길어질 때 무엇이 커지는지 보임",
             REQK, conds, lambda m, B, T: agg(m, B, T, gkey, only_req=True), *TAKE["t2"], shared=True,
-            heads=("보관 — 요청 1개가 들고 있는 양", "스텝당 이동 — 요청 1개 몫"))
+            heads=("저장량 — 요청 1개가 저장해 둔 양", "스텝마다 읽고 쓰는 양 — 요청 1개 몫"))
 
 
 def fig_life_model():
-    cmp_fig("synth-t3-life-model", "모델 5개 — 수명별 보관 · 이동 (모델 전체 · 바이트)",
-            "서비스 내내 = 가중치 · 요청 동안 = KV · 색인 키 · state 등 · 스텝 안 = 커널 사이 값(그린 층만 셈) · 조건마다 같은 눈금",
+    cmp_fig("synth-t3-life-model", "모델 5개 — 수명(얼마나 오래 남나)별 저장량 · 스텝마다 읽고 쓰는 양 (모델 전체 · 바이트)",
+            "스텝 안 = 한 스텝 안에서 쓰고 버리는 커널 사이 값(그린 층만 셈) — 칩 안에 남길 수 있는 것은 이것뿐 · 조건마다 같은 눈금",
             LIFEK, CONDS, lambda m, B, T: agg(m, B, T, lambda r: r["life"]), *TAKE["t3"])
 
 
 def fig_char_model():
-    cmp_fig("synth-t5-char-model", "모델 5개 — 데이터 성격별 보관 · 이동 (모델 전체 · 바이트)",
-            "성격 라벨은 요청 1개 · 128K 기준 (요청이 많으면 MoE도 대부분을 읽음) · 조건마다 같은 눈금",
+    cmp_fig("synth-t5-char-model", "모델 5개 — 읽고 쓰는 방식별 저장량 · 스텝마다 읽고 쓰는 양 (모델 전체 · 바이트)",
+            "분류는 요청 1개 · 128K 기준 (요청이 많으면 MoE도 대부분을 읽음) · 조건마다 같은 눈금",
             CHARK, CONDS, lambda m, B, T: agg(m, B, T, lambda r: r["char"]), *TAKE["t5"])
 
 
@@ -260,8 +267,8 @@ def fig_cross():
         return PX + PWX * (math.log2(min(max(n, 1), 4096)) - lo) / (hi - lo)
     H = TOP + 5 * RH + 2 * FG
     f = mr.Fig("synth-t4-life-cross", W, H + 230)
-    mr.title(f, "역전점 — 요청 몇 개부터 '요청 동안' 데이터가 '서비스 내내' 가중치를 넘나 (문맥 128K)",
-             "○ 보관 역전 = 요청별 보관 > 가중치 보관 · ● 이동 역전 = 요청별 이동 > 가중치 이동 · 가로축 = 요청 수 (로그)")
+    mr.title(f, "요청 몇 개부터 요청마다 쌓이는 데이터가 가중치보다 커지나 (문맥 128K)",
+             "○ = 저장량이 가중치 저장량을 넘는 요청 수 · ● = 스텝마다 읽고 쓰는 양이 가중치를 넘는 요청 수 · 가로축 = 요청 수 (로그)")
     fam_legend(f, 40, 140)
     for n in (1, 4, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096):
         big = n in (32, 256)
@@ -277,15 +284,15 @@ def fig_cross():
         if cm:
             f.line(sx(cs), y + RH / 2, sx(cm), y + RH / 2, mr.AXIS, 3)
         f.raw(f'<circle cx="{sx(cs):.1f}" cy="{y + RH / 2}" r="9" fill="#ffffff" stroke="{mr.INK}" stroke-width="3"/>')
-        f.text(sx(cs), y + RH / 2 + 28, f"보관 {cs}", 13, "middle", 700)
+        f.text(sx(cs), y + RH / 2 + 28, f"저장 {cs}", 13, "middle", 700)
         if cm:
             f.raw(f'<circle cx="{sx(cm):.1f}" cy="{y + RH / 2}" r="9" fill="{mr.INK}"/>')
-            f.text(sx(cm), y + RH / 2 - 16, f"이동 {cm:,}", 13, "middle", 700)
+            f.text(sx(cm), y + RH / 2 - 16, f"읽기·쓰기 {cm:,}", 13, "middle", 700)
     fam_rows(f, TOP, RH, FG, PX + PWX + 30, row)
     RX = PX + PWX + 60
     f.text(RX, TOP + 4, "읽는 방법", 15, weight=800)
-    cf.lines(f, RX, TOP + 32, cf.wrap("○가 왼쪽일수록 요청별 데이터가 일찍 용량을 차지 · ●가 오른쪽일수록 요청이 많아도 이동은 가중치가 정함. "
-                                      "○ ~ ● 사이(회색 선)가 길면 '용량은 막히는데 대역폭은 남는' 구간", 14, W - 40 - RX), 14, mr.INK, lh=22)
+    cf.lines(f, RX, TOP + 32, cf.wrap("○가 왼쪽일수록 요청 데이터가 일찍 HBM 공간을 차지 · ●가 오른쪽일수록 요청이 많아도 읽는 양은 가중치가 대부분. "
+                                      "○ ~ ● 사이(회색 선)에서는 저장된 KV 대부분이 그 스텝에 읽히지 않음", 14, W - 40 - RX), 14, mr.INK, lh=22)
     mr.takeaway(f, H + 110, *TAKE["t4"])
     mr.save(f)
 
@@ -315,8 +322,8 @@ def fig_per_req():
     def sy(v):
         return PY + PH - PH * (math.log10(v / 1e9) - lo) / (hi - lo)
     f = mr.Fig("synth-t6-char-req", W, PY + PH + 220)
-    mr.title(f, "요청 1개 몫의 요청별 데이터 — 보관 vs 스텝당 이동 (문맥 8K · 32K · 128K)",
-             "두 축 모두 로그 · 점 크기 = 문맥 길이 · 모양 = 구조 (● 기준선 · ■ Sparse · ◆ Hybrid) · 대각선에서 아래로 멀수록 골라 읽음(용량형)")
+    mr.title(f, "요청 1개에 딸린 데이터 — 저장량 vs 스텝마다 읽고 쓰는 양 (문맥 8K · 32K · 128K)",
+             "두 축 모두 로그 · 점 크기 = 문맥 길이 · 모양 = 구조 (● 기준선 · ■ Sparse · ◆ Hybrid) · 대각선에서 아래로 멀수록 저장한 것 중 일부만 읽음")
     for e in range(-2, 2):
         for m in (1, 2, 5):
             v = m * 10 ** e * 1e9
@@ -327,10 +334,10 @@ def fig_per_req():
                 f.text(sx(v), PY + PH + 26, lab, 13, "middle", color=mr.MUTED)
                 f.text(PX - 10, sy(v) + 5, lab, 13, "end", color=mr.MUTED)
     f.rect(PX, PY, PWX, PH, "none", mr.AXIS, 0, 1.2)
-    f.text(PX + PWX / 2, PY + PH + 60, "보관 — 요청 1개가 HBM에 들고 있는 요청별 데이터 (용량)", 16, "middle", 700)
+    f.text(PX + PWX / 2, PY + PH + 60, "저장량 — 요청 1개가 HBM에 저장해 둔 데이터", 16, "middle", 700)
     f.raw(f'<text x="{PX - 92}" y="{PY + PH / 2}" font-family="{mr.FONT}" font-size="16" font-weight="700" fill="{mr.INK}" '
-          f'text-anchor="middle" transform="rotate(-90 {PX - 92} {PY + PH / 2})">스텝당 이동 — 요청 1개 몫의 읽기 + 쓰기 (대역폭)</text>')
-    for k, lab in ((1.0, "이동 = 보관 (보관한 만큼 매 스텝 읽음)"), (0.1, "이동 = 보관의 10%")):
+          f'text-anchor="middle" transform="rotate(-90 {PX - 92} {PY + PH / 2})">스텝마다 읽고 쓰는 양 — 요청 1개 몫</text>')
+    for k, lab in ((1.0, "읽고 쓰는 양 = 저장량 (저장한 만큼 매 스텝 읽음)"), (0.1, "읽고 쓰는 양 = 저장량의 10%")):
         x1, x2 = 10 ** lo * 1e9, 10 ** hi * 1e9
         a, b = max(x1, x1 / k), min(x2, x2 / k)
         f.raw(f'<line x1="{sx(a):.1f}" y1="{sy(a * k):.1f}" x2="{sx(b):.1f}" y2="{sy(b * k):.1f}" stroke="{mr.AXIS}" '
@@ -349,13 +356,13 @@ def fig_per_req():
             marker(f, x, y, 5 + 3 * i, FAM_OF[mid], MCOL[mid])
         x, y = pts[-1]
         dx, dy = {"mla-v31": (16, 28), "kda-k3": (-16, -18), "dsa-v32": (16, 6), "qsa-qwen38": (16, 6), "csa-v4flash": (16, 6)}[mid]
-        f.text(x + dx, y + dy, TAG[mid], 16, "start" if dx > 0 else "end", 800)
+        f.text(x + dx, y + dy, NAME[mid], 16, "start" if dx > 0 else "end", 800)
         x0, y0 = pts[0]
         f.text(x0 - 12, y0 + (20 if mid == "qsa-qwen38" else 5), "8K", 12, "end", color=mr.MUTED)
     # 오른쪽 표 — 128K 값, 구조별로 묶음
     RX = PX + PWX + 60
     f.text(RX, PY + 10, "문맥 128K · 요청 1개", 17, weight=800)
-    for t, dx in (("모델", 0), ("보관", 250), ("이동", 350), ("읽는 비율", 450)):
+    for t, dx in (("모델", 0), ("저장량", 250), ("읽고 쓰는 양", 350), ("읽는 비율", 470)):
         f.text(RX + dx, PY + 46, t, 14, weight=700, color=mr.MUTED)
     y = PY + 82
     for k, lab, ms in FAM:
@@ -370,52 +377,54 @@ def fig_per_req():
             f.text(RX + 24, y, NAME[mid], 14, weight=700)
             f.text(RX + 250, y, cf.fsize(S), 14)
             f.text(RX + 350, y, cf.fsize(mv), 14)
-            f.text(RX + 450, y, f"{R / S:.0%}", 14, weight=700)
+            f.text(RX + 470, y, f"{R / S:.0%}", 14, weight=700)
             y += 32
         y += 6
-    cf.lines(f, RX, y + 8, ["읽는 비율 = 스텝당 읽기 ÷ 보관", "(state의 다시 쓰기는 이동에만 들어감)"], 13)
+    cf.lines(f, RX, y + 8, ["읽는 비율 = 스텝마다 읽는 양 ÷ 저장량", "(state를 다시 쓰는 양은 세로축에만 들어감)"], 13)
     y += 70
     f.text(RX, y, "읽는 방법", 15, weight=800)
-    cf.lines(f, RX, y + 28, cf.wrap("대각선 위 = 보관한 만큼 매 스텝 옮김(전부 읽음 · 용량 + 대역폭). 대각선보다 위 = 다시 쓰기까지 더해짐. "
-                                    "아래로 멀수록 골라 읽는 용량형. 선이 오른쪽으로만 길면 문맥이 이동을 거의 안 늘림", 14, W - 40 - RX), 14, mr.INK, lh=22)
+    cf.lines(f, RX, y + 28, cf.wrap("대각선 위 = 저장한 만큼 매 스텝 전부 읽음. 대각선보다 위 = 다시 쓰기까지 더해짐. "
+                                    "아래로 멀수록 저장한 것 중 일부만 읽음. 선이 거의 수평이면 문맥이 길어져도 읽는 양이 거의 안 늘어남",
+                                    14, W - 40 - RX), 14, mr.INK, lh=22)
     mr.takeaway(f, PY + PH + 120, *TAKE["t6"])
     mr.save(f)
 
 
 # ------------------------------------------------------------------ 그림 아래 한 줄 결론 (수치는 본문과 같은 계산 — print로 확인)
 TAKE = {
-    "t1": ("이동 차이는 가중치 크기가 가장 크게 만듦 — 요청 · 문맥이 모두 커져야 KV(full) · 색인 키(sparse) · state(hybrid) 차이가 드러남",
-           "요청 256개 · 128K 이동: V3.1 2.03 TB(KV 1.34 TB) · K3.1 1.90 TB(MoE 1.47 TB · state 230 GB) · V3.2 993 GB(색인 키 270 GB) · Q3.8 348 GB · V4 187 GB"),
-    "t2": ("sparse는 KV를 그대로 들고 읽기만 줄임 — hybrid는 문맥과 무관한 state가 남아 짧은 문맥에서 요청당 이동이 full보다 큼",
-           "128K 이동: V3.1 5.2 GB → K3.1 1.4 · V3.2 1.1 · Q3.8 0.38 · V4 0.11 GB / 8K 이동: K3.1 0.98 GB(state 0.90 GB) > V3.1 0.33 GB"),
-    "t3": ("HBM 이동은 다섯 모델 모두 '서비스 내내 + 요청 동안'이 거의 전부 — 요청 동안 몫은 full은 문맥을, hybrid는 요청 수를 따라 커짐",
-           "요청 동안 이동 몫 — 256개 · 8K: Q3.8 23% · K3.1 14% · V3.1 11% · V3.2 5.2% · V4 2.6% / 256개 · 128K: V3.1 66% · V3.2 29% · Q3.8 28% · K3.1 18% · V4 16%"),
-    "t4": ("골라 읽는 KV가 들어간 모델은 이동 역전만 뒤로 밀리고 보관 역전은 그대로 — 용량이 대역폭보다 먼저 막힘",
-           "128K: V3.1 보관 129 · 이동 126 (함께) / V3.2 108 · 592 / Q3.8 74 · 656 / K3.1 348 · 1,137 / V4 300 · 1,372 (압축으로 둘 다 뒤로)"),
-    "t5": ("골라 읽는 KV는 보관만 크고 이동은 거의 없음 — 이동 차이는 전부 읽는 데이터(full KV · 색인 키)와 다시 쓰는 state가 만듦",
-           "요청 256개 · 128K: 골라 읽는 KV 보관 V3.2 1.34 TB · K3.1 928 GB · Q3.8 825 GB → 이동 21 · 15 · 13 GB / 전부 읽는 요청별 데이터 이동 V3.1 1.34 TB · V3.2 270 GB"),
-    "t6": ("full만 대각선(보관 = 이동) — sparse · hybrid는 읽는 비율이 8 ~ 22%로 내려가고, hybrid는 state 다시 쓰기만큼 위로 뜸",
-           "128K 읽는 비율: V3.1 100% · V4 22% · K3.1 21% · V3.2 18% · Q3.8 8% / 8K: K3.1 이동 0.98 GB > 보관 0.70 GB (state를 읽고 다시 씀)"),
+    "t1": ("요청이 적으면 차이는 가중치 크기뿐 — 요청 · 문맥이 모두 커져야 KV(Full MLA) · 색인 키(DSA) · state(hybrid) 차이가 드러남",
+           "요청 256개 · 128K: DSA는 Full MLA보다 읽고 쓰는 양이 절반으로 줄지만 저장량은 13% 늘어남 · sparse · hybrid에서 가장 큰 몫은 여전히 MoE 가중치(66 ~ 79%)"),
+    "t2": ("DSA는 KV를 그대로 저장하고 읽기만 줄임 — hybrid는 문맥과 상관없는 state가 남아 짧은 문맥에서는 Full MLA보다 많이 읽고 씀",
+           "128K: DSA는 Full MLA보다 읽는 양 78% 감소 · 저장량 20% 증가 / 8K: KDA + DSA가 요청 하나당 읽고 쓰는 양이 Full MLA의 3배"),
+    "t3": ("다섯 모델 모두 읽고 쓰는 양은 다음 스텝에 다시 읽힐 데이터가 거의 전부 — SRAM을 늘려 줄일 몫이 작음",
+           "요청 동안 몫 — 256개 · 8K: GDN + QSA 23% · KDA + DSA 14% · Full MLA 11% · DSA 5.2% · CSA + HCA 2.6% / "
+           "256개 · 128K: Full MLA 66% · DSA 29% · GDN + QSA 28% · KDA + DSA 18% · CSA + HCA 16%"),
+    "t4": ("골라 읽는 모델은 저장량이 읽고 쓰는 양보다 훨씬 적은 요청 수에서 가중치를 넘음 — 그 사이에서는 KV 대부분이 읽히지 않음",
+           "Full MLA 약 130개에서 둘 다 · DSA 108 vs 592 · GDN + QSA 74 vs 656 · KDA + DSA 348 vs 1,137 · CSA + HCA 300 vs 1,372 (압축으로 둘 다 뒤로)"),
+    "t5": ("골라 읽는 KV는 저장 공간만 크게 차지하고 거의 읽히지 않음 — 읽는 양의 차이는 전부 읽는 데이터와 다시 쓰는 state가 만듦",
+           "요청 256개 · 128K: 골라 읽는 KV는 저장한 것의 약 1.6%만 매 스텝 읽음 / DSA가 색인 키를 읽는 양은 Full MLA가 KV를 읽는 양의 약 1/5"),
+    "t6": ("Full MLA만 대각선(저장한 만큼 매 스텝 읽음) — sparse · hybrid는 저장한 것의 8 ~ 22%만 읽고, hybrid는 state를 다시 쓰는 만큼 위로 뜸",
+           "128K 읽는 비율: Full MLA 100% · CSA + HCA 22% · KDA + DSA 21% · DSA 18% · GDN + QSA 8% / 8K: KDA + DSA는 읽고 쓰는 양이 저장량보다 40% 많음"),
 }
 
 
 # ------------------------------------------------------------------ 정리
 SUM_ROWS = [
-    ("full KV (V3.1)", "blue", "app_all", "끝에 추가 · 전부 읽음 — 토큰당 40 KB, 요청 × 문맥에 비례",
-     "보관한 만큼 매 스텝 읽음", "128K에서 요청 126 ~ 129개부터 보관 · 이동 모두 요청별 데이터가 가중치를 넘음",
-     "HBM 용량 · 대역폭을 함께, KV 압축 · 저정밀", "아래 계층 메모리는 읽기 대역폭이 모자라 효과 제한", "2.5"),
-    ("골라 읽는 KV (V3.2 · V4 · K3.1 · Q3.8)", "blue", "app_sel", "끝에 추가 · 골라 읽음 — 요청당 고정 예산(2,048 · 512)만 읽음",
-     "이동은 줄지만 보관은 그대로 — 용량이 먼저 막힘", "보관 역전이 이동 역전보다 3.3 ~ 8.9배 먼저 · V3.2 보관은 색인 키만큼 오히려 20% 늘어남",
-     "전체 KV는 큰 메모리, 고를 KV만 HBM", "선택 겹침 · 블록 단위 전송이 클수록 유리", "2.1"),
-    ("전부 읽는 색인 · 블록 키 (V3.2 · V4 · K3.1 · Q3.8)", "orange", "app_all", "끝에 추가 · 전부 읽음 — 토큰당 0.7 ~ 8 KB",
-     "골라 읽는 모델의 요청별 이동 중 큰 몫", "요청 256개 · 128K 모델 이동: V3.2 27% · V4 12.5% · Q3.8 7.4% · K3.1 5.6%",
-     "메모리 근처 선택 · 색인 연산 · top-k", "키 형식 · head 수에 따라 연산 요구가 4 ~ 124 FLOP/B로 갈림", "2.2"),
-    ("다시 쓰는 state (K3.1 · Q3.8)", "green", "rmw_all", "매 스텝 전부 다시 씀 — 요청당 115 ~ 449 MB, 문맥과 무관",
-     "많은 요청 · 짧은 문맥에서도 이동이 남음", "요청 256개 · 8K: Q3.8 이동 18% · K3.1 13% — 이동 비중이 보관 비중의 약 2배",
-     "메모리 안 갱신으로 왕복 제거", "이득은 갱신 연산을 메모리 쪽이 감당하는지에 달림", "2.4"),
-    ("MoE 가중치 (전 모델)", "gray-l", "ro_sel", "read-only · 골라 읽음 — 요청이 늘면 대부분을 읽음",
-     "sparse · hybrid에서는 다시 이동의 대부분", "요청 32개 · 128K: 요청별 데이터 이동은 전체의 4 ~ 9%뿐 (V3.1은 28%)",
-     "가중치 대역폭 · 요청 수에 맞춘 배치", "attention 쪽 HW 이득의 상한 = 요청별 이동 비중", "-"),
+    ("Full MLA의 KV", "blue", "app_all", "토큰마다 추가 · 전부 읽음 — 토큰당 40 KB, 요청 수 × 문맥에 비례",
+     "저장한 만큼 매 스텝 읽음", "128K에서 요청 약 130개부터 저장량 · 읽고 쓰는 양 모두 가중치를 넘음",
+     "HBM 용량 · 대역폭을 함께, KV 압축 · 저정밀", "아래 계층 메모리는 읽기 속도가 모자라 효과가 제한됨", "2.5"),
+    ("골라 읽는 KV (sparse · hybrid 4개)", "blue", "app_sel", "토큰마다 추가 · 골라 읽음 — 요청마다 정해진 개수(2,048 · 512)만 읽음",
+     "읽는 양은 줄지만 저장량은 그대로", "저장량이 가중치를 넘는 요청 수가 읽고 쓰는 양 기준의 1/3 ~ 1/9 · DSA 저장량은 색인 키만큼 20% 늘어남",
+     "전체 KV는 큰 메모리, 고를 KV만 HBM", "고르는 KV가 연속 스텝에서 겹칠수록 · 블록 단위로 옮길수록 유리", "2.1"),
+    ("전부 읽는 색인 · 블록 키 (sparse · hybrid 4개)", "orange", "app_all", "토큰마다 추가 · 전부 읽음 — 토큰당 0.7 ~ 8 KB",
+     "골라 읽는 모델에서 요청마다 읽는 양의 큰 몫", "요청 256개 · 128K 모델 전체 읽고 쓰는 양 중: DSA 27% · CSA + HCA 12.5% · GDN + QSA 7.4% · KDA + DSA 5.6%",
+     "메모리 근처 선택 · 색인 연산 · top-k", "키 형식 · head 수에 따라 1바이트당 계산이 4 ~ 124번으로 갈림", "2.2"),
+    ("다시 쓰는 state (hybrid 2개)", "green", "rmw_all", "매 스텝 전부 다시 씀 — 요청당 115 ~ 449 MB, 문맥과 무관",
+     "요청이 많으면 문맥이 짧아도 읽고 쓰는 양이 남음", "요청 256개 · 8K 모델 전체 읽고 쓰는 양 중: GDN + QSA 18% · KDA + DSA 13%",
+     "메모리 안에서 갱신해 왕복 제거", "이득은 갱신 연산을 메모리 쪽이 감당하는지에 달림", "2.4"),
+    ("MoE 가중치 (전 모델)", "gray-l", "ro_sel", "읽기만 · 골라 읽음 — 요청이 늘면 대부분을 읽음",
+     "sparse · hybrid에서는 다시 읽는 양의 대부분", "요청 32개 · 128K: 요청 데이터를 읽고 쓰는 양은 전체의 4 ~ 9%뿐 (Full MLA는 28%)",
+     "가중치 읽기 속도 · 요청 수에 맞춘 배치", "attention 쪽 HW 이득의 상한 = 요청 데이터가 차지하는 비중", "-"),
 ]
 
 
@@ -431,8 +440,8 @@ def fig_sum():
     TOP = 170
     f = mr.Fig("synth-sum", W, TOP + sum(h_of(r) + 18 for r in rows) + 60)
     mr.title(f, "종합 — sparse · hybrid가 바꾼 데이터 특성 → 인사이트 → HW",
-             "줄마다 데이터 성격 하나 · 숫자는 본문과 같은 계산 · 괄호 절 번호 = 기준 보고서 Ⅱ장")
-    for x, t in zip(X, ("데이터 특성 (어느 모델 · 어떤 성격)", "인사이트 (비교에서 보이는 것)", "HW로 연결")):
+             "줄마다 데이터 하나 · 숫자는 본문과 같은 계산 · 알약 = 기준 보고서 Ⅱ장 절")
+    for x, t in zip(X, ("데이터 특성 (어느 모델 · 어떻게 읽고 쓰나)", "인사이트 (비교에서 보이는 것)", "HW로 연결")):
         f.text(x, TOP - 22, t, 16, weight=700, color=mr.MUTED)
     y = TOP
     for r in rows:
@@ -454,6 +463,40 @@ def fig_sum():
         cf.arrow(f, X[1] + WS[1] + 10, X[2] - 10, y + h / 2)
         y += h + 18
     mr.save(f)
+
+
+# ------------------------------------------------------------------ 기준 그림 — 종합 보고서용 쉬운 말 버전
+# 모델별 보고서의 crit-c1 ~ c3는 본문이 '용량형 · 대역폭형'을 써서 그대로 두고, 같은 내용을 일반적인 말로 바꿔 따로 저장
+PLAIN = [
+    ("읽는 방식이 용량형 · 대역폭형을, 쓰는 방식이 쓰기 부담 · 압축 자유도를 정함",
+     "읽는 방식이 '저장 공간'과 '읽기 속도' 중 무엇이 중요한지를, 쓰는 방식이 쓰기 부담을 정함"),
+    ("읽는 방식 — 용량형인가 대역폭형인가", "읽는 방식 — 저장 공간이 중요한가, 읽기 속도가 중요한가"),
+    ("대역폭형 — 읽기 대역폭", "읽기 속도(대역폭)가 중요"),
+    ("용량형 — 큰 메모리 + 고른 것만 HBM", "저장 공간(용량)이 중요 — 큰 메모리 + 고른 것만 HBM"),
+    ("기준 3. 데이터 성격", "기준 3. 읽고 쓰는 방식"),
+    ("고정 크기 → 용량보다 읽기 대역폭", "크기 고정 → 저장 공간보다 읽기 속도가 문제"),
+    ("동시 요청 수만큼 용량", "동시 요청 수만큼 저장 공간"),
+    ("용량 — 가장 먼저 HBM을 채움", "저장 공간 — 가장 먼저 HBM을 채움"),
+    ("쓰기는 작고 보관이 쌓임 → 용량", "쓰기는 작고 저장량이 쌓임 → 저장 공간"),
+    ("쓰기 대역폭 — 메모리 안 갱신", "쓰기 속도 — 메모리 안에서 갱신"),
+    ("매 스텝 이동량", "매 스텝 읽는 양"), ("이동이 줄어듦", "읽는 양이 줄어듦"), ("이동의 대부분", "읽는 양의 대부분"),
+    ("보관이 늘어남", "저장량이 늘어남"), ("read-only", "읽기만"), ("끝에 추가", "토큰마다 추가"),
+    ("요청별 · ", "요청마다 · "),
+]
+
+
+def plain(v):
+    if isinstance(v, str):
+        for a, b in PLAIN:
+            v = v.replace(a, b)
+        return v
+    if isinstance(v, (list, tuple)):
+        return type(v)(plain(x) for x in v)
+    return v
+
+
+for _k, _n in (("kind", "synth-crit-c1-kind"), ("life", "synth-crit-c2-life"), ("char", "synth-crit-c3-char")):
+    cf.GEN["s_" + _k] = (_n,) + plain(cf.GEN[_k][1:])
 
 
 # ------------------------------------------------------------------ 본문 수치
@@ -498,3 +541,5 @@ if __name__ == "__main__":
         fig_char_model()
         fig_per_req()
         fig_sum()
+        for _k in ("s_kind", "s_life", "s_char"):
+            cf.gen_fig(_k)
