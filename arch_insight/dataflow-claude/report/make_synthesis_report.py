@@ -9,9 +9,11 @@
 synth-t1-kind-model   종류별 보관 · 이동 (모델 전체, 조건 3개)
 synth-t2-kind-req     요청 1개 몫의 요청별 데이터 — 종류별 (문맥 8K · 128K, 같은 눈금)
 synth-t3-life-model   수명별 보관 · 이동 (모델 전체, 조건 3개)
-synth-t4-life-cross   역전점 — 요청 몇 개부터 '요청 동안' 데이터가 '서비스 내내' 가중치를 넘나 (128K)
 synth-t5-char-model   성격별 보관 · 이동 (모델 전체, 조건 3개)
-synth-t6-char-req     요청 1개 몫: 보관 vs 스텝당 이동 — 읽는 비율 (문맥 8K · 32K · 128K)
+synth-s2a-rel         2.1 Full MLA = 100%로 놓은 요청 1개의 저장량 · 읽고 쓰는 양 (128K)
+synth-s2b-ctx         2.2 문맥이 길어질 때 요청 1개가 읽고 쓰는 양 (선형 눈금 · hybrid state 바닥)
+synth-s4a-share       4.1 요청이 늘 때 요청 데이터가 저장 공간 · 읽기에서 차지하는 몫 (50% = 가중치와 같음)
+synth-s4b-hbm         4.2 저장량 ÷ 가정한 H200 장수의 HBM
 synth-sum             정리 — 특성 → 인사이트 → HW
 수치는 tools/traits.py (약식 뷰어와 같은 규칙).
 """
@@ -258,135 +260,285 @@ def fig_char_model():
             CHARK, CONDS, lambda m, B, T: agg(m, B, T, lambda r: r["char"]), *TAKE["t5"])
 
 
-# ------------------------------------------------------------------ t4 역전점
-def fig_cross():
-    PX, PWX, TOP, RH, FG = 380, 980, 250, 64, 10
-    lo, hi = 0, math.log2(4096)
+# ------------------------------------------------------------------ 2장 · 4장 — 막대 · 선으로 바로 읽히게
+SAVE_COL, MOVE_COL, OVER = "#2f4b8c", mr.ORANGE, "#d1495b"     # 저장 · 읽고 쓰기 · 넘침
 
-    def sx(n):
-        return PX + PWX * (math.log2(min(max(n, 1), 4096)) - lo) / (hi - lo)
+
+def req_tot(mid, T):
+    """요청 1개에 딸린 데이터 (저장량, 스텝마다 읽고 쓰는 양)."""
+    g = per_req(mid, T)
+    return sum(v[0] for v in g.values()), sum(v[1] + v[2] for v in g.values())
+
+
+def dashed(f, x1, y1, x2, y2, c, sw=1.8, dash="7 6"):
+    f.raw(f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" stroke="{c}" stroke-width="{sw}" '
+          f'stroke-dasharray="{dash}"/>')
+
+
+def ylabel(f, x, y, t):
+    f.raw(f'<text x="{x}" y="{y}" font-family="{mr.FONT}" font-size="16" font-weight="700" fill="{mr.INK}" '
+          f'text-anchor="middle" transform="rotate(-90 {x} {y})">{mr.esc(t)}</text>')
+
+
+def halo(f, x, y, s, size, anchor, weight, color):
+    """선 위에 놓이는 숫자 — 흰 테두리."""
+    f.raw(f'<text x="{x:.1f}" y="{y:.1f}" font-family="{mr.FONT}" font-size="{size}" text-anchor="{anchor}" '
+          f'font-weight="{weight}" fill="{color}" stroke="#ffffff" stroke-width="5" stroke-linejoin="round" '
+          f'paint-order="stroke">{mr.esc(s)}</text>')
+
+
+def fig_rel():
+    """2.1 — Full MLA = 100%로 놓은 요청 1개의 저장량 · 읽고 쓰는 양 (128K)."""
+    T, RH, FG, TOP = 131072, 50, 10, 270
+    P, PWr, MAXP = (350, 1040), 480, 1.25
+    base = req_tot("mla-v31", T)
     H = TOP + 5 * RH + 2 * FG
-    f = mr.Fig("synth-t4-life-cross", W, H + 230)
-    mr.title(f, "요청 몇 개부터 요청마다 쌓이는 데이터가 가중치보다 커지나 (문맥 128K)",
-             "○ = 저장량이 가중치 저장량을 넘는 요청 수 · ● = 스텝마다 읽고 쓰는 양이 가중치를 넘는 요청 수 · 가로축 = 요청 수 (로그)")
-    fam_legend(f, 40, 140)
-    for n in (1, 4, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096):
-        big = n in (32, 256)
-        f.line(sx(n), TOP - 10, sx(n), H, "#c9ccd6" if big else mr.GRID, 2 if big else 1)
-        f.text(sx(n), H + 26, str(n), 13, "middle", color=mr.MUTED)
-    f.text(sx(32), TOP - 18, "32", 12, "middle", 700, mr.MUTED)
-    f.text(sx(256), TOP - 18, "256", 12, "middle", 700, mr.MUTED)
-    f.text(PX + PWX / 2, H + 56, "요청 수", 14, "middle", 700, mr.MUTED)
+    f = mr.Fig("synth-s2a-rel", W, H + 190)
+    mr.title(f, "Full MLA를 100%로 놓고 본 요청 1개의 데이터 (문맥 128K)",
+             "요청 하나에 딸린 KV · 색인 키 · state만 셈 (가중치 제외) · 막대가 100% 선보다 짧으면 Full MLA보다 적음")
+    fam_legend(f, 40, 132)
+    for x, h in zip(P, ("저장량 — HBM에 저장해 둔 양", "스텝마다 읽고 쓰는 양")):
+        f.text(x, TOP - 62, h, 18, weight=800)
+        f.text(x + PWr / MAXP, TOP - 34, "Full MLA = 100%", 12.5, "middle", 700)
+        for p, t in ((0, "0"), (0.5, "50%"), (1.0, "100%")):
+            f.text(x + PWr * p / MAXP, H + 28, t, 12.5, "middle", color=mr.MUTED)
+
+    def guides(y0, y1):
+        for x in P:
+            f.line(x + PWr * 0.5 / MAXP, y0, x + PWr * 0.5 / MAXP, y1, "#d3d6e0", 1)
+            dashed(f, x + PWr / MAXP, y0, x + PWr / MAXP, y1, mr.INK, 1.6)
+    guides(TOP - 28, H + 6)
 
     def row(mid, y):
-        cs, cm = cross_store(mid), cross_move(mid)
-        f.line(PX, y + RH / 2, PX + PWX, y + RH / 2, "#dcdfe7", 1)
-        if cm:
-            f.line(sx(cs), y + RH / 2, sx(cm), y + RH / 2, mr.AXIS, 3)
-        f.raw(f'<circle cx="{sx(cs):.1f}" cy="{y + RH / 2}" r="9" fill="#ffffff" stroke="{mr.INK}" stroke-width="3"/>')
-        f.text(sx(cs), y + RH / 2 + 28, f"저장 {cs}", 13, "middle", 700)
-        if cm:
-            f.raw(f'<circle cx="{sx(cm):.1f}" cy="{y + RH / 2}" r="9" fill="{mr.INK}"/>')
-            f.text(sx(cm), y + RH / 2 - 16, f"읽기·쓰기 {cm:,}", 13, "middle", 700)
-    fam_rows(f, TOP, RH, FG, PX + PWX + 30, row)
-    RX = PX + PWX + 60
-    f.text(RX, TOP + 4, "읽는 방법", 15, weight=800)
-    cf.lines(f, RX, TOP + 32, cf.wrap("○가 왼쪽일수록 요청 데이터가 일찍 HBM 공간을 차지 · ●가 오른쪽일수록 요청이 많아도 읽는 양은 가중치가 대부분. "
-                                      "○ ~ ● 사이(회색 선)에서는 저장된 KV 대부분이 그 스텝에 읽히지 않음", 14, W - 40 - RX), 14, mr.INK, lh=22)
-    mr.takeaway(f, H + 110, *TAKE["t4"])
+        guides(y, y + RH)
+        v = req_tot(mid, T)
+        for i in range(2):
+            p = v[i] / base[i]
+            w = max(PWr * p / MAXP, 3)
+            f.rect(P[i], y + 10, w, RH - 20, MCOL[mid], "none", 3)
+            lab = f"{p:.0%}" if p >= 0.095 else f"{p:.1%}"
+            d = p - 1
+            note = "기준" if mid == "mla-v31" else f"{abs(d):.0%} 많음" if d > 0 else f"{abs(d):.0%} 적음"
+            xe = P[i] + w + 10
+            wl = mr.text_w(lab, 16) * 1.3 + 10 + mr.text_w(note, 14) * 1.2
+            if p < 1 and xe + wl > P[i] + PWr / MAXP - 4:      # 100% 선에 걸리면 막대 안쪽에 흰 글씨
+                f.text(P[i] + w - 12, y + RH / 2 + 6, f"{lab} · {note}", 15, "end", 800, "#ffffff")
+                continue
+            f.text(xe, y + RH / 2 + 6, lab, 16, weight=800)
+            f.text(xe + mr.text_w(lab, 16) * 1.15 + 10, y + RH / 2 + 6, note, 14, weight=700,
+                   color=OVER if (d > 0.005 and mid != "mla-v31") else mr.MUTED)
+    fam_rows(f, TOP, RH, FG, W - 40, row)
+    mr.takeaway(f, H + 96, *TAKE["s2a"])
     mr.save(f)
 
 
-# ------------------------------------------------------------------ t6 요청 1개: 보관 vs 이동 (읽는 비율)
-MARK = {"full": "circle", "sparse": "square", "hybrid": "diamond"}
+def cross_T(a, b):
+    """두 선 [(T, v)]가 처음 엇갈리는 문맥 — 선형 보간."""
+    for (t0, a0), (t1, a1), (_, b0), (_, b1) in zip(a, a[1:], b, b[1:]):
+        d0, d1 = a0 - b0, a1 - b1
+        if d0 * d1 < 0:
+            return t0 + (t1 - t0) * d0 / (d0 - d1), a0 + (a1 - a0) * d0 / (d0 - d1)
+    return None
 
 
-def marker(f, x, y, r, fam, fill):
-    if fam == "full":
-        f.raw(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{r}" fill="{fill}" stroke="#ffffff" stroke-width="2"/>')
-    elif fam == "sparse":
-        f.raw(f'<rect x="{x - r:.1f}" y="{y - r:.1f}" width="{2 * r}" height="{2 * r}" rx="2" fill="{fill}" stroke="#ffffff" stroke-width="2"/>')
-    else:
-        d = r * 1.3
-        f.raw(f'<path d="M{x:.1f},{y - d:.1f} L{x + d:.1f},{y:.1f} L{x:.1f},{y + d:.1f} L{x - d:.1f},{y:.1f} Z" fill="{fill}" '
-              f'stroke="#ffffff" stroke-width="2"/>')
+def state_rw(mid, T=8192):
+    s = per_req(mid, T).get("state", [0, 0, 0])
+    return s[1] + s[2]
 
 
-def fig_per_req():
-    PX, PY, PWX, PH = 150, 150, 940, 760
-    lo, hi = -2.0, 1.0           # 10^-2 ~ 10^1 GB
+def fig_ctx():
+    """2.2 — 문맥이 길어질 때 요청 1개가 스텝마다 읽고 쓰는 양 (선형 눈금)."""
+    TT = list(range(4096, 131073, 4096))
+    PX, PY, PWX, PH, YMAX = 150, 190, 1180, 540, 5.5e9
 
-    def sx(v):
-        return PX + PWX * (math.log10(v / 1e9) - lo) / (hi - lo)
+    def sx(T):
+        return PX + PWX * T / 131072
 
     def sy(v):
-        return PY + PH - PH * (math.log10(v / 1e9) - lo) / (hi - lo)
-    f = mr.Fig("synth-t6-char-req", W, PY + PH + 220)
-    mr.title(f, "요청 1개에 딸린 데이터 — 저장량 vs 스텝마다 읽고 쓰는 양 (문맥 8K · 32K · 128K)",
-             "두 축 모두 로그 · 점 크기 = 문맥 길이 · 모양 = 구조 (● 기준선 · ■ Sparse · ◆ Hybrid) · 대각선에서 아래로 멀수록 저장한 것 중 일부만 읽음")
-    for e in range(-2, 2):
-        for m in (1, 2, 5):
-            v = m * 10 ** e * 1e9
-            if 10 ** lo * 1e9 <= v <= 10 ** hi * 1e9:
-                f.line(sx(v), PY, sx(v), PY + PH, mr.GRID, 1)
-                f.line(PX, sy(v), PX + PWX, sy(v), mr.GRID, 1)
-                lab = cf.fsize(v).replace(".0 ", " ")
-                f.text(sx(v), PY + PH + 26, lab, 13, "middle", color=mr.MUTED)
-                f.text(PX - 10, sy(v) + 5, lab, 13, "end", color=mr.MUTED)
+        return PY + PH - PH * v / YMAX
+    cur = {m: [(T, req_tot(m, T)[1]) for T in TT] for m in MODELS}
+    f = mr.Fig("synth-s2b-ctx", W, PY + PH + 200)
+    mr.title(f, "문맥이 길어질 때 요청 1개가 스텝마다 읽고 쓰는 양",
+             "요청 하나에 딸린 KV · 색인 키 · state만 셈 (가중치 제외) · 문맥에 비례하는 부분은 가파르게 오르고, 문맥과 상관없는 부분은 바닥에 깔림")
+    fam_legend(f, 40, 132)
+    for k in range(9):
+        f.line(sx(k * 16384), PY, sx(k * 16384), PY + PH, mr.GRID, 1)
+        f.text(sx(k * 16384), PY + PH + 26, "0" if k == 0 else f"{k * 16}K", 13, "middle", color=mr.MUTED)
+    for g in range(6):
+        f.line(PX, sy(g * 1e9), PX + PWX, sy(g * 1e9), mr.GRID, 1)
+        f.text(PX - 10, sy(g * 1e9) + 5, "0" if g == 0 else f"{g} GB", 13, "end", color=mr.MUTED)
     f.rect(PX, PY, PWX, PH, "none", mr.AXIS, 0, 1.2)
-    f.text(PX + PWX / 2, PY + PH + 60, "저장량 — 요청 1개가 HBM에 저장해 둔 데이터", 16, "middle", 700)
-    f.raw(f'<text x="{PX - 92}" y="{PY + PH / 2}" font-family="{mr.FONT}" font-size="16" font-weight="700" fill="{mr.INK}" '
-          f'text-anchor="middle" transform="rotate(-90 {PX - 92} {PY + PH / 2})">스텝마다 읽고 쓰는 양 — 요청 1개 몫</text>')
-    for k, lab in ((1.0, "읽고 쓰는 양 = 저장량 (저장한 만큼 매 스텝 읽음)"), (0.1, "읽고 쓰는 양 = 저장량의 10%")):
-        x1, x2 = 10 ** lo * 1e9, 10 ** hi * 1e9
-        a, b = max(x1, x1 / k), min(x2, x2 / k)
-        f.raw(f'<line x1="{sx(a):.1f}" y1="{sy(a * k):.1f}" x2="{sx(b):.1f}" y2="{sy(b * k):.1f}" stroke="{mr.AXIS}" '
-              f'stroke-width="1.6" stroke-dasharray="7 6"/>')
-        if k == 1.0:
-            f.text(sx(b) - 8, sy(b * k) + 22, lab, 13, "end", color=mr.MUTED)
+    f.text(PX + PWX / 2, PY + PH + 60, "문맥 길이 (토큰)", 16, "middle", 700)
+    ylabel(f, PX - 80, PY + PH / 2, "스텝마다 읽고 쓰는 양 — 요청 1개 몫")
+    # KDA + DSA의 state — 문맥과 상관없는 바닥
+    sv = state_rw("kda-k3")
+    dashed(f, PX, sy(sv), PX + PWX, sy(sv), MCOL["kda-k3"], 2)
+    for m in MODELS:
+        f.raw('<polyline points="' + " ".join(f"{sx(t):.1f},{sy(v):.1f}" for t, v in cur[m]) +
+              f'" fill="none" stroke="{MCOL[m]}" stroke-width="3.2" stroke-linejoin="round"/>')
+        t, v = cur[m][-1]
+        dy = {"mla-v31": 6, "kda-k3": -4, "dsa-v32": 12, "qsa-qwen38": 2, "csa-v4flash": 8}[m]
+        f.text(sx(t) + 12, sy(v) + dy, NAME[m], 15, weight=800, color=MCOL[m] if m != "mla-v31" else mr.INK)
+    # 8K에서의 차이
+    a = dict(cur["mla-v31"])[8192]
+    b = dict(cur["kda-k3"])[8192]
+    f.line(sx(8192), sy(a), sx(8192), sy(b), mr.INK, 1.6)
+    for v in (a, b):
+        f.raw(f'<circle cx="{sx(8192):.1f}" cy="{sy(v):.1f}" r="5" fill="{mr.INK}"/>')
+    dashed(f, sx(8192), sy(b) - 8, sx(8192), sy(1.62e9), mr.INK, 1.2, "3 4")
+    f.text(sx(8192) - 12, sy(1.62e9) - 10, f"문맥 8K: KDA + DSA가 Full MLA의 {b / a:.0f}배", 14, "start", 800)
+    # 엇갈리는 지점
+    tc, vc = cross_T(cur["mla-v31"], cur["kda-k3"])
+    f.raw(f'<circle cx="{sx(tc):.1f}" cy="{sy(vc):.1f}" r="8" fill="#ffffff" stroke="{mr.INK}" stroke-width="3"/>')
+    f.line(sx(tc) + 6, sy(vc) + 8, sx(tc) + 30, sy(0.66e9) - 16, mr.INK, 1.2)
+    f.text(sx(tc) + 20, sy(0.66e9), f"문맥 약 {tc / 1024:.0f}K에서 같아짐", 14, "start", 800)
+    # state 설명
+    tx, ty = sx(70000), sy(2.55e9)
+    cf.lines(f, tx, ty, ["점선 = KDA + DSA의 state",
+                         "문맥과 상관없이 매 스텝 전부 읽고 다시 씀",
+                         f"8K에서는 읽고 쓰는 양의 {sv / b:.0%}, 128K에서도 {sv / dict(cur['kda-k3'])[131072]:.0%}"],
+             14, mr.INK, lh=22)
+    f.line(sx(86000), ty + 56, sx(86000), sy(sv) - 6, MCOL["kda-k3"], 1.4)
+    mr.takeaway(f, PY + PH + 118, *TAKE["s2b"])
+    mr.save(f)
+
+
+def share_curve(mid, T=131072):
+    """요청 수별 (요청 데이터 ÷ (요청 데이터 + 가중치)) — 저장량 · 읽고 쓰는 양."""
+    out = []
+    for B in sorted({max(1, round(2 ** (k / 4))) for k in range(45)}):
+        rows = tr.items(M_(mid), B, T, "model")
+        st, mv = tr.by(rows, "life", "store"), tr.by(rows, "life", "move")
+        out.append((B, st["req"] / (st["req"] + st["svc"]), mv["req"] / (mv["req"] + mv["svc"])))
+    return out
+
+
+def fig_share():
+    """4.1 — 요청이 늘 때 요청 데이터가 저장 공간 · 읽기에서 차지하는 몫 (모델별 작은 그림 5개)."""
+    PX0, PWp, GAP, PY, PH = 100, 286, 38, 250, 300
+
+    def sy(p):
+        return PY + PH - PH * p
+    f = mr.Fig("synth-s4a-share", W, PY + PH + 250)
+    mr.title(f, "요청이 늘 때 — 요청 데이터가 저장 공간과 읽기에서 차지하는 몫 (문맥 128K)",
+             "몫 = 요청마다 쌓이는 데이터 ÷ (요청 데이터 + 가중치) · 50% 점선을 넘으면 요청 데이터가 가중치보다 큼 · 가로축 = 동시 요청 수")
+    x, y = 40, 134
+    for c, t in ((SAVE_COL, "저장 공간 중 요청 데이터 몫"), (MOVE_COL, "스텝마다 읽고 쓰는 양 중 요청 데이터 몫")):
+        f.line(x, y - 5, x + 30, y - 5, c, 4)
+        f.text(x + 40, y, t, 15)
+        x += 40 + mr.text_w(t, 15) + 34
+    f.rect(x, y - 15, 30, 18, "#e6e9f3", "none", 3)
+    f.text(x + 40, y, "두 선 사이 = 요청 데이터가 저장 공간은 차지하지만 매 스텝 읽히지는 않는 구간", 15, color=mr.MUTED)
+    for i, mid in enumerate(MODELS):
+        x0 = PX0 + i * (PWp + GAP)
+
+        def sx(B, x0=x0):
+            return x0 + PWp * math.log2(B) / 11
+        fk = FAM_OF[mid]
+        lab = dict((k, l) for k, l, _ in FAM)[fk]
+        pw = mr.text_w(lab, 12) + 16
+        f.rect(x0, PY - 52, pw, 22, FAM_ACC[fk], "none", 11)
+        f.text(x0 + pw / 2, PY - 36, lab, 12, "middle", 800, "#ffffff")
+        f.text(x0 + pw + 10, PY - 35, NAME[mid], 17, weight=800)
+        for p in (0, 0.25, 0.5, 0.75, 1.0):
+            if p == 0.5:
+                dashed(f, x0, sy(p), x0 + PWp, sy(p), mr.INK, 1.4, "6 5")
+            else:
+                f.line(x0, sy(p), x0 + PWp, sy(p), mr.GRID, 1)
+            if i == 0 and p in (0, 0.5, 1.0):
+                f.text(x0 - 10, sy(p) + 5, f"{p:.0%}", 13, "end", color=mr.MUTED)
+        for B in (1, 4, 16, 64, 256, 1024):
+            f.line(sx(B), PY + PH, sx(B), PY + PH + 5, mr.AXIS, 1)
+            f.text(sx(B), PY + PH + 22, str(B), 12.5, "middle", color=mr.MUTED)
+        f.rect(x0, PY, PWp, PH, "none", mr.AXIS, 0, 1)
+        cur = share_curve(mid)
+        poly = [(sx(B), sy(s)) for B, s, _ in cur] + [(sx(B), sy(m)) for B, _, m in reversed(cur)]
+        f.raw('<polygon points="' + " ".join(f"{a:.1f},{b:.1f}" for a, b in poly) + '" fill="#e6e9f3"/>')
+        for k, c in ((1, SAVE_COL), (2, MOVE_COL)):
+            f.raw('<polyline points="' + " ".join(f"{sx(r[0]):.1f},{sy(r[k]):.1f}" for r in cur) +
+                  f'" fill="none" stroke="{c}" stroke-width="3.2" stroke-linejoin="round"/>')
+        cs, cm = cross_store(mid), cross_move(mid)
+        for B, c in ((cs, SAVE_COL), (cm, MOVE_COL)):
+            f.raw(f'<circle cx="{sx(B):.1f}" cy="{sy(0.5):.1f}" r="6" fill="{c}" stroke="#ffffff" stroke-width="2"/>')
+        yb = PY + PH + 56
+        if cm / cs < 1.3:
+            halo(f, sx(cs), sy(0.5) - 14, f"약 {round(cs, -1):.0f}", 13, "end", 800, mr.INK)
+            f.text(x0, yb, f"저장 · 읽기 모두 약 {round(cs, -1):.0f}개", 15, weight=800)
+            f.text(x0, yb + 24, "저장한 KV를 매 스텝 다 읽음", 13.5, color=mr.MUTED)
         else:
-            f.text(sx(1.5e9) + 12, sy(1.5e8) + 20, lab, 13, "start", color=mr.MUTED)
-    for mid in MODELS:
-        pts = []
-        for T in TS:
-            g = per_req(mid, T)
-            pts.append((sx(sum(v[0] for v in g.values())), sy(sum(v[1] + v[2] for v in g.values()))))
-        f.raw('<polyline points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in pts) + f'" fill="none" stroke="{MCOL[mid]}" stroke-width="2.4"/>')
-        for i, (x, y) in enumerate(pts):
-            marker(f, x, y, 5 + 3 * i, FAM_OF[mid], MCOL[mid])
-        x, y = pts[-1]
-        dx, dy = {"mla-v31": (16, 28), "kda-k3": (-16, -18), "dsa-v32": (16, 6), "qsa-qwen38": (16, 6), "csa-v4flash": (16, 6)}[mid]
-        f.text(x + dx, y + dy, NAME[mid], 16, "start" if dx > 0 else "end", 800)
-        x0, y0 = pts[0]
-        f.text(x0 - 12, y0 + (20 if mid == "qsa-qwen38" else 5), "8K", 12, "end", color=mr.MUTED)
-    # 오른쪽 표 — 128K 값, 구조별로 묶음
-    RX = PX + PWX + 60
-    f.text(RX, PY + 10, "문맥 128K · 요청 1개", 17, weight=800)
-    for t, dx in (("모델", 0), ("저장량", 250), ("읽고 쓰는 양", 350), ("읽는 비율", 470)):
-        f.text(RX + dx, PY + 46, t, 14, weight=700, color=mr.MUTED)
-    y = PY + 82
-    for k, lab, ms in FAM:
-        f.text(RX, y, lab, 13, weight=800, color=FAM_ACC[k])
-        y += 26
-        for mid in ms:
-            g = per_req(mid, 131072)
-            S = sum(v[0] for v in g.values())
-            R = sum(v[1] for v in g.values())
-            mv = sum(v[1] + v[2] for v in g.values())
-            marker(f, RX + 8, y - 5, 6, FAM_OF[mid], MCOL[mid])
-            f.text(RX + 24, y, NAME[mid], 14, weight=700)
-            f.text(RX + 250, y, cf.fsize(S), 14)
-            f.text(RX + 350, y, cf.fsize(mv), 14)
-            f.text(RX + 470, y, f"{R / S:.0%}", 14, weight=700)
-            y += 32
-        y += 6
-    cf.lines(f, RX, y + 8, ["읽는 비율 = 스텝마다 읽는 양 ÷ 저장량", "(state를 다시 쓰는 양은 세로축에만 들어감)"], 13)
-    y += 70
-    f.text(RX, y, "읽는 방법", 15, weight=800)
-    cf.lines(f, RX, y + 28, cf.wrap("대각선 위 = 저장한 만큼 매 스텝 전부 읽음. 대각선보다 위 = 다시 쓰기까지 더해짐. "
-                                    "아래로 멀수록 저장한 것 중 일부만 읽음. 선이 거의 수평이면 문맥이 길어져도 읽는 양이 거의 안 늘어남",
-                                    14, W - 40 - RX), 14, mr.INK, lh=22)
-    mr.takeaway(f, PY + PH + 120, *TAKE["t6"])
+            halo(f, sx(cs) - 8, sy(0.5) - 12, str(cs), 13, "end", 800, SAVE_COL)
+            right = sx(cm) + 8 + mr.text_w(f"{cm:,}", 13) > x0 + PWp - 4
+            halo(f, sx(cm) + (-8 if right else 8), sy(0.5) + 24, f"{cm:,}", 13, "end" if right else "start", 800, MOVE_COL)
+            f.text(x0, yb, f"저장 {cs}개 → 읽기 {cm:,}개", 15, weight=800)
+            f.text(x0, yb + 24, f"읽기 쪽이 {cm / cs:.1f}배 많은 요청에서 넘음", 13.5, color=mr.MUTED)
+    mr.takeaway(f, PY + PH + 140, *TAKE["s4a"])
+    mr.save(f)
+
+
+HB_CONDS = [(32, 131072, "요청 32개 · 128K"), (256, 32768, "요청 256개 · 32K"), (256, 131072, "요청 256개 · 128K")]
+
+
+def hbm_parts(mid, B, T):
+    """가정한 장수의 HBM 대비 (가중치 몫, 요청 데이터 몫)."""
+    cap = M_(mid)["model"]["deploy"]["n_gpu"] * 141e9
+    st = tr.by(tr.items(M_(mid), B, T, "model"), "life", "store")
+    return st.get("svc", 0) / cap, (st.get("req", 0) + st.get("step", 0)) / cap
+
+
+def fig_hbm():
+    """4.2 — 저장량 ÷ 가정한 H200 장수의 HBM (100% 선을 넘으면 안 들어감)."""
+    RH, FG, TOP = 50, 10, 280
+    P0, PWh, GAP, MAXR = 370, 380, 70, 2.5
+    sc = PWh / MAXR
+    H = TOP + 5 * RH + 2 * FG
+    f = mr.Fig("synth-s4b-hbm", W, H + 200)
+    mr.title(f, "가정한 H200 장수의 HBM에 들어가나 — 저장량 ÷ HBM 용량",
+             "저장량 = 가중치 + 요청마다 쌓이는 데이터 · HBM 용량 = H200 141 GB × 모델마다 가정한 장수 · GPU별 배치 · 복제 · 작업 공간은 반영 안 함")
+    mr.legend(f, [("가중치", mr.GRAY), ("요청마다 쌓이는 데이터 (KV · 색인 키 · state)", mr.BLUE)], 40, 134, 30)
+    lx = 40 + 26 + mr.text_w("가중치", 15) + 30 + 26 + mr.text_w("요청마다 쌓이는 데이터 (KV · 색인 키 · state)", 15) + 30
+    dashed(f, lx, 129, lx + 30, 129, OVER, 2.4)
+    f.text(lx + 40, 135, "HBM 용량 (= 100%) — 넘으면 가정한 장수에 안 들어감", 15, color=mr.MUTED)
+    for j, (B, T, lab) in enumerate(HB_CONDS):
+        x = P0 + j * (PWh + GAP)
+        f.text(x, TOP - 58, lab, 17, weight=800)
+        f.text(x + sc, TOP - 32, "HBM 용량", 12.5, "middle", 700, OVER)
+        for p, t in ((0, "0"), (1, "100%"), (2, "200%")):
+            f.text(x + p * sc, H + 28, t, 12.5, "middle", color=mr.MUTED)
+
+    def guides(y0, y1):
+        for j in range(len(HB_CONDS)):
+            x = P0 + j * (PWh + GAP)
+            f.line(x + 2 * sc, y0, x + 2 * sc, y1, "#d3d6e0", 1)
+            dashed(f, x + sc, y0, x + sc, y1, OVER, 2.2)
+    guides(TOP - 26, H + 6)
+
+    def row(mid, y):
+        guides(y, y + RH)
+        f.text(XN + mr.text_w(NAME[mid], 15) * 1.1 + 12, y + RH / 2 + 6, f"H200 {M_(mid)['model']['deploy']['n_gpu']}장", 13,
+               color=mr.MUTED)
+        for j, (B, T, _) in enumerate(HB_CONDS):
+            x = P0 + j * (PWh + GAP)
+            w_, q_ = hbm_parts(mid, B, T)
+            tot = w_ + q_
+            ww = min(w_, MAXR) * sc
+            qw = max(min(tot, MAXR) * sc - ww, 0)
+            f.rect(x, y + 10, ww, RH - 20, mr.GRAY, "none", 2)
+            if qw > 0.5:
+                f.rect(x + ww, y + 10, qw, RH - 20, mr.BLUE, "none", 2)
+            over = tot > 1
+            lab = (f"{tot:.2f}배" if tot < 1.1 else f"{tot:.1f}배") if over else f"{tot:.0%}"
+            if tot > MAXR:   # 잘라 그림 — 끝에 끊김 표시 + 안쪽 숫자
+                xe = x + PWh
+                for d in (-14, -6):
+                    f.line(xe + d - 4, y + 8, xe + d + 4, y + RH - 8, "#ffffff", 3)
+                f.text(xe - 24, y + RH / 2 + 6, lab, 15, "end", 800, "#ffffff")
+            else:
+                lx = x + ww + qw + 8
+                if lx < x + sc + 6 < lx + mr.text_w(lab, 15) * 1.5:
+                    lx = x + sc + 8
+                f.text(lx, y + RH / 2 + 6, lab, 15, weight=800, color=OVER if over else mr.INK)
+    fam_rows(f, TOP, RH, FG, W - 40, row)
+    mr.takeaway(f, H + 100, *TAKE["s4b"])
     mr.save(f)
 
 
@@ -399,12 +551,16 @@ TAKE = {
     "t3": ("다섯 모델 모두 읽고 쓰는 양은 다음 스텝에 다시 읽힐 데이터가 거의 전부 — SRAM을 늘려 줄일 몫이 작음",
            "요청 동안 몫 — 256개 · 8K: GDN + QSA 23% · KDA + DSA 14% · Full MLA 11% · DSA 5.2% · CSA + HCA 2.6% / "
            "256개 · 128K: Full MLA 66% · DSA 29% · GDN + QSA 28% · KDA + DSA 18% · CSA + HCA 16%"),
-    "t4": ("골라 읽는 모델은 저장량이 읽고 쓰는 양보다 훨씬 적은 요청 수에서 가중치를 넘음 — 그 사이에서는 KV 대부분이 읽히지 않음",
-           "Full MLA 약 130개에서 둘 다 · DSA 108 vs 592 · GDN + QSA 74 vs 656 · KDA + DSA 348 vs 1,137 · CSA + HCA 300 vs 1,372 (압축으로 둘 다 뒤로)"),
     "t5": ("골라 읽는 KV는 저장 공간만 크게 차지하고 거의 읽히지 않음 — 읽는 양의 차이는 전부 읽는 데이터와 다시 쓰는 state가 만듦",
            "요청 256개 · 128K: 골라 읽는 KV는 저장한 것의 약 1.6%만 매 스텝 읽음 / DSA가 색인 키를 읽는 양은 Full MLA가 KV를 읽는 양의 약 1/5"),
-    "t6": ("Full MLA만 대각선(저장한 만큼 매 스텝 읽음) — sparse · hybrid는 저장한 것의 8 ~ 22%만 읽고, hybrid는 state를 다시 쓰는 만큼 위로 뜸",
-           "128K 읽는 비율: Full MLA 100% · CSA + HCA 22% · KDA + DSA 21% · DSA 18% · GDN + QSA 8% / 8K: KDA + DSA는 읽고 쓰는 양이 저장량보다 40% 많음"),
+    "s2a": ("읽는 양은 네 구조 모두 Full MLA의 2 ~ 26%로 줄지만, 저장량까지 크게 줄인 것은 압축(CSA + HCA)뿐",
+            "저장량: CSA + HCA 90% 감소 · GDN + QSA 34% 감소 · KDA + DSA 14% 감소 · DSA 20% 증가 (전체 KV를 그대로 두고 색인 키를 더 저장)"),
+    "s2b": ("Full MLA는 문맥에 비례해 늘고, hybrid는 state가 바닥에 깔려 거의 수평 — 짧은 문맥에서는 hybrid가 더 많이 읽고 씀",
+            "문맥 8K: KDA + DSA가 Full MLA의 3배 · 약 25K에서 같아짐 · 128K: Full MLA의 26% / DSA · CSA + HCA는 색인 키 읽기만큼만 천천히 늘어남"),
+    "s4a": ("골라 읽는 모델은 요청 데이터가 저장 공간을 먼저 채우고, 읽기에서는 훨씬 늦게 커짐 — 두 선이 벌어진 구간에서는 저장된 KV 대부분이 그 스텝에 읽히지 않음",
+            "가중치를 넘는 요청 수 (저장 → 읽기): Full MLA 약 130개로 같음 · DSA 108 → 592 · GDN + QSA 74 → 656 · KDA + DSA 348 → 1,137 · CSA + HCA 300 → 1,372"),
+    "s4b": ("요청 256개 · 128K에서는 다섯 모델 모두 가정한 장수의 HBM을 넘음 — 가중치가 이미 HBM의 55 ~ 89%를 차지해 요청 데이터에 남는 자리가 작음",
+            "요청 256개 · 128K: GDN + QSA 4.0배 · DSA 2.0배 · Full MLA 1.8배 · KDA + DSA 1.2배 · CSA + HCA 1.02배 / GDN + QSA는 요청 32개 · 128K부터 넘음"),
 }
 
 
@@ -537,9 +693,11 @@ if __name__ == "__main__":
         fig_kind_model()
         fig_kind_req()
         fig_life_model()
-        fig_cross()
         fig_char_model()
-        fig_per_req()
+        fig_rel()
+        fig_ctx()
+        fig_share()
+        fig_hbm()
         fig_sum()
         for _k in ("s_kind", "s_life", "s_char"):
             cf.gen_fig(_k)

@@ -8,9 +8,11 @@
 
 comp-c1-unit · c2-axis · c3-ai   연산을 나누는 기준 (모델 무관) — 분류 · 뜻 → HW
 comp-t1-cat-model    연산 묶음별 FLOP · 이론 시간 (모델 전체, 조건 3개)
-comp-t2-unit         연산기 · 정밀도별 FLOP 구성 + 연산이 시간을 정하는 몫
-comp-t3-growth       문맥 길이 vs (요청별 데이터 연산 FLOP ÷ 가중치 GEMM FLOP) — FLOP 역전점
-comp-t4-ai           산술 강도 — 요청별 데이터 연산 | 공유 가중치 GEMM (요청 1 · 32 · 256개)
+comp-t2-unit         (부록) 연산기 · 정밀도별 FLOP 구성 + 연산이 시간을 정하는 몫
+comp-t4-ai           (부록) 산술 강도 — 요청별 데이터 연산 | 공유 가중치 GEMM (요청 1 · 32 · 256개)
+comp-s2a-mix         2.1 문맥 8K · 32K · 128K의 토큰 1개 계산량 구성 + 요청 쪽 계산이 절반을 넘는 문맥
+comp-s2b-busy        2.2 연산마다 계산기가 일하는 시간 (계산 시간 ÷ 이론 시간)
+comp-s2c-bound       2.3 이론 시간 중 계산이 병목 / 메모리 읽기가 병목 (조건 3개)
 comp-t5-irregular    top-k · gather — 후보 → 선택, 덩어리 크기, 스텝당 덩어리 수
 comp-t6-chain        직렬 경로 — 층 종류별 커널 의존 깊이
 comp-sum             정리 — 연산 특성 → 인사이트 → HW
@@ -211,87 +213,6 @@ def ratio(mid, T):
     return sum(p.get(c, 0) for c in ops.REQ) / sum(p.get(c, 0) for c in ops.WEIGHT)
 
 
-def fig_growth():
-    PX, PY, PWX, PH = 150, 160, 900, 640
-    xl, xh, yl, yh = 12, 21, -2.0, 2.0          # 2^12(4K) ~ 2^21(2M) · 10^-2 ~ 10^2
-
-    def sx(T):
-        return PX + PWX * (math.log2(T) - xl) / (xh - xl)
-
-    def sy(r):
-        return PY + PH - PH * (math.log10(max(r, 10 ** yl)) - yl) / (yh - yl)
-    f = mr.Fig("comp-t3-growth", W, PY + PH + 210)
-    mr.title(f, "문맥이 길어지면 계산량은 어디서 늘어나나 — 요청마다 하는 계산 ÷ 가중치 행렬곱 (토큰 1개 · 모델 전체)",
-             "요청마다 하는 계산 = attention 본체 + 색인 · 블록 점수 + state 갱신 · 가중치 행렬곱 = 투영 + MoE + LM head · 두 축 모두 로그 · 점선 = 지원 길이 밖")
-    for e in range(xl, xh + 1):
-        f.line(sx(2 ** e), PY, sx(2 ** e), PY + PH, mr.GRID, 1)
-        f.text(sx(2 ** e), PY + PH + 26, f"{2 ** e // 1024}K" if e < 20 else f"{2 ** e // 2 ** 20}M", 13, "middle", color=mr.MUTED)
-    for e in range(int(yl), int(yh) + 1):
-        for m in (1, 3):
-            v = m * 10 ** e
-            if 10 ** yl <= v <= 10 ** yh:
-                f.line(PX, sy(v), PX + PWX, sy(v), mr.GRID, 1)
-                f.text(PX - 10, sy(v) + 5, f"{v:g}", 13, "end", color=mr.MUTED)
-    f.rect(PX, PY, PWX, PH, "none", mr.AXIS, 0, 1.2)
-    f.raw(f'<line x1="{PX}" y1="{sy(1):.1f}" x2="{PX + PWX}" y2="{sy(1):.1f}" stroke="{mr.INK}" stroke-width="2" stroke-dasharray="8 6"/>')
-    f.text(PX + 40, sy(1) + 26, "같아지는 지점 (= 1)", 14, weight=800)
-    f.text(PX + PWX / 2, PY + PH + 60, "문맥 길이 (토큰)", 16, "middle", 700)
-    f.raw(f'<text x="{PX - 76}" y="{PY + PH / 2}" font-family="{mr.FONT}" font-size="16" font-weight="700" fill="{mr.INK}" '
-          f'text-anchor="middle" transform="rotate(-90 {PX - 76} {PY + PH / 2})">요청마다 하는 계산 ÷ 가중치 행렬곱 계산</text>')
-    Ts = [2 ** (xl + i * (xh - xl) / 36) for i in range(37)]
-    lab_dy = {"mla-v31": -14, "dsa-v32": -14, "csa-v4flash": 22, "kda-k3": -14, "qsa-qwen38": 22}
-    f.raw(f'<clipPath id="plot"><rect x="{PX}" y="{PY}" width="{PWX}" height="{PH}"/></clipPath><g clip-path="url(#plot)">')
-    ends = {}
-    for mid in MODELS:
-        tmax = ops.load(mid)["algo"]["dims"]["T_max"]["value"]
-        pin = [(sx(T), sy(ratio(mid, T))) for T in Ts if T <= tmax * 1.001] + [(sx(tmax), sy(ratio(mid, tmax)))]
-        pout = [(sx(tmax), sy(ratio(mid, tmax)))] + [(sx(T), sy(ratio(mid, T))) for T in Ts if T > tmax]
-        f.raw('<polyline points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in pin) + f'" fill="none" stroke="{MCOL[mid]}" stroke-width="3"/>')
-        if len(pout) > 1:
-            f.raw('<polyline points="' + " ".join(f"{x:.1f},{y:.1f}" for x, y in pout) + f'" fill="none" stroke="{MCOL[mid]}" '
-                  f'stroke-width="2.2" stroke-dasharray="6 5"/>')
-        x, y = pin[-1]
-        ms.marker(f, x, y, 6, ms.FAM_OF[mid], MCOL[mid])
-        ends[mid] = (x, y, pout[-1] if len(pout) > 1 else pin[-1])
-    f.raw("</g>")
-    for mid in MODELS:
-        c = ops.cross_ctx(mid)
-        if c and c <= 2 ** xh:
-            f.raw(f'<circle cx="{sx(c):.1f}" cy="{sy(1):.1f}" r="8" fill="#ffffff" stroke="{MCOL[mid]}" stroke-width="3"/>')
-            f.text(sx(c), sy(1) + lab_dy[mid] + (8 if lab_dy[mid] > 0 else 0), fk(c), 13, "middle", 800, MCOL[mid])
-        x, y, (xe, ye) = ends[mid]
-        if ye > PY + 10:
-            f.text(xe + 8, ye + 5, NAME[mid], 14, "start", 800, MCOL[mid])
-        else:
-            f.text(x + 10, y + 22, NAME[mid], 14, "start", 800, MCOL[mid])
-    # 오른쪽 표 — 선 끝 이름표(attention 이름)와 겹치지 않게 띄움
-    RX = PX + PWX + 120
-    f.text(RX, PY + 10, "토큰 1개 · 문맥 128K", 17, weight=800)
-    for t, dx in (("모델", 0), ("가중치 행렬곱", 140), ("요청마다 하는 계산", 270), ("넘는 문맥", 430)):
-        f.text(RX + dx, PY + 46, t, 14, weight=700, color=mr.MUTED)
-    y = PY + 82
-    for k, lab, ms_ in ms.FAM:
-        f.text(RX, y, lab, 13, weight=800, color=ms.FAM_ACC[k])
-        y += 26
-        for mid in ms_:
-            p = ops.per_token(mid, T128)
-            wv = sum(p.get(c, 0) for c in ops.WEIGHT)
-            rv = sum(p.get(c, 0) for c in ops.REQ)
-            c = ops.cross_ctx(mid)
-            tmax = ops.load(mid)["algo"]["dims"]["T_max"]["value"]
-            ms.marker(f, RX + 8, y - 5, 6, ms.FAM_OF[mid], MCOL[mid])
-            f.text(RX + 24, y, NAME[mid], 14, weight=700)
-            f.text(RX + 140, y, ff(wv), 14)
-            f.text(RX + 270, y, ff(rv), 14, weight=700)
-            f.text(RX + 430, y, (fk(c) + (" (지원 밖)" if c > tmax else "")) if c else "—", 14, weight=700)
-            y += 32
-        y += 6
-    cf.lines(f, RX, y + 10, cf.wrap("요청마다 하는 계산 = attention 본체 · 색인 · state. 둘 다 요청 수에 비례해 비율은 요청 수와 무관 · "
-                                    "선의 기울기 = 문맥에 비례하는 연산(full attention · 색인)의 몫", 13.5, W - 40 - RX), 13.5, mr.MUTED, lh=21)
-    mr.takeaway(f, PY + PH + 120, *TAKE["t3"])
-    mr.save(f)
-
-
 def fk(T):
     """문맥 길이 — 그림 가로축과 같은 2진 단위 (1K = 1,024)."""
     if T >= 2 ** 20:
@@ -368,6 +289,138 @@ def fig_ai():
             f.text(pts[-1] + 12, yy + 5, f"{v:.3g}", 12.5, "start", 800, mr.INK)
     ms.fam_rows(f, TOP, RH, FG, W - 40, row)
     mr.takeaway(f, bot + 110, *TAKE["t4"])
+    mr.save(f)
+
+
+# ------------------------------------------------------------------ 2장 — 막대로 바로 읽히게 (구성 · 계산기가 일하는 시간 · 병목 몫)
+MIXK = [("w", "가중치 행렬곱 (투영 · MoE · LM head)", mr.GRAY), ("attn", "attention 본체", mr.BLUE),
+        ("idx", "색인 · 블록 점수", mr.ORANGE), ("state", "state 갱신", mr.GREEN)]
+MEMC = "#cdd2de"
+
+
+def mix(mid, T):
+    """토큰 1개 계산량 구성 (합 = 1)."""
+    p = ops.per_token(mid, T)
+    d = {"w": sum(p.get(c, 0) for c in ops.WEIGHT), "attn": p.get("attn", 0), "idx": p.get("idx", 0),
+         "state": p.get("state", 0)}
+    s = sum(d.values())
+    return {k: v / s for k, v in d.items()}
+
+
+def busy(mid, B, T, cats):
+    """계산기가 일하는 시간 비율 = Σ 계산 시간 ÷ Σ 이론 시간 (커널마다 계산 · 읽기 중 긴 쪽)."""
+    rs = [r for r in ops.rows(mid, B, T) if r["cat"] in cats]
+    t = sum(r["t"] for r in rs)
+    return sum(r["t_cmp"] for r in rs) / t if t else None
+
+
+def stack(f, x, y, h, width, parts, lab_min=34):
+    """100% 막대 — parts [(비율, 색)] · 칸 안에 %."""
+    for v, c in parts:
+        w = width * v
+        if w > 0.6:
+            f.rect(x, y, max(w - 2, 0.8), h, c, "none", 3)
+            t = pc(v)
+            if w >= max(lab_min, mr.text_w(t, 12.5) * 1.2 + 8):
+                f.text(x + w / 2 - 1, y + h / 2 + 5, t, 12.5, "middle", 700,
+                       "#ffffff" if c in DARK or c == VIOLET else mr.INK)
+        x += w
+
+
+def fig_mix():
+    """2.1 — 문맥이 길어질 때 토큰 1개 계산량 구성 (8K · 32K · 128K)."""
+    RH, FG, TOP = 50, 10, 250
+    P0, PWm, GAP = 330, 330, 40
+    RX = P0 + 3 * (PWm + GAP) + 10
+    H = TOP + 5 * RH + 2 * FG
+    f = mr.Fig("comp-s2a-mix", W, H + 190)
+    mr.title(f, "문맥이 길어지면 계산은 어디서 늘어나나 — 토큰 1개의 계산량 구성 (모델 전체)",
+             "계산량 100%를 연산 묶음으로 나눔 · 회색 = 모든 요청이 같이 쓰는 가중치 행렬곱, 색 = 요청마다 하는 계산 · 요청 수와 무관")
+    mr.legend(f, [(lab, c) for _, lab, c in MIXK], 40, 134, 30)
+    for j, T in enumerate((8192, 32768, T128)):
+        f.text(P0 + j * (PWm + GAP), TOP - 22, f"문맥 {T // 1024}K", 17, weight=800)
+    cf.lines(f, RX, TOP - 44, ["요청마다 하는 계산이", "절반을 넘는 문맥"], 14, mr.INK, 700, lh=20)
+
+    def row(mid, y):
+        for j, T in enumerate((8192, 32768, T128)):
+            m = mix(mid, T)
+            stack(f, P0 + j * (PWm + GAP), y + 10, RH - 20, PWm, [(m[k], c) for k, _, c in MIXK])
+        c = ops.cross_ctx(mid)
+        tmax = ops.load(mid)["algo"]["dims"]["T_max"]["value"]
+        if c and c <= tmax:
+            f.text(RX, y + RH / 2 + 6, f"약 {fk(c)}", 16, weight=800)
+        else:
+            f.text(RX, y + RH / 2 + 6, f"지원 길이({fk(tmax)}) 안에서 안 넘음", 13.5, weight=700, color=mr.MUTED)
+    ms.fam_rows(f, TOP, RH, FG, W - 40, row)
+    mr.takeaway(f, H + 90, *TAKE["s2a"])
+    mr.save(f)
+
+
+BUSY_COLS = [(("attn",), "attention 본체", 1), (("idx",), "색인 · 블록 점수", 1), (("state",), "state 갱신", 1),
+             (("moe",), "MoE 가중치", 256), (("proj", "head"), "투영 · LM head", 256)]
+
+
+def fig_busy():
+    """2.2 — 연산마다 계산기가 일하는 시간 비율 (100% = 계산이 병목)."""
+    RH, FG, TOP = 50, 10, 300
+    P0, CWc, TRK = 330, 278, 168
+    H = TOP + 5 * RH + 2 * FG
+    f = mr.Fig("comp-s2b-busy", W, H + 190)
+    mr.title(f, "연산마다 H200 계산기가 실제로 일하는 시간 — 나머지는 데이터를 기다림 (문맥 128K)",
+             "계산기가 일하는 시간 = 계산 시간 ÷ 이론 시간(커널마다 계산 · 메모리 읽기 중 긴 쪽) · 100%면 계산이 병목, 낮을수록 메모리 읽기를 기다림")
+    mr.legend(f, [("계산기가 일하는 시간", VIOLET), ("데이터를 기다리는 시간 (메모리 읽기가 병목)", "#eceef4")], 40, 134, 30)
+    for g, (a, b, t) in enumerate(((0, 3, "요청마다 하는 연산 — 요청을 모아도 그대로"), (3, 5, "가중치 행렬곱 — 요청 256개 (요청이 많을수록 높아짐)"))):
+        x0, x1 = P0 + a * CWc, P0 + b * CWc - 40
+        f.text(x0, TOP - 70, t, 15, weight=800, color=mr.MUTED)
+        f.line(x0, TOP - 60, x1, TOP - 60, "#c9ccd6", 1.5)
+    for i, (_, lab, _) in enumerate(BUSY_COLS):
+        f.text(P0 + i * CWc, TOP - 26, lab, 16, weight=800)
+
+    def row(mid, y):
+        for i, (cats, _, B) in enumerate(BUSY_COLS):
+            x = P0 + i * CWc
+            v = busy(mid, B, T128, cats)
+            if v is None:
+                f.text(x, y + RH / 2 + 6, "— 없음", 14, color=mr.MUTED)
+                continue
+            f.rect(x, y + 12, TRK, RH - 24, "#e3e6ee", "none", 4)
+            f.rect(x, y + 12, max(TRK * v, 2), RH - 24, VIOLET, "none", 4)
+            f.text(x + TRK + 10, y + RH / 2 + 6, "100%" if v > 0.995 else pc(v), 16, weight=800,
+                   color=VIOLET if v > 0.995 else mr.INK)
+    ms.fam_rows(f, TOP, RH, FG, W - 40, row)
+    mr.takeaway(f, H + 90, *TAKE["s2b"])
+    mr.save(f)
+
+
+def fig_bound():
+    """2.3 — 이론 시간 중 계산이 병목 / 메모리 읽기가 병목 (조건 3개)."""
+    RH, FG, TOP = 50, 10, 240
+    P0, PWb, GAP = 330, 400, 50
+    H = TOP + 5 * RH + 2 * FG
+    f = mr.Fig("comp-s2c-bound", W, H + 190)
+    mr.title(f, "이론 시간은 무엇이 정하나 — 계산이 병목인 몫 vs 메모리 읽기가 병목인 몫 (모델 전체)",
+             "이론 시간 100%를 커널마다 '계산 시간이 더 긴 커널'과 '읽고 쓰는 시간이 더 긴 커널'로 나눔")
+    mr.legend(f, [("계산이 병목", VIOLET), ("메모리 읽기가 병목", MEMC)], 40, 134, 30)
+    for j, (B, T, lab, _) in enumerate(CONDS):
+        f.text(P0 + j * (PWb + GAP), TOP - 22, lab, 17, weight=800)
+
+    def row(mid, y):
+        for j, (B, T, _, _) in enumerate(CONDS):
+            rs = ops.rows(mid, B, T)
+            bt = ops.bound_time(rs)
+            s = bt["cmp"] / (bt["cmp"] + bt["mem"])
+            x = P0 + j * (PWb + GAP)
+            f.rect(x, y + 10, PWb, RH - 20, MEMC, "none", 3)
+            if s > 0.002:
+                f.rect(x, y + 10, max(PWb * s, 3), RH - 20, VIOLET, "none", 3)
+            t = pc(s) if s >= 0.001 else "≈ 0%"
+            if PWb * s >= mr.text_w(t, 14) * 1.2 + 14:
+                f.text(x + 10, y + RH / 2 + 6, t, 14, "start", 800, "#ffffff")
+            else:
+                f.text(x + max(PWb * s, 3) + 8, y + RH / 2 + 6, t, 14, "start", 800, "#5a43b0")
+            f.text(x + PWb - 10, y + RH / 2 + 6, pc(1 - s) if s >= 0.01 else f"{1 - s:.1%}", 13.5, "end", 700, mr.INK)
+    ms.fam_rows(f, TOP, RH, FG, W - 40, row)
+    mr.takeaway(f, H + 90, *TAKE["s2c"])
     mr.save(f)
 
 
@@ -553,10 +606,14 @@ TAKE = {
            "요청 256개 · 128K: DSA는 색인이 계산량의 55%지만 시간은 28%, MoE가 시간의 65% / Full MLA만 attention이 계산량 97% · 시간 80%로 둘이 일치"),
     "t2": ("계산량의 98% 이상이 Tensor core 행렬곱 — 그런데 계산이 시간을 정하는 것은 Full MLA의 attention뿐",
            "계산이 병목인 시간 몫: Full MLA 22% → 44%(요청 32개) → 81%(256개 · 128K) / sparse · hybrid는 어느 조건에서도 8% 이하 · hybrid 둘은 거의 전부 BF16"),
-    "t3": ("Full MLA는 문맥 약 4천 토큰부터 attention 계산이 가중치 행렬곱을 넘음 — sparse는 그 지점을 10 ~ 50배 늦추고, 그 뒤 늘어나는 것은 색인",
-           "넘는 지점: DSA 약 4만 · CSA + HCA 약 23만 · KDA + DSA 약 100만 토큰 · GDN + QSA는 지원 길이 밖 / 128K에서 DSA는 계산량의 55%가 색인"),
     "t4": ("요청을 모아도 attention · 색인 · state의 1바이트당 계산 횟수는 그대로 — 구조가 병목을 정함",
            "attention 181 ~ 423번(균형점 근처 이상, GDN + QSA만 12) · 색인 4 ~ 121번 · state 약 0.9번 / 투영은 요청 256개에서 250 ~ 390번까지 오르지만 MoE는 6 ~ 26번에 머묾"),
+    "s2a": ("문맥이 길어지면 계산의 중심이 가중치에서 attention · 색인으로 옮겨감 — sparse는 그 시점을 10 ~ 50배 늦추고, 그 뒤 늘어나는 것은 색인",
+            "요청마다 하는 계산이 절반을 넘는 문맥: Full MLA 약 4.2K · DSA 약 39K · CSA + HCA 약 222K · KDA + DSA 약 974K · GDN + QSA는 지원 길이 안에서 안 넘음 / 128K DSA: 색인 55%"),
+    "s2b": ("색인 · state · MoE를 처리하는 동안 계산기는 대부분 데이터를 기다림 — 계산기가 거의 다 일하는 것은 attention과 요청이 많을 때의 투영뿐",
+            "계산기가 일하는 시간: 색인 2 ~ 36% · state 약 6% · MoE 3 ~ 12% (요청 256개) / attention 88 ~ 100% (GDN + QSA만 6%) · 투영 · LM head 76 ~ 100%"),
+    "s2c": ("sparse · hybrid는 어느 조건에서도 이론 시간의 92% 이상이 메모리 읽기 대기 — 계산이 시간을 정하는 것은 Full MLA의 attention뿐",
+            "계산이 병목인 몫: Full MLA 22% → 44%(요청 32개 · 128K) → 81%(요청 256개 · 128K) / sparse · hybrid 8% 이하"),
     "t5": ("top-k · gather는 계산량이 0이지만 처리할 개수가 많음 — 덩어리 크기가 같은 양을 몇 번에 나눠 읽는지 정함",
            "요청 256개 · 128K 스텝당 덩어리: DSA 약 3,200만 개(한 줄씩) · KDA + DSA 약 1,260만 개 · CSA + HCA 275만 개 · GDN + QSA 157만 개(4토큰 블록)"),
     "t6": ("sparse 층은 색인 점수 → top-k로 층마다 기다리는 단계가 2개 늘어남 — 층 수를 곱하면 모델 전체 단계 수가 정해짐",
@@ -601,8 +658,10 @@ if __name__ == "__main__":
             cf.gen_fig(k)
         fig_cat()
         fig_unit()
-        fig_growth()
         fig_ai()
+        fig_mix()
+        fig_busy()
+        fig_bound()
         fig_irr()
         fig_chain()
         fig_sum()
