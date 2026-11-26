@@ -20,6 +20,7 @@ synth-sum             정리 — 특성 → 인사이트 → HW
 import math
 import os
 import sys
+from contextlib import contextmanager
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "tools"))
@@ -558,7 +559,7 @@ TAKE = {
 SUM_ROWS = [
     ("Full MLA의 KV", "blue", "app_all", "토큰마다 추가 · 전부 읽음 — 토큰당 40 KB, 요청 수 × 문맥에 비례",
      "저장한 만큼 매 스텝 읽음", "128K에서 요청 약 130개부터 저장량 · 읽고 쓰는 양 모두 가중치를 넘음",
-     "HBM 용량 · 대역폭을 함께, KV 압축 · 저정밀", "아래 계층 메모리는 읽기 속도가 모자라 효과가 제한됨", "2.5"),
+     "HBM 용량 · 대역폭을 함께, KV 압축 · 저정밀", "아래 계층 메모리는 읽기 속도가 모자라 효과가 제한됨", "kv"),
     ("골라 읽는 KV (sparse · hybrid 4개)", "blue", "app_sel", "토큰마다 추가 · 골라 읽음 — 요청마다 정해진 개수(2,048 · 512)만 읽음",
      "읽는 양은 줄지만 저장량은 그대로", "저장량이 가중치를 넘는 요청 수가 읽고 쓰는 양 기준의 1/3 ~ 1/9 · DSA 저장량은 색인 키만큼 20% 늘어남",
      "전체 KV는 큰 메모리, 고를 KV만 HBM", "고르는 KV가 연속 스텝에서 겹칠수록 · 블록 단위로 옮길수록 유리", "2.1"),
@@ -586,7 +587,7 @@ def fig_sum():
     TOP = 170
     f = mr.Fig("synth-sum", W, TOP + sum(h_of(r) + 18 for r in rows) + 60)
     mr.title(f, "종합 — sparse · hybrid가 바꾼 데이터 특성 → 인사이트 → HW",
-             "줄마다 데이터 하나 · 숫자는 본문과 같은 계산 · 알약 = 기준 보고서 Ⅱ장 절")
+             "줄마다 데이터 하나 · 숫자는 본문과 같은 계산 · " + SEC_NOTE_PLAIN)
     for x, t in zip(X, ("데이터 특성 (어느 모델 · 어떻게 읽고 쓰나)", "인사이트 (비교에서 보이는 것)", "HW로 연결")):
         f.text(x, TOP - 22, t, 16, weight=700, color=mr.MUTED)
     y = TOP
@@ -629,6 +630,23 @@ PLAIN = [
     ("보관이 늘어남", "저장량이 늘어남"), ("read-only", "읽기만"), ("끝에 추가", "토큰마다 추가"),
     ("요청별 · ", "요청마다 · "),
 ]
+
+
+# HW 알약 — 종합 보고서는 다른 문서 절 번호 없이 대응 이름만
+SECS_PLAIN = {"2.1": "계층형 KV", "2.2": "메모리 근처 선택", "2.3": "색인 연산 · top-k", "2.4": "state PIM",
+              "2.5": "이종 가속기 · PD 분리", "-": "가중치 쪽 대응", "x": "대응 대상 아님",
+              "kv": "KV 압축 · 저정밀", "attn": "attention 연산 분리"}
+SEC_NOTE_PLAIN = "알약 = 이어지는 HW 대응"
+
+
+@contextmanager
+def plain_secs():
+    old = cf.SECS, cf.SEC_NOTE
+    cf.SECS, cf.SEC_NOTE = SECS_PLAIN, SEC_NOTE_PLAIN
+    try:
+        yield
+    finally:
+        cf.SECS, cf.SEC_NOTE = old
 
 
 def plain(v):
@@ -688,6 +706,7 @@ if __name__ == "__main__":
         fig_ctx()
         fig_share()
         fig_hbm()
-        fig_sum()
-        for _k in ("s_kind", "s_life", "s_char"):
-            cf.gen_fig(_k)
+        with plain_secs():
+            fig_sum()
+            for _k in ("s_kind", "s_life", "s_char"):
+                cf.gen_fig(_k)

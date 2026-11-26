@@ -333,6 +333,7 @@ def fig_char_map():
 # ------------------------------------------------------------------ 정리 — 특성 → 인사이트 → HW
 SECS = {"2.1": "2.1 계층형 KV", "2.2": "2.2 메모리 근처 선택", "2.3": "2.3 색인 연산 · top-k", "2.4": "2.4 state PIM",
         "2.5": "2.5 이종 가속기 · PD 분리", "-": "기준 보고서 범위 밖", "x": "대응 대상 아님"}
+SEC_NOTE = "알약 = 기준 보고서 Ⅱ장 절"      # 종합 보고서는 make_synthesis_report.plain_secs()로 바꿔 그림
 # 행 = (데이터, 색, 성격 칸, 특성, 인사이트 제목, 인사이트 보조, HW 제목, HW 보조, 절)
 SUMMARY = {
     "mla-v31": [
@@ -538,7 +539,7 @@ def gen_fig(key):
     f.text(GL + 4, TOP - 24, lhead, 17, weight=800, color=MUTED)
     f.text(GR + 4, TOP - 24, rhead, 17, weight=800, color=MUTED)
     if any(r[0] != "#" and r[6] for r in rows):
-        f.text(W - 40, TOP - 24, "알약 = 기준 보고서 Ⅱ장 절", 14, "end", 600, MUTED)
+        f.text(W - 40, TOP - 24, SEC_NOTE, 14, "end", 600, MUTED)
     y = TOP
     for r in rows:
         h = rh(r)

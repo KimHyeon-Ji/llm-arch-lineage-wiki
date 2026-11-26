@@ -548,7 +548,7 @@ def fig_chain():
 SUM_ROWS = [   # (항목, 색 토큰, 왼쪽 띠 색, 특성, 인사이트, 인사이트 보조, HW, HW 보조, 절)
     ("attention 본체 (Full MLA에서 큼)", mr.BLUE, "KV 1줄을 head 64 ~ 128개가 같이 씀 — 1바이트당 180 ~ 420번 계산, 요청 수와 무관",
      "계산이 병목 — Full MLA는 긴 문맥 계산량의 97%", "Full MLA 요청 256개 · 128K: 이론 시간의 81%를 계산이 정함 · sparse는 고른 512 ~ 2,048줄만 계산해 시간 몫 5% 미만",
-     "계산이 병목인 attention과 메모리 읽기가 병목인 나머지를 나눠 배치", "sparse에서는 몫이 작아 attention 전용 연산기의 이득은 Full MLA에 한정", "2.5"),
+     "계산이 병목인 attention과 메모리 읽기가 병목인 나머지를 나눠 배치", "sparse에서는 몫이 작아 attention 전용 연산기의 이득은 Full MLA에 한정", "attn"),
     ("색인 · 블록 점수 (sparse · hybrid 4개)", mr.ORANGE, "문맥에 비례 — 토큰마다 지난 모든 키와 비교, 1바이트당 4 ~ 121번 계산",
      "sparse는 attention 계산을 색인으로 옮김", "DSA 128K 토큰당 계산량의 55%가 색인 · 색인 + attention이 문맥 약 4만부터 가중치 행렬곱을 넘음",
      "메모리 근처 색인 계산 — 저정밀 행렬 연산기", "필요한 계산 밀도가 모델마다 약 30배 차이 (GDN + QSA 4번 · DSA 121번)", "2.2"),
@@ -575,7 +575,7 @@ def fig_sum():
     TOP = 170
     f = mr.Fig("comp-sum", W, TOP + sum(h_of(r) + 18 for r in SUM_ROWS) + 60)
     mr.title(f, "종합 — 연산 특성 → 인사이트 → HW",
-             "줄마다 연산 묶음 하나 · 숫자는 본문과 같은 계산 · 알약 = 기준 보고서 Ⅱ장 절")
+             "줄마다 연산 묶음 하나 · 숫자는 본문과 같은 계산 · " + ms.SEC_NOTE_PLAIN)
     for x, t in zip(X, ("연산 특성 (어느 모델 · 어떤 연산)", "인사이트 (비교에서 보이는 것)", "HW로 연결")):
         f.text(x, TOP - 22, t, 16, weight=700, color=mr.MUTED)
     y = TOP
@@ -654,8 +654,9 @@ if __name__ == "__main__":
     if sys.argv[1:] == ["print"]:
         show()
     else:
-        for k in ("ops1", "ops2", "ops3"):
-            cf.gen_fig(k)
+        with ms.plain_secs():
+            for k in ("ops1", "ops2", "ops3"):
+                cf.gen_fig(k)
         fig_cat()
         fig_unit()
         fig_ai()
@@ -664,4 +665,5 @@ if __name__ == "__main__":
         fig_bound()
         fig_irr()
         fig_chain()
-        fig_sum()
+        with ms.plain_secs():
+            fig_sum()
