@@ -13,7 +13,7 @@ synth-t5-char-model   성격별 보관 · 이동 (모델 전체, 조건 3개)
 synth-s2a-rel         2.1 Full MLA = 100%로 놓은 요청 1개의 저장량 · 읽고 쓰는 양 (128K)
 synth-s2b-ctx         2.2 문맥이 길어질 때 요청 1개가 읽고 쓰는 양 (선형 눈금 · hybrid state 바닥)
 synth-s4a-share       4.1 요청이 늘 때 요청 데이터가 저장 공간 · 읽기에서 차지하는 몫 (50% = 가중치와 같음)
-synth-s4b-hbm         4.2 저장량 ÷ 가정한 H200 장수의 HBM
+synth-s4b-hbm         4.2 필요한 H200 장수 (빨간 선 = 모델별 구성 장수)
 synth-sum             정리 — 특성 → 인사이트 → HW
 수치는 tools/traits.py (약식 뷰어와 같은 규칙).
 """
@@ -479,64 +479,54 @@ HB_CONDS = [(32, 131072, "요청 32개 · 128K"), (256, 32768, "요청 256개 ·
 
 
 def hbm_parts(mid, B, T):
-    """가정한 장수의 HBM 대비 (가중치 몫, 요청 데이터 몫)."""
-    cap = M_(mid)["model"]["deploy"]["n_gpu"] * 141e9
+    """필요한 H200 장수 (가중치 몫, 요청 데이터 몫) — 저장량 ÷ 141 GB."""
     st = tr.by(tr.items(M_(mid), B, T, "model"), "life", "store")
-    return st.get("svc", 0) / cap, (st.get("req", 0) + st.get("step", 0)) / cap
+    return st.get("svc", 0) / 141e9, (st.get("req", 0) + st.get("step", 0)) / 141e9
 
 
 def fig_hbm():
-    """4.2 — 저장량 ÷ 가정한 H200 장수의 HBM (100% 선을 넘으면 안 들어감)."""
+    """4.2 — H200 몇 장이 필요한가 (빨간 선 = 모델별 구성 장수)."""
     RH, FG, TOP = 50, 10, 280
-    P0, PWh, GAP, MAXR = 370, 380, 70, 2.5
-    sc = PWh / MAXR
+    P0, PWh, GAP, MAXN = 370, 380, 70, 20
+    sc = PWh / MAXN
     H = TOP + 5 * RH + 2 * FG
     f = mr.Fig("synth-s4b-hbm", W, H + 200)
-    mr.title(f, "가정한 H200 장수의 HBM에 들어가나 — 저장량 ÷ HBM 용량",
-             "저장량 = 가중치 + 요청마다 쌓이는 데이터 · HBM 용량 = H200 141 GB × 모델마다 가정한 장수 · GPU별 배치 · 복제 · 작업 공간은 반영 안 함")
+    mr.title(f, "H200 몇 장이 필요한가 — 저장량 ÷ H200 1장의 HBM(141 GB)",
+             "막대 끝 숫자 = 필요한 최소 장수(올림) · 빨간 선 = 모델별 구성 장수 (Full MLA · DSA 8장, KDA + DSA 16장, CSA + HCA · GDN + QSA 2장) · GPU별 배치 · 복제 · 작업 공간은 반영 안 함")
     mr.legend(f, [("가중치", mr.GRAY), ("요청마다 쌓이는 데이터 (KV · 색인 키 · state)", mr.BLUE)], 40, 134, 30)
     lx = 40 + 26 + mr.text_w("가중치", 15) + 30 + 26 + mr.text_w("요청마다 쌓이는 데이터 (KV · 색인 키 · state)", 15) + 30
-    dashed(f, lx, 129, lx + 30, 129, OVER, 2.4)
-    f.text(lx + 40, 135, "HBM 용량 (= 100%) — 넘으면 가정한 장수에 안 들어감", 15, color=mr.MUTED)
+    dashed(f, lx + 15, 118, lx + 15, 140, OVER, 2.6)
+    f.text(lx + 30, 135, "모델별 구성 장수 — 막대가 넘으면 그 장수로는 HBM이 모자람", 15, color=mr.MUTED)
     for j, (B, T, lab) in enumerate(HB_CONDS):
         x = P0 + j * (PWh + GAP)
-        f.text(x, TOP - 58, lab, 17, weight=800)
-        f.text(x + sc, TOP - 32, "HBM 용량", 12.5, "middle", 700, OVER)
-        for p, t in ((0, "0"), (1, "100%"), (2, "200%")):
-            f.text(x + p * sc, H + 28, t, 12.5, "middle", color=mr.MUTED)
+        f.text(x, TOP - 30, lab, 17, weight=800)
+        for n in (0, 4, 8, 12, 16, 20):
+            f.text(x + n * sc, H + 28, f"{n}장" if n else "0", 12.5, "middle", color=mr.MUTED)
 
-    def guides(y0, y1):
+    def guides(y0, y1, n):
         for j in range(len(HB_CONDS)):
             x = P0 + j * (PWh + GAP)
-            f.line(x + 2 * sc, y0, x + 2 * sc, y1, "#d3d6e0", 1)
-            dashed(f, x + sc, y0, x + sc, y1, OVER, 2.2)
-    guides(TOP - 26, H + 6)
+            for g in (4, 8, 12, 16, 20):
+                f.line(x + g * sc, y0, x + g * sc, y1, "#d9dce5", 1)
+            if n:
+                dashed(f, x + n * sc, y0 + 4, x + n * sc, y1 - 4, OVER, 2.6, "6 4")
+    guides(TOP - 6, H + 6, 0)
 
     def row(mid, y):
-        guides(y, y + RH)
-        f.text(XN + mr.text_w(NAME[mid], 15) * 1.1 + 12, y + RH / 2 + 6, f"H200 {M_(mid)['model']['deploy']['n_gpu']}장", 13,
-               color=mr.MUTED)
+        n = M_(mid)["model"]["deploy"]["n_gpu"]
+        guides(y, y + RH, n)
+        f.text(XN + mr.text_w(NAME[mid], 15) * 1.1 + 12, y + RH / 2 + 6, f"{n}장 구성", 13, color=mr.MUTED)
         for j, (B, T, _) in enumerate(HB_CONDS):
             x = P0 + j * (PWh + GAP)
             w_, q_ = hbm_parts(mid, B, T)
-            tot = w_ + q_
-            ww = min(w_, MAXR) * sc
-            qw = max(min(tot, MAXR) * sc - ww, 0)
-            f.rect(x, y + 10, ww, RH - 20, mr.GRAY, "none", 2)
-            if qw > 0.5:
-                f.rect(x + ww, y + 10, qw, RH - 20, mr.BLUE, "none", 2)
-            over = tot > 1
-            lab = (f"{tot:.2f}배" if tot < 1.1 else f"{tot:.1f}배") if over else f"{tot:.0%}"
-            if tot > MAXR:   # 잘라 그림 — 끝에 끊김 표시 + 안쪽 숫자
-                xe = x + PWh
-                for d in (-14, -6):
-                    f.line(xe + d - 4, y + 8, xe + d + 4, y + RH - 8, "#ffffff", 3)
-                f.text(xe - 24, y + RH / 2 + 6, lab, 15, "end", 800, "#ffffff")
-            else:
-                lx = x + ww + qw + 8
-                if lx < x + sc + 6 < lx + mr.text_w(lab, 15) * 1.5:
-                    lx = x + sc + 8
-                f.text(lx, y + RH / 2 + 6, lab, 15, weight=800, color=OVER if over else mr.INK)
+            need = math.ceil(w_ + q_)
+            f.rect(x, y + 12, w_ * sc, RH - 24, mr.GRAY, "none", 2)
+            if q_ * sc > 0.5:
+                f.rect(x + w_ * sc, y + 12, q_ * sc, RH - 24, mr.BLUE, "none", 2)
+            lx_ = x + (w_ + q_) * sc + 8
+            if lx_ < x + n * sc + 4 < lx_ + mr.text_w(f"{need}장", 15) * 1.3:
+                lx_ = x + n * sc + 8
+            f.text(lx_, y + RH / 2 + 6, f"{need}장", 15, weight=800, color=OVER if need > n else mr.INK)
     fam_rows(f, TOP, RH, FG, W - 40, row)
     mr.takeaway(f, H + 100, *TAKE["s4b"])
     mr.save(f)
@@ -559,8 +549,8 @@ TAKE = {
             "문맥 8K: KDA + DSA가 Full MLA의 3배 · 약 25K에서 같아짐 · 128K: Full MLA의 26% / DSA · CSA + HCA는 색인 키 읽기만큼만 천천히 늘어남"),
     "s4a": ("골라 읽는 모델은 요청 데이터가 저장 공간을 먼저 채우고, 읽기에서는 훨씬 늦게 커짐 — 두 선이 벌어진 구간에서는 저장된 KV 대부분이 그 스텝에 읽히지 않음",
             "가중치를 넘는 요청 수 (저장 → 읽기): Full MLA 약 130개로 같음 · DSA 108 → 592 · GDN + QSA 74 → 656 · KDA + DSA 348 → 1,137 · CSA + HCA 300 → 1,372"),
-    "s4b": ("요청 256개 · 128K에서는 다섯 모델 모두 가정한 장수의 HBM을 넘음 — 가중치가 이미 HBM의 55 ~ 89%를 차지해 요청 데이터에 남는 자리가 작음",
-            "요청 256개 · 128K: GDN + QSA 4.0배 · DSA 2.0배 · Full MLA 1.8배 · KDA + DSA 1.2배 · CSA + HCA 1.02배 / GDN + QSA는 요청 32개 · 128K부터 넘음"),
+    "s4b": ("요청 256개 · 128K면 다섯 모델 모두 구성 장수보다 H200이 더 필요 — 가중치만으로 구성 장수의 55 ~ 89%를 채워 요청 데이터에 남는 자리가 작음",
+            "요청 256개 · 128K 필요 장수: Full MLA 15장(8장 구성) · DSA 17장(8장) · KDA + DSA 20장(16장) · GDN + QSA 9장(2장) · CSA + HCA 3장(2장)"),
 }
 
 
